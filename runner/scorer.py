@@ -2,7 +2,7 @@ import os
 import shutil
 import subprocess
 from braintrust import traced, Score
-from convex_backend import convex_backend, admin_key
+from .convex_backend import convex_backend, admin_key
 
 
 def convex_scorer(model, tempdir, *, args, expected, metadata, output):

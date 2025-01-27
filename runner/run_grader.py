@@ -2,8 +2,8 @@ import os
 import sys
 import re
 import concurrent.futures
-from scorer import install_dependencies, generate_code, typecheck_code, lint_code, deploy, run_tests
-from convex_backend import convex_backend
+from .scorer import install_dependencies, generate_code, typecheck_code, lint_code, deploy, run_tests
+from .convex_backend import convex_backend
 
 
 def is_tempdir(directory: str):
