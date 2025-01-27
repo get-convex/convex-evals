@@ -24,7 +24,7 @@ Then, get a Braintrust API key from [the dashboard](https://www.braintrust.dev/a
 You can run the `eval_convex_coding.py` evals with the `braintrust` CLI:
 
 ```bash
-BRAINTRUST_API_KEY=<your BRAINTRUST_API_KEY> pdm run braintrust run runner/eval_convex_coding.py
+BRAINTRUST_API_KEY=<your BRAINTRUST_API_KEY> pdm run braintrust eval runner/eval_convex_coding.py
 ```
 
 It'll print out a URL for viewing the report online. You can specify a test filter regex via an environment variable:
