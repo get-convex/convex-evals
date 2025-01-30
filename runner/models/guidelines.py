@@ -57,6 +57,9 @@ CONVEX_GUIDELINES = GuidelineSection(
       ```
       """
                         ),
+                        Guideline(
+                            "HTTP endpoints are always registered at the exact path you specify in the `path` field. For example, if you specify `/api/someRoute`, the endpoint will be registered at `/api/someRoute`."
+                        ),
                     ],
                 ),
                 GuidelineSection(
@@ -327,7 +330,10 @@ CONVEX_GUIDELINES = GuidelineSection(
 if __name__ == "__main__":
     import sys
     import os
-    from .anthropic_codegen import ANTHROPIC_CONVEX_GUIDELINES, render_examples as anthropic_render_examples
+    from .anthropic_codegen import (
+        ANTHROPIC_CONVEX_GUIDELINES,
+        render_examples as anthropic_render_examples,
+    )
     from .openai_codegen import OPENAI_CONVEX_GUIDELINES, render_examples as openai_render_examples
 
     outdir = sys.argv[1]

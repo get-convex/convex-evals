@@ -27,4 +27,4 @@ Generate a "convex/schema.ts" file that adds the following fields to the `config
 
 The goal is to showcase different ways to use literals and unions in Convex schemas and how to properly type functions that interact with these complex types.
 
-Only generate the "convex/schema.ts" file.
+Only create the `package.json` and `convex/schema.ts` files. Do NOT create any functions.

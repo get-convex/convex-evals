@@ -1,7 +1,7 @@
 Create a backend that demonstrates different ways of handling optional and nullable fields in a Convex schema.
 
-Create a schema in `convex/schema.ts`.
-The schema should have three fields to demonstrate three different patterns for optional/nullable fields:
+Create a schema in `convex/schema.ts` that has one table called `optionals`.
+The `optionals` table should have three fields to demonstrate three different patterns for optional/nullable fields:
 1. `nullable`: Allows either null or string values, but the field must always be present
 2. `maybe_nullable`: Allows the field to be null or a string, but the field also might be missing / unset.
 3. `maybe`: Allows the field to be either absent or contain a string, but cannot be explicitly null.
