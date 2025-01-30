@@ -5,7 +5,7 @@ from runner.models.anthropic_codegen import build_release_rules as build_anthrop
 from runner.models.openai_codegen import build_release_rules as build_openai_rules
 
 MDC_FRONTMATTER = """---
-description: Convex backend and database
+description: Guidelines and best practices for building Convex projects, including database schema design, queries, mutations, and real-world examples
 globs: **/*.{ts,tsx,js,jsx}
 ---
 
