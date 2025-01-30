@@ -5,7 +5,7 @@ import {
   compareSchema,
   compareFunctionSpec,
 } from "../../../grader";
-import { api } from "./answer/convex/_generated/api";
+import { anyApi } from "convex/server";
 
 test("compare schema", async ({ skip }) => {
   await compareSchema(skip);
@@ -17,7 +17,7 @@ test("compare function spec", async ({ skip }) => {
 
 test("callerMutation chains calls correctly", async () => {
   const result = await responseAdminClient.mutation(
-    api.index.callerMutation,
+    anyApi.index.callerMutation,
     {},
   );
   // calleeQuery(1,2) = 3
@@ -27,7 +27,7 @@ test("callerMutation chains calls correctly", async () => {
   // Test with invalid arguments
   let error: any = undefined;
   try {
-    await responseAdminClient.mutation(api.index.callerMutation, { x: 1 });
+    await responseAdminClient.mutation(anyApi.index.callerMutation, { x: 1 });
   } catch (e) {
     error = e;
   }
@@ -37,7 +37,7 @@ test("callerMutation chains calls correctly", async () => {
 
 test("callerAction chains calls correctly", async () => {
   const result = await responseAdminClient.action(
-    api.index.callerAction,
+    anyApi.index.callerAction,
     {},
   );
   // calleeQuery(1,2) = 3
@@ -48,7 +48,7 @@ test("callerAction chains calls correctly", async () => {
   // Test with invalid arguments
   let error: any = undefined;
   try {
-    await responseAdminClient.action(api.index.callerAction, { x: 1 });
+    await responseAdminClient.action(anyApi.index.callerAction, { x: 1 });
   } catch (e) {
     error = e;
   }
@@ -59,21 +59,21 @@ test("callerAction chains calls correctly", async () => {
 test("internal functions work correctly", async () => {
   // Test calleeQuery
   const queryResult = await responseAdminClient.query(
-    api.index.calleeQuery,
+    anyApi.index.calleeQuery,
     { x: 5, y: 3 },
   );
   expect(queryResult).toBe(8);
 
   // Test calleeMutation
   const mutationResult = await responseAdminClient.mutation(
-    api.index.calleeMutation,
+    anyApi.index.calleeMutation,
     { x: 5, y: 3 },
   );
   expect(mutationResult).toBe(2);
 
   // Test calleeAction
   const actionResult = await responseAdminClient.action(
-    api.index.calleeAction,
+    anyApi.index.calleeAction,
     { x: 5, y: 3 },
   );
   expect(actionResult).toBe(15);
@@ -81,7 +81,7 @@ test("internal functions work correctly", async () => {
   // Test argument validation
   let error: any = undefined;
   try {
-    await responseAdminClient.query(api.index.calleeQuery, {
+    await responseAdminClient.query(anyApi.index.calleeQuery, {
       x: "not a number",
       y: 3,
     });
@@ -97,7 +97,7 @@ test("functions are not accessible from wrong client type", async () => {
 
   // Query should not be callable as mutation
   try {
-    await responseAdminClient.mutation(api.index.calleeQuery, {
+    await responseAdminClient.mutation(anyApi.index.calleeQuery, {
       x: 1,
       y: 2,
     });
@@ -109,7 +109,7 @@ test("functions are not accessible from wrong client type", async () => {
   // Mutation should not be callable as action
   error = undefined;
   try {
-    await responseAdminClient.action(api.index.calleeMutation, {
+    await responseAdminClient.action(anyApi.index.calleeMutation, {
       x: 1,
       y: 2,
     });
@@ -121,7 +121,7 @@ test("functions are not accessible from wrong client type", async () => {
   // Action should not be callable as query
   error = undefined;
   try {
-    await responseAdminClient.query(api.index.calleeAction, { x: 1, y: 2 });
+    await responseAdminClient.query(anyApi.index.calleeAction, { x: 1, y: 2 });
   } catch (e) {
     error = e;
   }

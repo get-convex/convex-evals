@@ -7,8 +7,7 @@ import {
   addDocuments,
   listTable,
 } from "../../../grader";
-import { api, internal } from "./answer/convex/_generated/api";
-import { Doc } from "./answer/convex/_generated/dataModel";
+import { anyApi } from "convex/server";
 
 test("compare schema", async ({ skip }) => {
   await compareSchema(skip);
@@ -19,7 +18,6 @@ test("compare function spec", async ({ skip }) => {
 });
 
 test("migration helper transforms data correctly", async () => {
-
   // Insert a product with old schema format
   await addDocuments(responseAdminClient, "products", [
     {
@@ -30,13 +28,15 @@ test("migration helper transforms data correctly", async () => {
   ]);
 
   const products = await listTable(responseAdminClient, "products");
-  const productId = (products.at(-1) as Doc<"products">)._id;
+  const productId = (products.at(-1))._id;
 
   // Test migration mutation
-  await responseClient.mutation(api.index.migrateProduct, { productId });
+  await responseClient.mutation(anyApi.index.migrateProduct, { productId });
 
   // Test that the product was migrated correctly
-  const product = await responseClient.query(api.index.getProduct, { productId });
+  const product = await responseClient.query(anyApi.index.getProduct, {
+    productId,
+  });
   expect(product).toMatchObject({
     _id: productId,
     _creationTime: expect.any(Number),

@@ -6,7 +6,7 @@ import {
   compareFunctionSpec,
   deleteAllDocuments,
 } from "../../../grader";
-import { api } from "./answer/convex/_generated/api";
+import { anyApi } from "convex/server";
 import { beforeEach } from "vitest";
 
 beforeEach(async () => {
@@ -37,10 +37,13 @@ const sampleDocument = {
 };
 
 test("create and get document", async () => {
-  const docId = await responseClient.mutation(api.index.createDocument, sampleDocument);
+  const docId = await responseClient.mutation(
+    anyApi.index.createDocument,
+    sampleDocument
+  );
   expect(docId).toBeDefined();
 
-  const fetchedDoc = await responseClient.query(api.index.getDocument, {
+  const fetchedDoc = await responseClient.query(anyApi.index.getDocument, {
     documentId: docId,
   });
   expect(fetchedDoc).toBeDefined();
@@ -49,7 +52,10 @@ test("create and get document", async () => {
 });
 
 test("patch document metadata", async () => {
-  const docId = await responseClient.mutation(api.index.createDocument, sampleDocument);
+  const docId = await responseClient.mutation(
+    anyApi.index.createDocument,
+    sampleDocument
+  );
 
   const newMetadata = {
     title: "Updated Title",
@@ -62,12 +68,12 @@ test("patch document metadata", async () => {
     tags: ["updated"],
   };
 
-  await responseClient.mutation(api.index.patchDocumentMetadata, {
+  await responseClient.mutation(anyApi.index.patchDocumentMetadata, {
     documentId: docId,
     metadata: newMetadata,
   });
 
-  const updatedDoc = await responseClient.query(api.index.getDocument, {
+  const updatedDoc = await responseClient.query(anyApi.index.getDocument, {
     documentId: docId,
   });
   expect(updatedDoc?.metadata).toEqual(newMetadata);
@@ -75,7 +81,10 @@ test("patch document metadata", async () => {
 });
 
 test("patch author info", async () => {
-  const docId = await responseClient.mutation(api.index.createDocument, sampleDocument);
+  const docId = await responseClient.mutation(
+    anyApi.index.createDocument,
+    sampleDocument
+  );
 
   const newAuthor = {
     name: "Jane Smith",
@@ -85,12 +94,12 @@ test("patch author info", async () => {
     },
   };
 
-  await responseClient.mutation(api.index.patchAuthorInfo, {
+  await responseClient.mutation(anyApi.index.patchAuthorInfo, {
     documentId: docId,
     author: newAuthor,
   });
 
-  const updatedDoc = await responseClient.query(api.index.getDocument, {
+  const updatedDoc = await responseClient.query(anyApi.index.getDocument, {
     documentId: docId,
   });
   expect(updatedDoc?.metadata.author).toEqual(newAuthor);
@@ -100,15 +109,18 @@ test("patch author info", async () => {
 });
 
 test("get non-existent document returns null", async () => {
-  const docId = await responseClient.mutation(api.index.createDocument, sampleDocument);
-  await responseClient.mutation(api.index.patchDocumentMetadata, {
+  const docId = await responseClient.mutation(
+    anyApi.index.createDocument,
+    sampleDocument
+  );
+  await responseClient.mutation(anyApi.index.patchDocumentMetadata, {
     documentId: docId,
     metadata: sampleDocument.metadata,
   });
   await deleteAllDocuments(responseAdminClient, ["documents"]);
 
-  const result = await responseClient.query(api.index.getDocument, {
-    documentId: docId
+  const result = await responseClient.query(anyApi.index.getDocument, {
+    documentId: docId,
   });
   expect(result).toBeNull();
 });
@@ -128,6 +140,6 @@ test("validation errors", async () => {
   };
 
   await expect(
-    responseClient.mutation(api.index.createDocument, invalidDoc as any)
+    responseClient.mutation(anyApi.index.createDocument, invalidDoc as any)
   ).rejects.toThrow();
 });

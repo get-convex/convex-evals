@@ -7,8 +7,8 @@ import {
   addDocuments,
   listTable,
 } from "../../../grader";
-import { api } from "./answer/convex/_generated/api";
-import { Doc, Id } from "./answer/convex/_generated/dataModel";
+import { anyApi } from "convex/server";
+import { GenericId } from "convex/values";
 
 test("compare schema", async ({ skip }) => {
   await compareSchema(skip);
@@ -22,8 +22,8 @@ test("getItem and updateItem handle non-existent items", async () => {
   // Try to get a non-existent item
   let error = null;
   try {
-    await responseClient.query(api.index.getItem, {
-      id: "items:nonexistent" as Id<"items">,
+    await responseClient.query(anyApi.index.getItem, {
+      id: "items:nonexistent" as GenericId<"items">,
     });
   } catch (e) {
     error = e;
@@ -33,8 +33,8 @@ test("getItem and updateItem handle non-existent items", async () => {
   // Try to update a non-existent item
   error = null;
   try {
-    await responseClient.mutation(api.index.updateItem, {
-      id: "items:nonexistent" as Id<"items">,
+    await responseClient.mutation(anyApi.index.updateItem, {
+      id: "items:nonexistent" as GenericId<"items">,
       quantity: 10,
     });
   } catch (e) {
@@ -53,10 +53,10 @@ test("getItem and updateItem work correctly with existing items", async () => {
     },
   ]);
   const documents = await listTable(responseAdminClient, "items");
-  const itemId = (documents.at(-1) as Doc<"items">)._id;
+  const itemId = (documents.at(-1))._id;
 
   // Get the item
-  const item = await responseClient.query(api.index.getItem, {
+  const item = await responseClient.query(anyApi.index.getItem, {
     id: itemId,
   });
 
@@ -67,20 +67,20 @@ test("getItem and updateItem work correctly with existing items", async () => {
   expect(item.lastModified).toBeTypeOf("string");
 
   // Update the item
-  await responseClient.mutation(api.index.updateItem, {
+  await responseClient.mutation(anyApi.index.updateItem, {
     id: itemId,
     quantity: 10,
   });
 
   // Get the updated item
-  const updatedItem = await responseClient.query(api.index.getItem, {
+  const updatedItem = await responseClient.query(anyApi.index.getItem, {
     id: itemId,
   });
 
   // Verify the update
   expect(updatedItem.quantity).toBe(10);
   expect(new Date(updatedItem.lastModified).getTime()).toBeGreaterThan(
-    new Date(item.lastModified).getTime(),
+    new Date(item.lastModified).getTime()
   );
 });
 
@@ -94,16 +94,16 @@ test("getItem and updateItem return the same format", async () => {
     },
   ]);
   const documents = await listTable(responseAdminClient, "items");
-  const itemId = (documents.at(-1) as Doc<"items">)._id;
+  const itemId = (documents.at(-1))._id;
 
   // Update the item
-  const updatedItem = await responseClient.mutation(api.index.updateItem, {
+  const updatedItem = await responseClient.mutation(anyApi.index.updateItem, {
     id: itemId,
     quantity: 10,
   });
 
   // Get the updated item
-  const item = await responseClient.query(api.index.getItem, {
+  const item = await responseClient.query(anyApi.index.getItem, {
     id: itemId,
   });
 

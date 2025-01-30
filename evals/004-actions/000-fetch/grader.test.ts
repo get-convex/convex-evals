@@ -1,9 +1,6 @@
 import { expect, test } from "vitest";
-import {
-  responseClient,
-  compareFunctionSpec,
-} from "../../../grader";
-import { api } from "./answer/convex/_generated/api";
+import { responseClient, compareFunctionSpec } from "../../../grader";
+import { anyApi } from "convex/server";
 
 test("compare function spec", async ({ skip }) => {
   await compareFunctionSpec(skip);
@@ -11,7 +8,10 @@ test("compare function spec", async ({ skip }) => {
 
 test("fetches data from httpbin", async () => {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-  const response = await responseClient.action(api.index.fetchFromHttpBin, {});
+  const response = await responseClient.action(
+    anyApi.index.fetchFromHttpBin,
+    {}
+  );
 
   // Verify response structure
   expect(response).toBeDefined();
@@ -23,7 +23,10 @@ test("fetches data from httpbin", async () => {
 
 test("response contains standard httpbin fields", async () => {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-  const response = await responseClient.action(api.index.fetchFromHttpBin, {});
+  const response = await responseClient.action(
+    anyApi.index.fetchFromHttpBin,
+    {}
+  );
 
   // Check for standard httpbin response fields
   // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
@@ -36,7 +39,10 @@ test("response contains standard httpbin fields", async () => {
 
 test("returns valid JSON", async () => {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-  const response = await responseClient.action(api.index.fetchFromHttpBin, {});
+  const response = await responseClient.action(
+    anyApi.index.fetchFromHttpBin,
+    {}
+  );
 
   // Verify we can stringify and parse the response
   const jsonString = JSON.stringify(response);

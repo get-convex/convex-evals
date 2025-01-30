@@ -5,7 +5,6 @@ import {
   compareSchema,
   compareFunctionSpec,
 } from "../../../grader";
-import { api } from "./answer/convex/_generated/api";
 
 test("compare schema", async ({ skip }) => {
   await compareSchema(skip);

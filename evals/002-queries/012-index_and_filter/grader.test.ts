@@ -7,7 +7,7 @@ import {
   addDocuments,
   deleteAllDocuments,
 } from "../../../grader";
-import { api } from "./answer/convex/_generated/api";
+import { anyApi } from "convex/server";
 
 afterEach(async () => {
   await deleteAllDocuments(responseAdminClient, ["users"]);
@@ -22,7 +22,7 @@ test("compare function spec", async ({ skip }) => {
 });
 
 test("getActiveAdults returns empty array when no matching users exist", async () => {
-  const users = await responseClient.query(api.index.getActiveAdults, {
+  const users = await responseClient.query(anyApi.index.getActiveAdults, {
     minAge: 18,
   });
   expect(users).toEqual([]);
@@ -40,7 +40,7 @@ test("getActiveAdults correctly filters by age and deleted status", async () => 
   await addDocuments(responseAdminClient, "users", testUsers);
 
   // Test filtering adults (18+)
-  const adults = await responseClient.query(api.index.getActiveAdults, {
+  const adults = await responseClient.query(anyApi.index.getActiveAdults, {
     minAge: 18,
   });
 
@@ -48,7 +48,7 @@ test("getActiveAdults correctly filters by age and deleted status", async () => 
   expect(adults).toEqual(["Young Adult", "Adult", "Senior"]);
 
   // Test filtering seniors (65+)
-  const seniors = await responseClient.query(api.index.getActiveAdults, {
+  const seniors = await responseClient.query(anyApi.index.getActiveAdults, {
     minAge: 65,
   });
 
@@ -67,26 +67,26 @@ test("getActiveAdults handles edge cases", async () => {
 
   // Test exact age boundary
   const exactlyEighteen = await responseClient.query(
-    api.index.getActiveAdults,
+    anyApi.index.getActiveAdults,
     {
       minAge: 18,
-    },
+    }
   );
   expect(exactlyEighteen).toContain("Exactly18");
   expect(exactlyEighteen).not.toContain("Exactly18Deleted");
 
   // Test high age
-  const veryOld = await responseClient.query(api.index.getActiveAdults, {
+  const veryOld = await responseClient.query(anyApi.index.getActiveAdults, {
     minAge: 90,
   });
   expect(veryOld).toEqual(["VeryOld"]);
 
   // Test age with no possible matches
   const impossibleAge = await responseClient.query(
-    api.index.getActiveAdults,
+    anyApi.index.getActiveAdults,
     {
       minAge: 200,
-    },
+    }
   );
   expect(impossibleAge).toEqual([]);
 });
@@ -100,10 +100,10 @@ test("getActiveAdults returns results in consistent order", async () => {
   ]);
 
   // Query multiple times to verify consistent ordering
-  const results1 = await responseClient.query(api.index.getActiveAdults, {
+  const results1 = await responseClient.query(anyApi.index.getActiveAdults, {
     minAge: 20,
   });
-  const results2 = await responseClient.query(api.index.getActiveAdults, {
+  const results2 = await responseClient.query(anyApi.index.getActiveAdults, {
     minAge: 20,
   });
 
@@ -117,7 +117,7 @@ test("getActiveAdults handles negative ages", async () => {
     { name: "Valid", age: 20, isDeleted: false },
   ]);
 
-  const results = await responseClient.query(api.index.getActiveAdults, {
+  const results = await responseClient.query(anyApi.index.getActiveAdults, {
     minAge: -10,
   });
 

@@ -7,7 +7,7 @@ import {
   addDocuments,
   deleteAllDocuments,
 } from "../../../grader";
-import { api } from "./answer/convex/_generated/api";
+import { anyApi } from "convex/server";
 import { beforeEach } from "vitest";
 
 beforeEach(async () => {
@@ -23,7 +23,7 @@ test("compare function spec", async ({ skip }) => {
 });
 
 test("getDistinctAges returns empty array when no users exist", async () => {
-  const ages = await responseClient.query(api.index.getDistinctAges, {});
+  const ages = await responseClient.query(anyApi.index.getDistinctAges, {});
   expect(ages).toEqual([]);
 });
 
@@ -35,7 +35,7 @@ test("getDistinctAges returns single age when all users have same age", async ()
   ];
   await addDocuments(responseAdminClient, "users", users);
 
-  const ages = await responseClient.query(api.index.getDistinctAges, {});
+  const ages = await responseClient.query(anyApi.index.getDistinctAges, {});
   expect(ages).toEqual([25]);
 });
 
@@ -50,7 +50,7 @@ test("getDistinctAges returns sorted distinct ages", async () => {
   ];
   await addDocuments(responseAdminClient, "users", users);
 
-  const ages = await responseClient.query(api.index.getDistinctAges, {});
+  const ages = await responseClient.query(anyApi.index.getDistinctAges, {});
   expect(ages).toEqual([20, 25, 30]);
 });
 
@@ -64,7 +64,7 @@ test("getDistinctAges handles negative and zero ages", async () => {
   ];
   await addDocuments(responseAdminClient, "users", users);
 
-  const ages = await responseClient.query(api.index.getDistinctAges, {});
+  const ages = await responseClient.query(anyApi.index.getDistinctAges, {});
   expect(ages).toEqual([-10, 0, 10]);
 });
 
@@ -76,7 +76,7 @@ test("getDistinctAges handles large age ranges", async () => {
   ];
   await addDocuments(responseAdminClient, "users", users);
 
-  const ages = await responseClient.query(api.index.getDistinctAges, {});
+  const ages = await responseClient.query(anyApi.index.getDistinctAges, {});
   expect(ages).toEqual([1, 50, 100]);
 });
 
@@ -99,7 +99,7 @@ test("getDistinctAges maintains order with mixed insertions", async () => {
     { name: "User6", age: 22 },
   ]);
 
-  const ages = await responseClient.query(api.index.getDistinctAges, {});
+  const ages = await responseClient.query(anyApi.index.getDistinctAges, {});
   expect(ages).toEqual([20, 22, 25, 30]);
 });
 
@@ -113,7 +113,7 @@ test("getDistinctAges handles sparse age distribution", async () => {
   ];
   await addDocuments(responseAdminClient, "users", users);
 
-  const ages = await responseClient.query(api.index.getDistinctAges, {});
+  const ages = await responseClient.query(anyApi.index.getDistinctAges, {});
   expect(ages).toEqual([1, 500, 1000]);
 });
 
@@ -123,6 +123,6 @@ test("getDistinctAges handles sparse age distribution", async () => {
 //     await addDocuments(responseAdminClient, "users", users);
 //   // }
 
-//   const ages = await responseClient.query(api.index.getDistinctAges, {});
+//   const ages = await responseClient.query(anyApi.index.getDistinctAges, {});
 //   expect(ages).toEqual(Array.from({length: 100}, (_, i) => i));
 // });

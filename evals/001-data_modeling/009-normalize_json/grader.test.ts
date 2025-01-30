@@ -7,8 +7,7 @@ import {
   addDocuments,
   listTable,
 } from "../../../grader";
-import { api } from "./answer/convex/_generated/api";
-import { Doc } from "./answer/convex/_generated/dataModel";
+import {  } from "convex/values";
 
 test("compare schema", async ({ skip }) => {
   await compareSchema(skip);
