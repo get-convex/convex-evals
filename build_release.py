@@ -4,6 +4,13 @@ import os
 from runner.models.anthropic_codegen import build_release_guidelines as build_anthropic_guidelines
 from runner.models.openai_codegen import build_release_guidelines as build_openai_guidelines
 
+MDC_FRONTMATTER = """---
+description: Convex backend and database
+globs: **/*.{ts,tsx,js,jsx}
+---
+
+"""
+
 def main():    
     os.makedirs("dist", exist_ok=True)
     
@@ -14,6 +21,15 @@ def main():
         f.write(build_anthropic_guidelines())
     
     with open("dist/openai_convex_rules.txt", "w") as f:
+        f.write(build_openai_guidelines())
+
+    # Generate MDC files with frontmatter
+    with open("dist/anthropic_convex_rules.mdc", "w") as f:
+        f.write(MDC_FRONTMATTER)
+        f.write(build_anthropic_guidelines())
+    
+    with open("dist/openai_convex_rules.mdc", "w") as f:
+        f.write(MDC_FRONTMATTER)
         f.write(build_openai_guidelines())
 
 if __name__ == "__main__":
