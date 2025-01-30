@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
 import os
-from runner.models.anthropic_codegen import build_release_guidelines as build_anthropic_guidelines
-from runner.models.openai_codegen import build_release_guidelines as build_openai_guidelines
+from runner.models.anthropic_codegen import build_release_rules as build_anthropic_rules
+from runner.models.openai_codegen import build_release_rules as build_openai_rules
 
 MDC_FRONTMATTER = """---
 description: Convex backend and database
@@ -18,19 +18,19 @@ def main():
     # Using a very specific filename here to make it clear for AI usage what this is.
 
     with open("dist/anthropic_convex_rules.txt", "w") as f:
-        f.write(build_anthropic_guidelines())
+        f.write(build_anthropic_rules())
     
     with open("dist/openai_convex_rules.txt", "w") as f:
-        f.write(build_openai_guidelines())
+        f.write(build_openai_rules())
 
     # Generate MDC files with frontmatter
     with open("dist/anthropic_convex_rules.mdc", "w") as f:
         f.write(MDC_FRONTMATTER)
-        f.write(build_anthropic_guidelines())
+        f.write(build_anthropic_rules())
     
     with open("dist/openai_convex_rules.mdc", "w") as f:
         f.write(MDC_FRONTMATTER)
-        f.write(build_openai_guidelines())
+        f.write(build_openai_rules())
 
 if __name__ == "__main__":
     main() 
