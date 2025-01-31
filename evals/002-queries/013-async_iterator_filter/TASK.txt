@@ -21,7 +21,8 @@ export default defineSchema({
 2. Create a query `getTeamsWithDeletedAdmins` in `convex/index.ts` that:
    - Takes no arguments
    - Uses an async iterator to loop through all teams, checking if the admin user is deleted
-   - Returns an array of team IDs that match the criteria.
+   - Returns a list of team IDs that match the criteria.
+   - Should not include teams with non-existent admins
 
 The implementation should focus on efficient database access patterns and proper
 handling of large result sets through async iteration.

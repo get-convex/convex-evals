@@ -43,7 +43,7 @@ Implement the following functions in `convex/index.ts`:
    - Returns nothing
 
 4. Create a query `getDocument` that:
-   - Takes a document ID
+   - Takes a document ID (documentId)
    - Returns the complete document with all nested fields
    - Returns null if document not found
 

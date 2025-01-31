@@ -27,7 +27,7 @@ export default defineSchema({
 ```
 Return null if item not found, otherwise returns the formatted data
 
-3. Create these functions in `convex/items.ts`:
+3. Create more functions in `convex/index.ts`:
 
 a. Create a query `getItem` that:
    - Takes an item ID as an argument

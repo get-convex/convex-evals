@@ -1,17 +1,22 @@
 Create a backend for a course enrollment system where:
 
-1. Students can be enrolled in multiple courses
-2. Courses can have multiple students enrolled
-3. We need to track both:
+1. Students have a name and email
+2. Students can be enrolled in multiple courses
+3. Courses can have multiple students enrolled
+4. Course have the following metadata:
+   - name (string)
+   - code (string)
+   - description (string)
+5. We need to track both:
    - All courses a student is enrolled in
    - All students enrolled in a course
-4. For each enrollment, we also want to track:
+6. For each enrollment, we also want to track:
    - The enrollment date, represented as a number (Unix timestamp)
    - The student's final grade (if completed), represented as an optional string
 
 Requirements:
-- Design the schema to efficiently support these queries with indexes:
-  - List all courses a student is enrolled in
-  - List all students enrolled in a course
+- Design the schema to efficiently support these queries with indexes (indexes should contain all fields they use in their name):
+  - List a subset of courses a student is enrolled in based on a filter condition (for example: What are the courses that student A is enrolled in that aren't class A or class B?)
+  - List a subset students enrolled in a course based on a filter condition (for example: Who are the students in class A that aren't student A or student B?)
 
 Only create the `package.json` and `convex/schema.ts` files. Do NOT create any functions.

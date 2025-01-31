@@ -66,7 +66,7 @@ CONVEX_GUIDELINES = GuidelineSection(
                     "function_registration",
                     [
                         Guideline(
-                            "Use `internalQuery`, `internalMutation`, and `internalAction` to register internal functions. These functions are private and aren't part of an app's API. They can only be called by other Convex functions."
+                            "Use `internalQuery`, `internalMutation`, and `internalAction` to register internal functions. These functions are private and aren't part of an app's API. They can only be called by other Convex functions. These functions are always imported from `./_generated/server`."
                         ),
                         Guideline(
                             "Use `query`, `mutation`, and `action` to register public functions. These functions are part of the public API and are exposed to the public Internet. Do NOT use `query`, `mutation`, or `action` to register sensitive internal functions that should be kept private."
@@ -160,6 +160,42 @@ CONVEX_GUIDELINES = GuidelineSection(
                         ),
                         Guideline(
                             "Use `internalQuery`, `internalMutation`, and `internalAction` to define private, internal functions."
+                        ),
+                    ],
+                ),
+                GuidelineSection(
+                    "pagination",
+                    [
+                        Guideline(
+                            "Paginated queries are queries that return a list of results in incremental pages."
+                        ),
+                        Guideline(
+                            """
+                            You can define pagination using the following syntax:
+
+                            ```ts
+                            import { v } from "convex/values";
+                            import { query, mutation } from "./_generated/server";
+                            import { paginationOptsValidator } from "convex/server";
+                            export const listWithExtraArg = query({
+                                args: { paginationOpts: paginationOptsValidator, author: v.string() },
+                                handler: async (ctx, args) => {
+                                    return await ctx.db
+                                    .query("messages")
+                                    .filter((q) => q.eq(q.field("author"), args.author))
+                                    .order("desc")
+                                    .paginate(args.paginationOpts);
+                                },
+                            });
+                            ```
+                            """
+                        ),
+                        Guideline(
+                            """A query that ends in `.paginate()` returns an object that has the following properties:
+                            - page (contains an array of documents that you fetches)
+                            - isDone (a boolean that represents whether or not this is the last page of documents)
+                            - continueCursor (a string that represents the cursor to use to fetch the next page of documents)
+                            """
                         ),
                     ],
                 ),
@@ -264,11 +300,19 @@ CONVEX_GUIDELINES = GuidelineSection(
                             ```ts
                             import { cronJobs } from "convex/server";
                             import { internal } from "./_generated/api";
+                            import { internalAction } from "./_generated/server";
+
+                            const empty = internalAction({
+                              args: {},
+                              handler: async (ctx, args) => {
+                                console.log("empty");
+                              },
+                            });
 
                             const crons = cronJobs();
 
-                            // Run `internal.users.deleteInactive` every two hours.
-                            crons.interval("delete inactive users", { hours: 2 }, internal.users.deleteInactive, {});
+                            // Run `internal.crons.empty` every two hours.
+                            crons.interval("delete inactive users", { hours: 2 }, internal.crons.empty, {});
 
                             export default crons;
                             ```
