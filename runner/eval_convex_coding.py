@@ -1,4 +1,5 @@
 from braintrust import Eval, init_logger
+from runner.models import MODELS_BY_NAME, ModelTemplate, ModelProvider
 from runner.models.anthropic_codegen import AnthropicModel
 from runner.models.openai_codegen import OpenAIModel
 from runner.scorer import convex_scorer, walk_answer
@@ -13,18 +14,6 @@ load_dotenv()
 
 logger = init_logger(project=PROJECT)
 
-supported_models = ["gpt-4o", "claude-3-5-sonnet-latest", "o1", "o1-mini", "deepseek-ai/DeepSeek-R1", "deepseek-ai/DeepSeek-V3"]
-anthropic_concurrency = int(os.getenv("ANTHROPIC_CONCURRENCY", "2"))
-openai_concurrency = int(os.getenv("OPENAI_CONCURRENCY", "4"))
-max_concurrency = {
-    "claude-3-5-sonnet-latest": anthropic_concurrency,
-    "gpt-4o": openai_concurrency,
-    "o1": openai_concurrency,
-    "o1-mini": openai_concurrency,
-    "deepseek-ai/DeepSeek-V3": openai_concurrency,
-    "deepseek-ai/DeepSeek-R1": openai_concurrency,
-}
-
 if os.getenv("OUTPUT_TEMPDIR") is not None:
     tempdir = os.getenv("OUTPUT_TEMPDIR")
 else:
@@ -36,9 +25,9 @@ if os.getenv("TEST_FILTER") is not None:
     test_filter = re.compile(os.getenv("TEST_FILTER"))
 
 
-def convex_coding_evals(model):
-    assert model in supported_models, f"Model {model} not supported"
+environment = os.getenv("ENVIRONMENT", "dev")
 
+def convex_coding_evals(model: ModelTemplate):
     eval_paths = [
         (category, name, f"evals/{category}/{name}")
         for category in os.listdir("evals")
@@ -72,7 +61,8 @@ def convex_coding_evals(model):
                 "metadata": {
                     "category": category,
                     "name": name,
-                    "model": model,
+                    "model": model.name,
+                    "environment": environment,
                 },
             }
         )
@@ -83,38 +73,40 @@ def convex_coding_evals(model):
         task=lambda input: convex_coding_task(model, input),
         scores=[lambda *args, **kwargs: convex_scorer(model, tempdir, *args, **kwargs)],
         metadata={
-            "model": model,
+            "model": model.name,
             "tempdir": tempdir,
         },
-        max_concurrency=max_concurrency[model],
+        max_concurrency=model.max_concurrency,
     )
 
 
-def convex_coding_task(model, input):
-    if model.startswith("claude-3-5-sonnet"):
+def convex_coding_task(model: ModelTemplate, input: str):
+    if model.provider == ModelProvider.ANTHROPIC:
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
             raise ValueError("ANTHROPIC_API_KEY is not set")
         model_impl = AnthropicModel(api_key, model)
-    elif model.startswith("gpt") or model.startswith("o1"):
+    elif model.provider == ModelProvider.OPENAI:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise ValueError("OPENAI_API_KEY is not set")
         model_impl = OpenAIModel(api_key, model)
-    elif model.startswith("deepseek-ai"):
+    elif model.provider == ModelProvider.TOGETHER:
         api_key = os.getenv("TOGETHER_API_KEY")
         if not api_key:
             raise ValueError("TOGETHER_API_KEY is not set")
         model_impl = OpenAIModel(api_key, model)
     else:
-        raise ValueError(f"Unknown model: {model}")
+        raise ValueError(f"Unknown model provider: {model.provider}")
     return model_impl.generate(input)
 
+# Default to just running Claude and GPT-4o.
+model_names = ["claude-3-5-sonnet-latest", "gpt-4o"]
 
-convex_coding_evals("claude-3-5-sonnet-latest")
+if os.getenv("MODELS") is not None:
+    model_names = os.getenv("MODELS").split(",")
 
-# Comment these out to run more models.
-# convex_coding_evals("gpt-4o")
-# convex_coding_evals("o1")
-# convex_coding_evals("o1-mini")
-# convex_coding_evals("deepseek-ai/DeepSeek-R1")
+for model_name in model_names:
+    assert model_name in MODELS_BY_NAME, f"Model {model_name} not supported"
+    model = MODELS_BY_NAME[model_name]
+    convex_coding_evals(model)

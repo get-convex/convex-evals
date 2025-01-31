@@ -1,0 +1,38 @@
+name: Daily Convex Evaluations
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Run at midnight UTC daily
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  run-evals:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install PDM
+      run: |
+        curl -sSL https://pdm.fming.dev/install-pdm.py | python3 -
+
+    - name: Install dependencies
+      run: pdm install
+
+    - name: Create temp directory
+      run: mkdir -p /tmp/convex-evals
+
+    - name: Run evaluations
+      env:
+        ENVIRONMENT: ci
+        OUTPUT_TEMPDIR: /tmp/convex-evals
+        BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+      run: pdm run python runner/eval_convex_coding.py

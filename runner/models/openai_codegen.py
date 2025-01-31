@@ -1,37 +1,25 @@
 import openai
 import os
-from . import ConvexCodegenModel, SYSTEM_PROMPT
+from . import ConvexCodegenModel, SYSTEM_PROMPT, ModelTemplate
 from markdown_it import MarkdownIt
 from typing import Union
 from .guidelines import Guideline, GuidelineSection, CONVEX_GUIDELINES
 from braintrust import wrap_openai
 
-requires_chain_of_thought = {
-    "gpt-4o": True,
-    "gpt-4o-mini": True,
-    "o1": False,
-    "o1-mini": False,
-    "deepseek-ai/DeepSeek-V3": True,
-    "deepseek-ai/DeepSeek-R1": False,
-}
-
-
 class OpenAIModel(ConvexCodegenModel):
-    def __init__(self, api_key: str, model: str):
-        assert model in requires_chain_of_thought
-        self.chain_of_thought = requires_chain_of_thought[model]
+    def __init__(self, api_key: str, model: ModelTemplate):
+        self.model = model
         url = "https://api.braintrust.dev/v1/proxy"
         self.client = wrap_openai(openai.OpenAI(base_url=url, api_key=api_key))
-        self.model = model
 
     def generate(self, prompt: str):
-        user_prompt = "".join(render_prompt(self.chain_of_thought, prompt))
-        if self.chain_of_thought:
+        user_prompt = "".join(render_prompt(self.model.requires_chain_of_thought, prompt))
+        if self.model.uses_system_prompt:
             system_message = {"role": "system", "content": SYSTEM_PROMPT}
         else:
             system_message = {"role": "user", "content": SYSTEM_PROMPT}
         response = self.client.chat.completions.create(
-            model=self.model,
+            model=self.model.name,
             messages=[
                 system_message,
                 {"role": "user", "content": user_prompt},

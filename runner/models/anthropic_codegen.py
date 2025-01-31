@@ -1,15 +1,15 @@
 import os
 from bs4 import BeautifulSoup
 from typing import Union
-from . import ConvexCodegenModel, SYSTEM_PROMPT
+from . import ConvexCodegenModel, SYSTEM_PROMPT, ModelTemplate
 from .guidelines import Guideline, GuidelineSection, CONVEX_GUIDELINES
 from braintrust import wrap_openai
 from openai import OpenAI
 
 
 class AnthropicModel(ConvexCodegenModel):
-    def __init__(self, api_key: str, model: str):
-        assert model in ["claude-3-5-sonnet-latest"]
+    def __init__(self, api_key: str, model: ModelTemplate):
+        assert model.name in ["claude-3-5-sonnet-latest"]
         # Use OpenAI's client + Braintrust's caching proxy.
         self.client = wrap_openai(
             OpenAI(
@@ -20,8 +20,10 @@ class AnthropicModel(ConvexCodegenModel):
         self.model = model
 
     def generate(self, prompt: str):
+        assert self.model.uses_system_prompt
+        assert self.model.requires_chain_of_thought
         response = self.client.chat.completions.create(
-            model=self.model,
+            model=self.model.name,
             messages=[
                 {
                     "role": "system",
