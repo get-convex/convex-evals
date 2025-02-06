@@ -105,8 +105,8 @@ def convex_coding_task(model: ModelTemplate, input: str):
         raise ValueError(f"Unknown model provider: {model.provider}")
     return model_impl.generate(input)
 
-# Default to just running Claude and GPT-4o.
-model_names = ["claude-3-5-sonnet-latest", "gpt-4o"]
+# Default to just running Claude, GPT-4o, and Gemini 2.0 Flash Lite.
+model_names = ["claude-3-5-sonnet-latest", "gpt-4o", 'gemini-2.0-flash-lite-preview-02-05']
 
 if os.getenv("MODELS") is not None:
     model_names = os.getenv("MODELS").split(",")
