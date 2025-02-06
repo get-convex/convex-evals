@@ -6,6 +6,7 @@ class ModelProvider(Enum):
     ANTHROPIC = "anthropic"
     OPENAI = "openai"
     TOGETHER = "together"
+    GOOGLE = "google"
 
 class ModelTemplate(BaseModel):
     name: str
@@ -57,6 +58,13 @@ ALL_MODELS = [
         uses_system_prompt=False,
         provider=ModelProvider.TOGETHER,
     ),
+    ModelTemplate(
+        name="gemini-2.0-flash-lite-preview-02-05",
+        max_concurrency=int(os.getenv("GOOGLE_CONCURRENCY", "8")),
+        requires_chain_of_thought=True,
+        uses_system_prompt=False,
+        provider=ModelProvider.GOOGLE,
+    )
 ]
 MODELS_BY_NAME = {model.name: model for model in ALL_MODELS}
 

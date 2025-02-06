@@ -96,6 +96,11 @@ def convex_coding_task(model: ModelTemplate, input: str):
         if not api_key:
             raise ValueError("TOGETHER_API_KEY is not set")
         model_impl = OpenAIModel(api_key, model)
+    elif model.provider == ModelProvider.GOOGLE:
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            raise ValueError("GOOGLE_API_KEY is not set")
+        model_impl = OpenAIModel(api_key, model)
     else:
         raise ValueError(f"Unknown model provider: {model.provider}")
     return model_impl.generate(input)
