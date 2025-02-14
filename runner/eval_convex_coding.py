@@ -1,7 +1,6 @@
 from braintrust import Eval, init_logger
 from runner.models import MODELS_BY_NAME, ModelTemplate, ModelProvider
-from runner.models.anthropic_codegen import AnthropicModel
-from runner.models.openai_codegen import OpenAIModel
+from runner.models.model_codegen import Model
 from runner.scorer import convex_scorer, walk_answer
 import tempfile
 from dotenv import load_dotenv
@@ -26,6 +25,7 @@ if os.getenv("TEST_FILTER") is not None:
 
 
 environment = os.getenv("ENVIRONMENT", "dev")
+
 
 def convex_coding_evals(model: ModelTemplate):
     eval_paths = [
@@ -85,28 +85,34 @@ def convex_coding_task(model: ModelTemplate, input: str):
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
             raise ValueError("ANTHROPIC_API_KEY is not set")
-        model_impl = AnthropicModel(api_key, model)
+        model_impl = Model(api_key, model)
     elif model.provider == ModelProvider.OPENAI:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise ValueError("OPENAI_API_KEY is not set")
-        model_impl = OpenAIModel(api_key, model)
+        model_impl = Model(api_key, model)
     elif model.provider == ModelProvider.TOGETHER:
         api_key = os.getenv("TOGETHER_API_KEY")
         if not api_key:
             raise ValueError("TOGETHER_API_KEY is not set")
-        model_impl = OpenAIModel(api_key, model)
+        model_impl = Model(api_key, model)
     elif model.provider == ModelProvider.GOOGLE:
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
             raise ValueError("GOOGLE_API_KEY is not set")
-        model_impl = OpenAIModel(api_key, model)
+        model_impl = Model(api_key, model)
     else:
         raise ValueError(f"Unknown model provider: {model.provider}")
     return model_impl.generate(input)
 
+
 # Default to just running Claude, GPT-4o, o3-mini, and Gemini 2.0 Flash Lite.
-model_names = ["claude-3-5-sonnet-latest", "gpt-4o", "o3-mini", 'gemini-2.0-flash-lite-preview-02-05']
+model_names = [
+    "claude-3-5-sonnet-latest",
+    "gpt-4o",
+    "o3-mini",
+    "gemini-2.0-flash-lite-preview-02-05",
+]
 
 if os.getenv("MODELS") is not None:
     model_names = os.getenv("MODELS").split(",")

@@ -7,7 +7,7 @@ from .guidelines import Guideline, GuidelineSection, CONVEX_GUIDELINES
 from braintrust import wrap_openai
 
 
-class OpenAIModel(ConvexCodegenModel):
+class Model(ConvexCodegenModel):
     def __init__(self, api_key: str, model: ModelTemplate):
         self.model = model
         url = "https://api.braintrust.dev/v1/proxy"
@@ -25,7 +25,7 @@ class OpenAIModel(ConvexCodegenModel):
                 system_message,
                 {"role": "user", "content": user_prompt},
             ],
-            max_tokens=16384,
+            max_tokens=8192 if self.model.name == "claude-3-5-sonnet-latest" else 16384,
             seed=1,
         )
         return self._parse_response(response.choices[0].message.content)

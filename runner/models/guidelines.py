@@ -508,30 +508,14 @@ CONVEX_GUIDELINES = GuidelineSection(
 if __name__ == "__main__":
     import sys
     import os
-    from .anthropic_codegen import (
-        ANTHROPIC_CONVEX_GUIDELINES,
-        render_examples as anthropic_render_examples,
-    )
-    from .openai_codegen import OPENAI_CONVEX_GUIDELINES, render_examples as openai_render_examples
+    from .model_codegen import OPENAI_CONVEX_GUIDELINES, render_examples as openai_render_examples
 
     outdir = sys.argv[1]
 
     os.makedirs(outdir, exist_ok=True)
 
-    anthropic = os.path.join(outdir, "anthropic")
-    os.makedirs(anthropic, exist_ok=True)
-
-    with open(os.path.join(anthropic, "guidelines.xml"), "w") as f:
-        f.write(ANTHROPIC_CONVEX_GUIDELINES)
-
-    with open(os.path.join(anthropic, "examples.xml"), "w") as f:
-        f.write("".join(anthropic_render_examples()))
-
-    openai = os.path.join(outdir, "openai")
-    os.makedirs(openai, exist_ok=True)
-
-    with open(os.path.join(openai, "guidelines.md"), "w") as f:
+    with open(os.path.join(outdir, "guidelines.md"), "w") as f:
         f.write(OPENAI_CONVEX_GUIDELINES)
 
-    with open(os.path.join(openai, "examples.md"), "w") as f:
+    with open(os.path.join(outdir, "examples.md"), "w") as f:
         f.write("".join(openai_render_examples()))
