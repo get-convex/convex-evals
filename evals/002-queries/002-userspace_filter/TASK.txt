@@ -19,4 +19,4 @@ Write a query named `getPopularPinnedMessages` in `convex/public.ts` that:
 - Filters IN JAVASCRIPT (not in the database) to find messages that are:
   * Pinned (isPinned === true)
   * Have at least the minimum number of likes
-- Returns the filtered messages sorted by likes in descending order
+- Returns the filtered messages sorted by likes in descending order, including their system fields
