@@ -1,6 +1,7 @@
 from braintrust import Eval, init_logger
 from runner.models import MODELS_BY_NAME, ModelTemplate, ModelProvider
 from runner.models.model_codegen import Model
+from runner.models.anthropic_codegen import AnthropicModel
 from runner.scorer import convex_scorer, walk_answer
 import tempfile
 from dotenv import load_dotenv
@@ -85,7 +86,7 @@ def convex_coding_task(model: ModelTemplate, input: str):
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
             raise ValueError("ANTHROPIC_API_KEY is not set")
-        model_impl = Model(api_key, model)
+        model_impl = AnthropicModel(api_key, model)
     elif model.provider == ModelProvider.OPENAI:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
