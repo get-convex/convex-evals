@@ -223,6 +223,12 @@ CONVEX_GUIDELINES = GuidelineSection(
                         Guideline(
                             "Functions can also registered within directories nested within the `convex/` folder. For example, a public function `h` defined in `convex/messages/access.ts` has a function reference of `api.messages.access.h`."
                         ),
+                        Guideline(
+                            """Whenever using `internal` or `api` for calling a function in `ctx.runMutation()`, `ctx.runQuery()`, or `ctx.runAction()`, make sure to import `internal` or `api` from `_generated/api`."""
+                        ),
+                        Guideline(
+                            "Always use `internal` or `api` when calling a function from another function like `ctx.runQuery`, `ctx.runMutation`, or `ctx.runAction`."
+                        ),
                     ],
                 ),
                 GuidelineSection(
@@ -308,10 +314,83 @@ CONVEX_GUIDELINES = GuidelineSection(
             ],
         ),
         GuidelineSection(
+            "indexing_and_filtering_guidelines",
+            [
+                Guideline(
+                    """An index range expression is always a chained list of:
+                        - 0 or more equality expressions defined with .eq.
+                        - [Optionally] A lower bound expression defined with .gt or .gte.
+                        - [Optionally] An upper bound expression defined with .lt or .lte."""
+                ),
+                Guideline(
+                    """You can use `.order()` to sort the results of a query. The two possible values are `asc` and `desc`. Below is an example:
+                          ```ts
+                          import { query } from "./_generated/server";
+                          import { Doc } from "./_generated/dataModel";
+
+                          // Returns messages in descending order of creation time
+                          export const exampleQuery = query({
+                            args: {},
+                            returns: v.array(Doc<"messages">),
+                            handler: async (ctx, args) => {
+                              return await ctx.db.query("messages").withIndex("by_creation_time").order("desc").take(10);
+                            },
+                          });
+                          ```
+                          """
+                ),
+                Guideline(
+                    """When filtering values, the possible expressions are:
+                          - `.eq(value)`: matches documents where the field is equal to the value.
+                          - `.neq(value)`: matches documents where the field is not equal to the value.
+                          - `.gt(value)`: matches documents where the field is greater than the value.
+                          - `.gte(value)`: matches documents where the field is greater than or equal to the value.
+                          - `.lt(value)`: matches documents where the field is less than the value.
+                          - `.lte(value)`: matches documents where the field is less than or equal to the value.
+                          Below is an example of using these expressions in a query:
+                          ```ts
+                          import { query } from "./_generated/server";
+                          import { Doc } from "./_generated/dataModel";
+
+                          export const exampleQuery = query({
+                            args: {},
+                            returns: v.array(Doc<"messages">),
+                            handler: async (ctx, args) => {
+                              return await ctx.db.query("messages")
+                              .withIndex("by_author_and_creation_time", (q) => q.eq("author", "Alice").gt("_creation_time", Date.now() - 2 * 60000))
+                              .order("desc")
+                              .take(10);
+                            },
+                          });
+                          ```
+                          """
+                ),
+                Guideline(
+                    """If want to sort by a field in an index you don't have to include a filter expression. For example:
+                    ```ts
+                    export const exampleQuery = query({
+                      args: {},
+                      returns: v.array(Doc< "messages">),
+                      handler: async (ctx, args) => {
+                        return await ctx.db.query("messages").withIndex("by_creation_time").order("desc").collect();
+                      },
+                    });
+                    ```
+                    """
+                ),
+                Guideline(
+                    """Always prefer `withIndex()` over `.filter()`. But, when you do use `.filter()`, make sure to include `q.field()` in the filter expression. For example, `.filter((q) => q.eq(q.field("age"), 10))`"""
+                ),
+            ],
+        ),
+        GuidelineSection(
             "typescript_guidelines",
             [
                 Guideline(
                     "You can use the helper typescript type `Id` imported from './_generated/dataModel' to get the type of the id for a given table. For example if there is a table called 'users' you can use `Id<'users'>` to get the type of the id for that table."
+                ),
+                Guideline(
+                    "Always import functions and types from the same place they are imported from in the examples that are provided."
                 ),
                 Guideline(
                     """If you need to define a `Record` make sure that you correctly provide the type of the key and value in the type. For example a validator `v.record(v.id('users'), v.string())` would have the type `Record<Id<'users'>, string>`. Below is an example of using `Record` with an `Id` type in a query:

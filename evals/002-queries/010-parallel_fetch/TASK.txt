@@ -38,7 +38,7 @@ Write a query named `getAuthorDashboard` in `convex/public.ts` that:
   * user: the user's name, email, theme, and notifications
   * posts: array of user's 15 most recent posts, each with
     - the post title
-    - reactionCounts: count of each reaction type
+    - reactionCounts: an object that contains the count of each reaction type
 - Demonstrates efficient parallel fetching:
   * Fetch preferences and posts in parallel
   * Kicks off reactions fetches as posts are streamed in
