@@ -181,6 +181,10 @@ CONVEX_GUIDELINES = GuidelineSection(
                             """
                             When using `ctx.runQuery`, `ctx.runMutation`, or `ctx.runAction` to call a function in the same file, specify a type annotation on the return value to work around TypeScript circularity limitations. For example,
                             ```
+                            import { query } from "./_generated/server";
+                            import { v } from "convex/values";
+                            import { api } from "./_generated/api";
+
                             export const f = query({
                               args: { name: v.string() },
                               returns: v.string(),
@@ -431,6 +435,9 @@ CONVEX_GUIDELINES = GuidelineSection(
                 Guideline(
                     "Always add `@types/node` to your `package.json` when using any Node.js built-in modules."
                 ),
+                Guideline(
+                    "Never import `fetch` from `node-fetch`, `fetch` is built into the Node.js and Convex runtimes."
+                ),
             ],
         ),
         GuidelineSection(
@@ -595,7 +602,46 @@ CONVEX_GUIDELINES = GuidelineSection(
                     """
                 ),
                 Guideline(
-                    "Convex storage stores items as `Blob` objects. You must convert all items to/from a `Blob` when using Convex storage."
+                    """Convex storage stores items as `Blob` objects. You must convert all items to/from a `Blob` when using Convex storage. Below is an example of storing and retrieving an image as a `Blob`:
+```ts
+import { action, internalMutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
+import { v } from "convex/values";
+import { Id } from "./_generated/dataModel";
+
+export const generateAndStore = action({
+  args: { prompt: v.string() },
+  handler: async (ctx, args) => {
+    // Not shown: generate imageUrl from `prompt`
+    const imageUrl = "https://....";
+
+    // Download the image
+    const response = await fetch(imageUrl);
+    const image = await response.blob();
+
+    // Store the image in Convex
+    const storageId: Id<"_storage"> = await ctx.storage.store(image);
+
+    // Write `storageId` to a document
+    await ctx.runMutation(internal.images.storeResult, {
+      storageId,
+      prompt: args.prompt,
+    });
+  },
+});
+
+export const storeResult = internalMutation({
+  args: {
+    storageId: v.id("_storage"),
+    prompt: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { storageId, prompt } = args;
+    await ctx.db.insert("images", { storageId, prompt });
+  },
+});
+```
+                    """
                 ),
             ],
         ),
