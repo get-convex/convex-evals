@@ -210,7 +210,7 @@ CONVEX_GUIDELINES = GuidelineSection(
                     "function_references",
                     [
                         Guideline(
-                            "Function references are pointers to registered Convex functions."
+                            "Function references are pointers to registered Convex functions. Always use function references when calling functions from another function."
                         ),
                         Guideline(
                             "Use the `api` object defined by the framework in `convex/_generated/api.ts` to call public functions registered with `query`, `mutation`, or `action`."
