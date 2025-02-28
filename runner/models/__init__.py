@@ -27,6 +27,13 @@ ALL_MODELS = [
         provider=ModelProvider.ANTHROPIC,
     ),
     ModelTemplate(
+        name="claude-3-7-sonnet-latest",
+        max_concurrency=int(os.getenv("ANTHROPIC_CONCURRENCY", "2")),
+        requires_chain_of_thought=True,
+        uses_system_prompt=True,
+        provider=ModelProvider.ANTHROPIC,
+    ),
+    ModelTemplate(
         name="gpt-4o",
         max_concurrency=int(os.getenv("OPENAI_CONCURRENCY", "4")),
         requires_chain_of_thought=True,
