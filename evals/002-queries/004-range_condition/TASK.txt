@@ -18,4 +18,4 @@ Write a query named `getSensorReadingsInRange` in `convex/public.ts` that:
   * sensorId matches (equality)
   * timestamp is >= startTime (range start)
   * timestamp is <= endTime (range end)
-- Returns the readings in increasing chronological order
+- Returns the readings in increasing chronological order including all system fields

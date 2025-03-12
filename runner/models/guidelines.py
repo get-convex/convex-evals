@@ -165,9 +165,11 @@ CONVEX_GUIDELINES = GuidelineSection(
                             "Use `ctx.runQuery` to call a query from a query, mutation, or action."
                         ),
                         Guideline(
-                            "Use `ctx.runMutation` to call a mutation from a mutation or action."
+                            "Use `ctx.runMutation` to call a mutation from a mutation or action. You cannot use it in queries."
                         ),
-                        Guideline("Use `ctx.runAction` to call an action from an action."),
+                        Guideline(
+                            "You can only call `ctx.runAction` to call an action from an action. You cannot use it in mutations or queries."
+                        ),
                         Guideline(
                             "ONLY call an action from another action if you need to cross runtimes (e.g. from V8 to Node). Otherwise, pull out the shared code into a helper async function and call that directly instead."
                         ),
@@ -335,7 +337,12 @@ CONVEX_GUIDELINES = GuidelineSection(
                           // Returns messages in descending order of creation time
                           export const exampleQuery = query({
                             args: {},
-                            returns: v.array(Doc<"messages">),
+                            returns: v.array(v.object({
+                              _id: v.id("messages"),
+                              _creationTime: v.number(),
+                              author: v.string(),
+                              body: v.string(),
+                            })),
                             handler: async (ctx, args) => {
                               return await ctx.db.query("messages").withIndex("by_creation_time").order("desc").take(10);
                             },
@@ -344,24 +351,23 @@ CONVEX_GUIDELINES = GuidelineSection(
                           """
                 ),
                 Guideline(
-                    """When filtering values, the possible expressions are:
-                          - `.eq(value)`: matches documents where the field is equal to the value.
-                          - `.neq(value)`: matches documents where the field is not equal to the value.
-                          - `.gt(value)`: matches documents where the field is greater than the value.
-                          - `.gte(value)`: matches documents where the field is greater than or equal to the value.
-                          - `.lt(value)`: matches documents where the field is less than the value.
-                          - `.lte(value)`: matches documents where the field is less than or equal to the value.
-                          Below is an example of using these expressions in a query:
+                    """Below is an example of using filter expressions in  these expressions in a query: (`field` in the above filter expressions should be`q.field(fieldName)` when using `.filter()` and `field` should be just the field name (e.g. `"author"`) when using `.withIndex()`)
                           ```ts
                           import { query } from "./_generated/server";
                           import { Doc } from "./_generated/dataModel";
 
                           export const exampleQuery = query({
                             args: {},
-                            returns: v.array(Doc<"messages">),
+                            returns: v.array(v.object({
+                              _id: v.id("messages"),
+                              _creationTime: v.number(),
+                              author: v.string(),
+                              body: v.string(),
+                            })),
                             handler: async (ctx, args) => {
                               return await ctx.db.query("messages")
                               .withIndex("by_author_and_creation_time", (q) => q.eq("author", "Alice").gt("_creation_time", Date.now() - 2 * 60000))
+                              .filter((q) => q.eq(q.field("body"), "Hi!"))
                               .order("desc")
                               .take(10);
                             },
@@ -374,7 +380,12 @@ CONVEX_GUIDELINES = GuidelineSection(
                     ```ts
                     export const exampleQuery = query({
                       args: {},
-                      returns: v.array(Doc< "messages">),
+                      returns: v.array(v.object({
+                        _id: v.id("messages"),
+                        _creationTime: v.number(),
+                        author: v.string(),
+                        body: v.string(),
+                      })),
                       handler: async (ctx, args) => {
                         return await ctx.db.query("messages").withIndex("by_creation_time").order("desc").collect();
                       },

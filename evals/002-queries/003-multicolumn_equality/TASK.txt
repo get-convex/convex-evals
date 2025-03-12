@@ -19,3 +19,4 @@ Write a query named `getProjectTasksByStatus` in `convex/public.ts` that:
 - Efficiently finds all tasks with the given projectId and status
 - Efficiently sorts the results in ascending priority order
 - Efficiently takes at most five results
+- Includes the system fields in the result
