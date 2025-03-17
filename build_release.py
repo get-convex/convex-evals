@@ -5,7 +5,7 @@ from runner.models.model_codegen import build_release_rules
 
 MDC_FRONTMATTER = """---
 description: Guidelines and best practices for building Convex projects, including database schema design, queries, mutations, and real-world examples
-globs: **/*.{ts,tsx,js,jsx}
+globs: **/*.ts,**/*.tsx,**/*.js,**/*.jsx
 ---
 
 """
