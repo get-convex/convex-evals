@@ -41,6 +41,13 @@ ALL_MODELS = [
         provider=ModelProvider.OPENAI,
     ),
     ModelTemplate(
+        name="gpt-4.5-preview",
+        max_concurrency=int(os.getenv("OPENAI_CONCURRENCY", "4")),
+        requires_chain_of_thought=True,
+        uses_system_prompt=True,
+        provider=ModelProvider.OPENAI,
+    ),
+    ModelTemplate(
         name="o1",
         max_concurrency=int(os.getenv("OPENAI_CONCURRENCY", "4")),
         requires_chain_of_thought=False,
@@ -76,12 +83,20 @@ ALL_MODELS = [
         provider=ModelProvider.TOGETHER,
     ),
     ModelTemplate(
-        name="gemini-2.0-flash-lite-preview-02-05",
+        name="gemini-2.0-flash-lite",
         max_concurrency=int(os.getenv("GOOGLE_CONCURRENCY", "8")),
         requires_chain_of_thought=True,
         uses_system_prompt=False,
         provider=ModelProvider.GOOGLE,
     ),
+    ModelTemplate(
+        name="gemini-2.0-flash",
+        max_concurrency=int(os.getenv("GOOGLE_CONCURRENCY", "8")),
+        requires_chain_of_thought=True,
+        uses_system_prompt=False,
+        provider=ModelProvider.GOOGLE,
+    ),
+
 ]
 MODELS_BY_NAME = {model.name: model for model in ALL_MODELS}
 

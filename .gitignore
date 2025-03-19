@@ -185,3 +185,5 @@ convex-local-backend
 .pdm-python
 
 dist/
+
+CLAUDE.md

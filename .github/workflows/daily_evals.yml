@@ -38,6 +38,12 @@ jobs:
     - name: Create temp directory
       run: mkdir -p /tmp/convex-evals
 
+    - name: Set main-branch-only environment variables
+      if: github.ref == 'refs/heads/main'
+      run: |
+        echo "CONVEX_EVAL_ENDPOINT=${{ secrets.CONVEX_EVAL_ENDPOINT }}" >> $GITHUB_ENV
+        echo "CONVEX_AUTH_TOKEN=${{ secrets.CONVEX_AUTH_TOKEN }}" >> $GITHUB_ENV
+
     - name: Run evaluations
       env:
         ENVIRONMENT: ci
@@ -47,4 +53,6 @@ jobs:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
         GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        CONVEX_EVAL_ENDPOINT: ${{ secrets.CONVEX_EVAL_ENDPOINT }}
+        CONVEX_AUTH_TOKEN: ${{ secrets.CONVEX_AUTH_TOKEN }}
       run: pdm run braintrust eval runner/eval_convex_coding.py
