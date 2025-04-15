@@ -11,7 +11,12 @@ class Model(ConvexCodegenModel):
     def __init__(self, api_key: str, model: ModelTemplate):
         self.model = model
         url = "https://api.braintrust.dev/v1/proxy"
-        self.client = wrap_openai(openai.OpenAI(base_url=url, api_key=api_key))
+        if model.override_proxy:
+            url = model.override_proxy
+            client = openai.OpenAI(base_url=url, api_key=api_key)
+        else:
+            client = wrap_openai(openai.OpenAI(base_url=url, api_key=api_key))
+        self.client = client
 
     def generate(self, prompt: str):
         user_prompt = "".join(render_prompt(self.model.requires_chain_of_thought, prompt))

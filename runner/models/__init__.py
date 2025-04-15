@@ -8,6 +8,7 @@ class ModelProvider(Enum):
     OPENAI = "openai"
     TOGETHER = "together"
     GOOGLE = "google"
+    XAI = "xai"
 
 
 class ModelTemplate(BaseModel):
@@ -17,6 +18,7 @@ class ModelTemplate(BaseModel):
     requires_chain_of_thought: bool
     uses_system_prompt: bool
     provider: ModelProvider
+    override_proxy: str | None = None
 
 
 ALL_MODELS = [
@@ -139,6 +141,15 @@ ALL_MODELS = [
         requires_chain_of_thought=False,
         uses_system_prompt=False,
         provider=ModelProvider.GOOGLE,
+    ),
+    ModelTemplate(
+        name="grok-3-beta",
+        formatted_name="Grok 3 Beta",
+        max_concurrency=int(os.getenv("XAI_CONCURRENCY", "4")),
+        requires_chain_of_thought=False,
+        uses_system_prompt=False,
+        provider=ModelProvider.XAI,
+        override_proxy="https://api.x.ai/v1",
     ),
 ]
 MODELS_BY_NAME = {model.name: model for model in ALL_MODELS}
