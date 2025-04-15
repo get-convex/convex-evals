@@ -144,7 +144,16 @@ ALL_MODELS = [
     ),
     ModelTemplate(
         name="grok-3-beta",
-        formatted_name="Grok 3 Beta",
+        formatted_name="Grok 3 (Beta)",
+        max_concurrency=int(os.getenv("XAI_CONCURRENCY", "4")),
+        requires_chain_of_thought=False,
+        uses_system_prompt=False,
+        provider=ModelProvider.XAI,
+        override_proxy="https://api.x.ai/v1",
+    ),
+    ModelTemplate(
+        name="grok-3-mini-beta",
+        formatted_name="Grok 3 Mini (Beta)",
         max_concurrency=int(os.getenv("XAI_CONCURRENCY", "4")),
         requires_chain_of_thought=False,
         uses_system_prompt=False,
