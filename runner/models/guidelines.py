@@ -165,9 +165,11 @@ CONVEX_GUIDELINES = GuidelineSection(
                             "Use `ctx.runQuery` to call a query from a query, mutation, or action."
                         ),
                         Guideline(
-                            "Use `ctx.runMutation` to call a mutation from a mutation or action."
+                            "Use `ctx.runMutation` to call a mutation from a mutation or action. You cannot use it in queries."
                         ),
-                        Guideline("Use `ctx.runAction` to call an action from an action."),
+                        Guideline(
+                            "You can only call `ctx.runAction` to call an action from an action. You cannot use it in mutations or queries."
+                        ),
                         Guideline(
                             "ONLY call an action from another action if you need to cross runtimes (e.g. from V8 to Node). Otherwise, pull out the shared code into a helper async function and call that directly instead."
                         ),
@@ -181,6 +183,10 @@ CONVEX_GUIDELINES = GuidelineSection(
                             """
                             When using `ctx.runQuery`, `ctx.runMutation`, or `ctx.runAction` to call a function in the same file, specify a type annotation on the return value to work around TypeScript circularity limitations. For example,
                             ```
+                            import { query } from "./_generated/server";
+                            import { v } from "convex/values";
+                            import { api } from "./_generated/api";
+
                             export const f = query({
                               args: { name: v.string() },
                               returns: v.string(),
@@ -206,7 +212,7 @@ CONVEX_GUIDELINES = GuidelineSection(
                     "function_references",
                     [
                         Guideline(
-                            "Function references are pointers to registered Convex functions."
+                            "Function references are pointers to registered Convex functions. Always use function references when calling functions from another function."
                         ),
                         Guideline(
                             "Use the `api` object defined by the framework in `convex/_generated/api.ts` to call public functions registered with `query`, `mutation`, or `action`."
@@ -222,6 +228,12 @@ CONVEX_GUIDELINES = GuidelineSection(
                         ),
                         Guideline(
                             "Functions can also registered within directories nested within the `convex/` folder. For example, a public function `h` defined in `convex/messages/access.ts` has a function reference of `api.messages.access.h`."
+                        ),
+                        Guideline(
+                            """Whenever using `internal` or `api` for calling a function in `ctx.runMutation()`, `ctx.runQuery()`, or `ctx.runAction()`, make sure to import `internal` or `api` from `_generated/api`."""
+                        ),
+                        Guideline(
+                            "Always use `internal` or `api` when calling a function from another function like `ctx.runQuery`, `ctx.runMutation`, or `ctx.runAction`."
                         ),
                     ],
                 ),
@@ -308,10 +320,92 @@ CONVEX_GUIDELINES = GuidelineSection(
             ],
         ),
         GuidelineSection(
+            "indexing_and_filtering_guidelines",
+            [
+                Guideline(
+                    """An index range expression is always a chained list of:
+                        - 0 or more equality expressions defined with .eq.
+                        - [Optionally] A lower bound expression defined with .gt or .gte.
+                        - [Optionally] An upper bound expression defined with .lt or .lte."""
+                ),
+                Guideline(
+                    """You can use `.order()` to sort the results of a query. The two possible values are `asc` and `desc`. Below is an example:
+                          ```ts
+                          import { query } from "./_generated/server";
+                          import { Doc } from "./_generated/dataModel";
+
+                          // Returns messages in descending order of creation time
+                          export const exampleQuery = query({
+                            args: {},
+                            returns: v.array(v.object({
+                              _id: v.id("messages"),
+                              _creationTime: v.number(),
+                              author: v.string(),
+                              body: v.string(),
+                            })),
+                            handler: async (ctx, args) => {
+                              return await ctx.db.query("messages").withIndex("by_creation_time").order("desc").take(10);
+                            },
+                          });
+                          ```
+                          """
+                ),
+                Guideline(
+                    """Below is an example of using filter expressions in  these expressions in a query: (`field` in the above filter expressions should be`q.field(fieldName)` when using `.filter()` and `field` should be just the field name (e.g. `"author"`) when using `.withIndex()`)
+                          ```ts
+                          import { query } from "./_generated/server";
+                          import { Doc } from "./_generated/dataModel";
+
+                          export const exampleQuery = query({
+                            args: {},
+                            returns: v.array(v.object({
+                              _id: v.id("messages"),
+                              _creationTime: v.number(),
+                              author: v.string(),
+                              body: v.string(),
+                            })),
+                            handler: async (ctx, args) => {
+                              return await ctx.db.query("messages")
+                              .withIndex("by_author_and_creation_time", (q) => q.eq("author", "Alice").gt("_creation_time", Date.now() - 2 * 60000))
+                              .filter((q) => q.eq(q.field("body"), "Hi!"))
+                              .order("desc")
+                              .take(10);
+                            },
+                          });
+                          ```
+                          """
+                ),
+                Guideline(
+                    """If want to sort by a field in an index you don't have to include a filter expression. For example:
+                    ```ts
+                    export const exampleQuery = query({
+                      args: {},
+                      returns: v.array(v.object({
+                        _id: v.id("messages"),
+                        _creationTime: v.number(),
+                        author: v.string(),
+                        body: v.string(),
+                      })),
+                      handler: async (ctx, args) => {
+                        return await ctx.db.query("messages").withIndex("by_creation_time").order("desc").collect();
+                      },
+                    });
+                    ```
+                    """
+                ),
+                Guideline(
+                    """Always prefer `withIndex()` over `.filter()`. But, when you do use `.filter()`, make sure to include `q.field()` in the filter expression. For example, `.filter((q) => q.eq(q.field("age"), 10))`"""
+                ),
+            ],
+        ),
+        GuidelineSection(
             "typescript_guidelines",
             [
                 Guideline(
                     "You can use the helper typescript type `Id` imported from './_generated/dataModel' to get the type of the id for a given table. For example if there is a table called 'users' you can use `Id<'users'>` to get the type of the id for that table."
+                ),
+                Guideline(
+                    "Always import functions and types from the same place they are imported from in the examples that are provided."
                 ),
                 Guideline(
                     """If you need to define a `Record` make sure that you correctly provide the type of the key and value in the type. For example a validator `v.record(v.id('users'), v.string())` would have the type `Record<Id<'users'>, string>`. Below is an example of using `Record` with an `Id` type in a query:
@@ -351,6 +445,9 @@ CONVEX_GUIDELINES = GuidelineSection(
                 ),
                 Guideline(
                     "Always add `@types/node` to your `package.json` when using any Node.js built-in modules."
+                ),
+                Guideline(
+                    "Never import `fetch` from `node-fetch`, `fetch` is built into the Node.js and Convex runtimes."
                 ),
             ],
         ),
@@ -516,7 +613,46 @@ CONVEX_GUIDELINES = GuidelineSection(
                     """
                 ),
                 Guideline(
-                    "Convex storage stores items as `Blob` objects. You must convert all items to/from a `Blob` when using Convex storage."
+                    """Convex storage stores items as `Blob` objects. You must convert all items to/from a `Blob` when using Convex storage. Below is an example of storing and retrieving an image as a `Blob`:
+```ts
+import { action, internalMutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
+import { v } from "convex/values";
+import { Id } from "./_generated/dataModel";
+
+export const generateAndStore = action({
+  args: { prompt: v.string() },
+  handler: async (ctx, args) => {
+    // Not shown: generate imageUrl from `prompt`
+    const imageUrl = "https://....";
+
+    // Download the image
+    const response = await fetch(imageUrl);
+    const image = await response.blob();
+
+    // Store the image in Convex
+    const storageId: Id<"_storage"> = await ctx.storage.store(image);
+
+    // Write `storageId` to a document
+    await ctx.runMutation(internal.images.storeResult, {
+      storageId,
+      prompt: args.prompt,
+    });
+  },
+});
+
+export const storeResult = internalMutation({
+  args: {
+    storageId: v.id("_storage"),
+    prompt: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { storageId, prompt } = args;
+    await ctx.db.insert("images", { storageId, prompt });
+  },
+});
+```
+                    """
                 ),
             ],
         ),
