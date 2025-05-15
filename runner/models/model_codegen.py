@@ -1,5 +1,6 @@
 import openai
 import os
+import textwrap
 from . import ConvexCodegenModel, SYSTEM_PROMPT, ModelTemplate
 from markdown_it import MarkdownIt
 from typing import Union
@@ -166,7 +167,8 @@ def render_examples():
         yield "### Implementation\n\n"
         for file_path in file_paths:
             rel_path = os.path.relpath(file_path, example_path)
-            file_content = open(file_path, "r").read().strip()
+            file_content = open(file_path, "r").read()
+            file_content = textwrap.dedent(file_content).strip()
             yield f"#### {rel_path}\n"
             yield f"```typescript\n{file_content}\n```\n\n"
 
