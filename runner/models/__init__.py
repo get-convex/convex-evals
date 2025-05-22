@@ -45,6 +45,7 @@ ALL_MODELS = [
         requires_chain_of_thought=True,
         uses_system_prompt=True,
         provider=ModelProvider.ANTHROPIC,
+        override_proxy="https://api.anthropic.com/v1",
     ),
     ModelTemplate(
         name="gpt-4o",
