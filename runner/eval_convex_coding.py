@@ -207,6 +207,7 @@ def convex_coding_task(model: ModelTemplate, input: str):
 model_names = [
     "claude-3-5-sonnet-latest",
     "claude-3-7-sonnet-latest",
+    "claude-sonnet-4-0",
     "gpt-4o",
     "o3-mini",
     "gemini-2.0-flash-lite",

@@ -46,7 +46,7 @@ jobs:
 
     - name: Set Anthropic models
       run: |
-        echo "MODELS=claude-3-5-sonnet-latest,claude-3-7-sonnet-latest" >> $GITHUB_ENV
+        echo "MODELS=claude-3-5-sonnet-latest,claude-3-7-sonnet-latest,claude-sonnet-4-0" >> $GITHUB_ENV
 
     - name: Run evaluations
       env:
