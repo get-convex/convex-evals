@@ -152,7 +152,7 @@ ALL_MODELS = [
         provider=ModelProvider.GOOGLE,
     ),
     ModelTemplate(
-        name="gemini-2.5-pro-preview-05-06",
+        name="gemini-2.5-pro-preview-06-05",
         formatted_name="Gemini 2.5 Pro",
         max_concurrency=int(os.getenv("GOOGLE_CONCURRENCY", "4")),
         requires_chain_of_thought=False,

@@ -2,60 +2,60 @@ name: Daily Convex Evaluations (Google Models)
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # Run at midnight UTC daily
-  workflow_dispatch:  # Allow manual triggering
+    - cron: "0 0 * * *" # Run at midnight UTC daily
+  workflow_dispatch: # Allow manual triggering
 
 jobs:
   run-evals:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
 
-    - name: Install Bun
-      run: npm install -g bun@1.2.1
+      - name: Install Bun
+        run: npm install -g bun@1.2.1
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-    - name: Install PDM
-      run: |
-        curl -sSL https://pdm.fming.dev/install-pdm.py | python3 -
+      - name: Install PDM
+        run: |
+          curl -sSL https://pdm.fming.dev/install-pdm.py | python3 -
 
-    - name: Install Python dependencies
-      run: pdm install
+      - name: Install Python dependencies
+        run: pdm install
 
-    - name: Install Bun dependencies
-      run: bun install
+      - name: Install Bun dependencies
+        run: bun install
 
-    - name: Create temp directory
-      run: mkdir -p /tmp/convex-evals
+      - name: Create temp directory
+        run: mkdir -p /tmp/convex-evals
 
-    - name: Set main-branch-only environment variables
-      if: github.ref == 'refs/heads/main'
-      run: |
-        echo "CONVEX_EVAL_ENDPOINT=${{ secrets.CONVEX_EVAL_ENDPOINT }}" >> $GITHUB_ENV
-        echo "CONVEX_AUTH_TOKEN=${{ secrets.CONVEX_AUTH_TOKEN }}" >> $GITHUB_ENV
+      - name: Set main-branch-only environment variables
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "CONVEX_EVAL_ENDPOINT=${{ secrets.CONVEX_EVAL_ENDPOINT }}" >> $GITHUB_ENV
+          echo "CONVEX_AUTH_TOKEN=${{ secrets.CONVEX_AUTH_TOKEN }}" >> $GITHUB_ENV
 
-    - name: Set Google models
-      run: |
-        echo "MODELS=gemini-2.5-flash-preview-04-17,gemini-2.5-pro-preview-05-06" >> $GITHUB_ENV
+      - name: Set Google models
+        run: |
+          echo "MODELS=gemini-2.5-flash-preview-04-17,gemini-2.5-pro-preview-06-05" >> $GITHUB_ENV
 
-    - name: Run evaluations
-      env:
-        ENVIRONMENT: ci
-        OUTPUT_TEMPDIR: /tmp/convex-evals
-        BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
-        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
-        GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-        XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
-      run: pdm run braintrust eval runner/eval_convex_coding.py
+      - name: Run evaluations
+        env:
+          ENVIRONMENT: ci
+          OUTPUT_TEMPDIR: /tmp/convex-evals
+          BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+        run: pdm run braintrust eval runner/eval_convex_coding.py
