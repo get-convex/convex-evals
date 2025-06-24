@@ -1,0 +1,25 @@
+Create a backend that implements streaming HTTP responses.
+
+Implement this function in `convex/http.ts`:
+
+1. Create an HTTP action POST at `/stream` that:
+   - Takes a request body multi-line text input
+   - For each line from the request body:
+     - Calculate the length of that line of text
+     - Send back a streaming response message with the length
+   - The response format for each line should be:
+     ```
+     data: {"lineLength": <number>}\n\n
+     ```
+   - The endpoint should be accessible at `/stream`
+   - Each line in the request should trigger one SSE message
+   - The stream should properly close when the request ends
+   - Use `string` for the type of output, adding type parameters for type safety.
+
+Create only the `convex/http.ts` and `package.json` files. Do not generate any other files.
+No schema is required since this demo doesn't use the database.
+
+Also create a query `getSiteURL` that takes no arguments and returns `process.env.CONVEX_SITE_URL!`.
+This will require the @types/node npm dev dependency.
+
+Do not export any functions from `convex/http.ts` other than the streaming HTTP handler and the query.
