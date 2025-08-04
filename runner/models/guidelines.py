@@ -331,7 +331,7 @@ export const exampleQuery = query({
         for (const userId of args.userIds) {
             const user = await ctx.db.get(userId);
             if (user) {
-                users[user._id] = user.username;
+                idToUsername[user._id] = user.username;
             }
         }
 
