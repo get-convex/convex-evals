@@ -509,7 +509,7 @@ type FileMetadata = {
 
 export const exampleQuery = query({
     args: { fileId: v.id("_storage") },
-    returns: v.null();
+    returns: v.null(),
     handler: async (ctx, args) => {
         const metadata: FileMetadata | null = await ctx.db.system.get(args.fileId);
         console.log(metadata);
