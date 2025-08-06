@@ -14,4 +14,4 @@ export default defineSchema({
 
 Write a query named `getPostComments` in `convex/public.ts` that:
 - Takes a postId as an argument
-- Efficiently returns all comments for that post in descending creation time order
+- Efficiently returns all comments for that post in descending creation time order as objects that include their system fields
