@@ -2,13 +2,23 @@
 name = "evals-convex"
 version = "0.1.0"
 description = "Default template for PDM package"
-authors = [
-    {name = "Convex", email = "sujayakar@convex.dev"},
+authors = [{ name = "Convex", email = "sujayakar@convex.dev" }]
+dependencies = [
+    "anthropic>=0.42.0",
+    "python-dotenv>=1.0.1",
+    "ipython>=8.31.0",
+    "beautifulsoup4>=4.12.3",
+    "requests>=2.32.3",
+    "openai>=1.59.7",
+    "markdown-it-py>=3.0.0",
+    "portpicker>=1.6.0",
+    "braintrust>=0.0.182",
+    "autoevals>=0.0.117",
+    "ruff>=0.9.3",
 ]
-dependencies = ["anthropic>=0.42.0", "python-dotenv>=1.0.1", "ipython>=8.31.0", "beautifulsoup4>=4.12.3", "requests>=2.32.3", "openai>=1.59.7", "markdown-it-py>=3.0.0", "portpicker>=1.6.0", "braintrust>=0.0.182", "autoevals>=0.0.117", "ruff>=0.9.3"]
-requires-python = "==3.11.*"
+requires-python = ">=3.11,<3.14"
 readme = "README.md"
-license = {text = "MIT"}
+license = { text = "MIT" }
 
 
 [tool.pdm]
@@ -20,6 +30,4 @@ target-version = ['py311']
 include = '\.pyi?$'
 
 [dependency-groups]
-dev = [
-    "black>=24.10.0",
-]
+dev = ["black>=24.10.0"]
