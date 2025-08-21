@@ -42,13 +42,16 @@ def report_eval(evaluator, result: EvalResultWithSummary, verbose, jsonl):
     else:
         num_tests = {}
         scores = {}
+        passed_counts = {}
         total_score = 0
         total_num_tests = 0
+        total_passed = 0
         for r in results:
             category = r.metadata["category"] if r.metadata and "category" in r.metadata else "unknown"
             if category not in num_tests:
                 num_tests[category] = 0
                 scores[category] = 0
+                passed_counts[category] = 0
             num_tests[category] += 1
             tests_pass = r.scores.get("Tests pass") if r.scores else 0
             try:
@@ -56,6 +59,9 @@ def report_eval(evaluator, result: EvalResultWithSummary, verbose, jsonl):
             except Exception:
                 tests_pass = 0
             scores[category] += tests_pass
+            if tests_pass >= 0.999:
+                passed_counts[category] += 1
+                total_passed += 1
             total_num_tests += 1
             total_score += tests_pass
 
@@ -73,10 +79,11 @@ def report_eval(evaluator, result: EvalResultWithSummary, verbose, jsonl):
         print()
         print("=== Eval Summary ===")
         print(f"Model: {results[0].metadata.get('model_name', 'unknown') if results and results[0].metadata else 'unknown'}")
-        print(f"Overall: {overall_rate:.2%} ({total_num_tests} tests)")
+        print(f"Overall: {overall_rate:.2%} ({total_passed} pass, {total_num_tests - total_passed} fail)")
         for category in sorted(num_tests.keys()):
             rate = scores[category] / num_tests[category]
-            print(f"- {category}: {rate:.2%} ({num_tests[category]} tests)")
+            cat_pass = passed_counts.get(category, 0)
+            print(f"- {category}: {rate:.2%} ({cat_pass} pass, {num_tests[category] - cat_pass} fail)")
 
         # Always write local results; print the path
         print(f"Results written to: {OUTPUT_RESULTS_FILE}")
