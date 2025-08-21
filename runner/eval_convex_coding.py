@@ -19,9 +19,9 @@ PROJECT = "Convex Coding"
 load_dotenv()
 
 # Avoid initializing Braintrust logger in local-only mode to prevent login attempts
-_no_send_logs_env = os.getenv("BRAINTRUST_NO_SEND_LOGS") == "1" or os.getenv("BRAINTRUST_API_KEY") is None
+_local_mode = os.getenv("LOCAL_MODE") == "1" or os.getenv("BRAINTRUST_API_KEY") is None
 logger = None
-if not _no_send_logs_env:
+if not _local_mode:
     logger = init_logger(project=PROJECT)
 
 if os.getenv("OUTPUT_TEMPDIR") is not None:
@@ -84,7 +84,7 @@ def convex_coding_evals(model: ModelTemplate):
             }
         )
 
-    no_send_logs = os.getenv("BRAINTRUST_NO_SEND_LOGS") == "1" or os.getenv("BRAINTRUST_API_KEY") is None
+    local_mode = os.getenv("LOCAL_MODE") == "1" or os.getenv("BRAINTRUST_API_KEY") is None
     return Eval(
         PROJECT,
         data=data,
@@ -97,8 +97,8 @@ def convex_coding_evals(model: ModelTemplate):
             "environment": environment,
         },
         max_concurrency=model.max_concurrency,
-        reporter=file_reporter,
-        no_send_logs=no_send_logs,
+        reporter=file_reporter if local_mode else convex_reporter,
+        no_send_logs=local_mode,
     )
 
 

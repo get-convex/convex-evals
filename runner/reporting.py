@@ -78,7 +78,7 @@ def report_eval(evaluator, result: EvalResultWithSummary, verbose, jsonl):
             rate = scores[category] / num_tests[category]
             print(f"- {category}: {rate:.2%} ({num_tests[category]} tests)")
 
-        if os.getenv("BRAINTRUST_NO_SEND_LOGS") == "1" or os.getenv("BRAINTRUST_API_KEY") is None:
+        if os.getenv("LOCAL_MODE") == "1" or os.getenv("BRAINTRUST_API_KEY") is None:
             print(f"Results written to: {OUTPUT_RESULTS_FILE}")
 
         if jsonl:

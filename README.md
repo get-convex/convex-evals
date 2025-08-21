@@ -79,7 +79,7 @@ What these scripts do:
 - `local:run:fundamentals` sets `TEST_FILTER=000-fundamentals`
 - All `local:run*` scripts set:
   - `MODELS=gpt-4.1` (change to any supported model from `runner/models/__init__.py`)
-  - `BRAINTRUST_NO_SEND_LOGS=1` (disables Braintrust uploads)
+  - `LOCAL_MODE=1` (disables Braintrust uploads and enables local reporting)
   - `BRAINTRUST_LOCAL_RESULTS=local_results.jsonl` (results file path)
   - `BRAINTRUST_DISABLE_PROXY=1` (model calls go directly to the provider)
 - They ultimately run `npm run run:evals` → `pdm run python -m runner.eval_convex_coding`.
