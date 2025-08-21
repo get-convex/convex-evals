@@ -27,6 +27,8 @@ class Model(ConvexCodegenModel):
                 url = "https://generativelanguage.googleapis.com/v1beta"
             elif model.provider == ModelProvider.XAI:
                 url = "https://api.x.ai/v1"
+            else:
+                raise ValueError(f"Unknown model provider for disable-proxy mode: {model.provider}")
 
         if model.override_proxy:
             url = model.override_proxy
