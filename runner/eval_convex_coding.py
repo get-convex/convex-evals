@@ -116,6 +116,35 @@ convex_reporter = Reporter(
     report_run=report_run,
 )
 
+# Local file reporter: writes summaries to JSONL without uploading anywhere
+OUTPUT_RESULTS_FILE = os.getenv("BRAINTRUST_LOCAL_RESULTS", "braintrust_eval_results.jsonl")
+
+
+def file_report_eval(evaluator, result: EvalResultWithSummary, verbose, jsonl):
+    try:
+        entry = {
+            "evaluator": getattr(evaluator, "name", None),
+            "summary": result.summary.as_dict(),
+        }
+        with open(OUTPUT_RESULTS_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception as e:
+        print(f"Failed to write local results file: {e}")
+
+    failing = [x for x in result.results if x.error]
+    return len(failing) == 0
+
+
+def file_report_run(eval_reports, verbose, jsonl):
+    return all(x for x in eval_reports)
+
+
+file_reporter = Reporter(
+    name="local-file reporter",
+    report_eval=file_report_eval,
+    report_run=file_report_run,
+)
+
 
 def convex_coding_evals(model: ModelTemplate):
     eval_paths = [
@@ -157,6 +186,7 @@ def convex_coding_evals(model: ModelTemplate):
             }
         )
 
+    no_send_logs = os.getenv("BRAINTRUST_NO_SEND_LOGS") == "1" or os.getenv("BRAINTRUST_API_KEY") is None
     return Eval(
         PROJECT,
         data=data,
@@ -169,6 +199,8 @@ def convex_coding_evals(model: ModelTemplate):
             "environment": environment,
         },
         max_concurrency=model.max_concurrency,
+        reporter=file_reporter,
+        no_send_logs=no_send_logs,
     )
 
 

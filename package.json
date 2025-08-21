@@ -17,10 +17,15 @@
     "typescript": "^5.7.3"
   },
   "dependencies": {
+    "@types/bun": "^1.2.20",
     "@types/node": "^22.12.0",
     "convex": "^1.18.2",
+    "dotenv": "^17.2.1",
     "prettier": "^3.4.2",
     "typescript-eslint": "^8.23.0",
     "vitest": "^3.0.2"
+  },
+  "scripts": {
+    "run:one": "bun scripts/runOneEval.ts"
   }
 }
