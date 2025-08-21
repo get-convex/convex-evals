@@ -12,7 +12,7 @@ class Model(ConvexCodegenModel):
     def __init__(self, api_key: str, model: ModelTemplate):
         self.model = model
         # Allow disabling Braintrust proxy entirely via env toggle
-        disable_proxy = os.getenv("BRAINTRUST_DISABLE_PROXY") == "1"
+        disable_proxy = os.getenv("DISABLE_BRAINTRUST") == "1"
 
         url = "https://api.braintrust.dev/v1/proxy"
 

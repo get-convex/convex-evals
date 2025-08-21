@@ -70,10 +70,9 @@ npm run local:run
 
 These set:
 
-- `LOCAL_MODE=1` (local reporter + no upload)
+- `DISABLE_BRAINTRUST=1` (disables Braintrust upload and proxy)
 - `MODELS=gpt-4.1` (change per `runner/models/__init__.py`)
-- `BRAINTRUST_LOCAL_RESULTS=local_results.jsonl`
-- `BRAINTRUST_DISABLE_PROXY=1`
+- `LOCAL_RESULTS=local_results.jsonl`
 
 Output:
 

@@ -6,6 +6,7 @@ from runner.scorer import convex_scorer, walk_answer
 from runner.reporting import (
     convex_reporter,
     file_reporter,
+    combined_reporter,
 )
 import tempfile
 from dotenv import load_dotenv
@@ -18,10 +19,10 @@ PROJECT = "Convex Coding"
 
 load_dotenv()
 
-# Avoid initializing Braintrust logger in local-only mode to prevent login attempts
-_local_mode = os.getenv("LOCAL_MODE") == "1" or os.getenv("BRAINTRUST_API_KEY") is None
+# Avoid initializing Braintrust logger if Braintrust is disabled
+_disable_braintrust = os.getenv("DISABLE_BRAINTRUST") == "1"
 logger = None
-if not _local_mode:
+if not _disable_braintrust:
     logger = init_logger(project=PROJECT)
 
 if os.getenv("OUTPUT_TEMPDIR") is not None:
@@ -84,7 +85,7 @@ def convex_coding_evals(model: ModelTemplate):
             }
         )
 
-    local_mode = os.getenv("LOCAL_MODE") == "1" or os.getenv("BRAINTRUST_API_KEY") is None
+    disable_braintrust = os.getenv("DISABLE_BRAINTRUST") == "1"
     return Eval(
         PROJECT,
         data=data,
@@ -97,8 +98,8 @@ def convex_coding_evals(model: ModelTemplate):
             "environment": environment,
         },
         max_concurrency=model.max_concurrency,
-        reporter=file_reporter if local_mode else convex_reporter,
-        no_send_logs=local_mode,
+        reporter=file_reporter if disable_braintrust else combined_reporter,
+        no_send_logs=disable_braintrust,
     )
 
 

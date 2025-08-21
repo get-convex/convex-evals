@@ -6,7 +6,7 @@ from braintrust.framework import report_failures, EvalResultWithSummary
 
 
 # Config
-OUTPUT_RESULTS_FILE = os.getenv("BRAINTRUST_LOCAL_RESULTS", "braintrust_eval_results.jsonl")
+OUTPUT_RESULTS_FILE = os.getenv("LOCAL_RESULTS", "local_results.jsonl")
 CONVEX_EVAL_ENDPOINT = os.getenv("CONVEX_EVAL_ENDPOINT")
 CONVEX_AUTH_TOKEN = os.getenv("CONVEX_AUTH_TOKEN")
 
@@ -78,8 +78,8 @@ def report_eval(evaluator, result: EvalResultWithSummary, verbose, jsonl):
             rate = scores[category] / num_tests[category]
             print(f"- {category}: {rate:.2%} ({num_tests[category]} tests)")
 
-        if os.getenv("LOCAL_MODE") == "1" or os.getenv("BRAINTRUST_API_KEY") is None:
-            print(f"Results written to: {OUTPUT_RESULTS_FILE}")
+        # Always write local results; print the path
+        print(f"Results written to: {OUTPUT_RESULTS_FILE}")
 
         if jsonl:
             print(json.dumps(summary.as_dict()))
@@ -98,16 +98,19 @@ convex_reporter = Reporter(
 )
 
 
-def file_report_eval(evaluator, result: EvalResultWithSummary, verbose, jsonl):
+def _write_local_results(result: EvalResultWithSummary):
     try:
         entry = {
-            "evaluator": getattr(evaluator, "name", None),
             "summary": result.summary.as_dict(),
         }
         with open(OUTPUT_RESULTS_FILE, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
     except Exception as e:
         print(f"Failed to write local results file: {e}")
+
+
+def file_report_eval(evaluator, result: EvalResultWithSummary, verbose, jsonl):
+    _write_local_results(result)
 
     # Pretty console output as well
     results = result.results
@@ -154,6 +157,23 @@ file_reporter = Reporter(
     name="local-file reporter",
     report_eval=file_report_eval,
     report_run=file_report_run,
+)
+
+
+def combined_report_eval(evaluator, result: EvalResultWithSummary, verbose, jsonl):
+    # Write local file without printing a second summary, then delegate to Braintrust reporter
+    _write_local_results(result)
+    return report_eval(evaluator, result, verbose, jsonl)
+
+
+def combined_report_run(eval_reports, verbose, jsonl):
+    return all(eval_reports)
+
+
+combined_reporter = Reporter(
+    name="combined reporter",
+    report_eval=combined_report_eval,
+    report_run=combined_report_run,
 )
 
 
