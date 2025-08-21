@@ -17,40 +17,57 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
     output_project_dir_abs = os.path.abspath(output_project_dir)
 
     scores = []
+    # Track step outcomes for a concise end-of-eval summary
+    passed_filesystem = False
+    passed_install = False
+    passed_codegen = False
+    passed_tsc = False
+    passed_eslint = False
+    passed_deploy = False
 
-    print(f"[eval] Writing generated filesystem to {output_project_dir_abs}", flush=True)
+    print(f"[{category}/{name}] Writing generated filesystem", flush=True)
     try:
         write_filesystem(output_project_dir_abs, output)
         scores.append(Score("Valid filesystem output", 1))
+        passed_filesystem = True
     except Exception:
         scores.append(Score("Valid filesystem output", 0))
+        status = "❌"
+        print(
+            f"[eval] Result {status} {category}/{name} – filesystem fail – dir: {output_project_dir_abs}",
+            flush=True,
+        )
         return scores
 
-    print(f"[eval] Installing dependencies (bun install)", flush=True)
+    print(f"[{category}/{name}] Installing dependencies (bun install)", flush=True)
     try:
         install_dependencies(output_project_dir_abs)
         scores.append(Score("`bun install` succeeds", 1))
+        passed_install = True
     except Exception:
         scores.append(Score("`bun install` succeeds", 0))
 
-    print(f"[eval] Running convex codegen", flush=True)
+    print(f"[{category}/{name}] Running convex codegen", flush=True)
     try:
         generate_code(output_project_dir_abs)
         scores.append(Score("`convex codegen` succeeds", 1))
+        passed_codegen = True
     except Exception:
         scores.append(Score("`convex codegen` succeeds", 0))
 
-    print(f"[eval] Typechecking (tsc)", flush=True)
+    print(f"[{category}/{name}] Typechecking (tsc)", flush=True)
     try:
         typecheck_code(output_project_dir_abs)
         scores.append(Score("Passes tsc", 1))
+        passed_tsc = True
     except Exception:
         scores.append(Score("Passes tsc", 0))
 
-    print(f"[eval] Linting (eslint)", flush=True)
+    print(f"[{category}/{name}] Linting (eslint)", flush=True)
     try:
         lint_code(output_project_dir_abs)
         scores.append(Score("Passes eslint", 1))
+        passed_eslint = True
     except Exception:
         scores.append(Score("Passes eslint", 0))
 
@@ -58,10 +75,11 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
     os.makedirs(output_backend_dir, exist_ok=True)
 
     with convex_backend(output_backend_dir) as output_backend:
-        print(f"[eval] Deploying generated backend on port {output_backend['port']}", flush=True)
+        print(f"[{category}/{name}] Deploying generated backend on port {output_backend['port']}", flush=True)
         try:
             deploy(output_backend, output_project_dir_abs)
             scores.append(Score("`convex dev` succeeds", 1))
+            passed_deploy = True
         except Exception:
             scores.append(Score("`convex dev` succeeds", 0))
 
@@ -69,18 +87,19 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
         answer_project_dir, answer_backend_dir = setup_answer_backend(
             tempdir, eval_path, model, category, name
         )
-        print(f"[eval] Installing answer dependencies", flush=True)
+        print(f"[{category}/{name}] Setting up answer backend", flush=True)
+        print(f"[{category}/{name}] Installing answer dependencies", flush=True)
         install_dependencies(answer_project_dir)
-        print(f"[eval] Generating answer code", flush=True)
+        print(f"[{category}/{name}] Generating answer code", flush=True)
         generate_code(answer_project_dir)
 
         with convex_backend(answer_backend_dir) as answer_backend:
-            print(f"[eval] Deploying answer backend on port {answer_backend['port']}", flush=True)
+            print(f"[{category}/{name}] Deploying answer backend on port {answer_backend['port']}", flush=True)
             deploy(answer_backend, answer_project_dir)
             test_file = os.path.abspath(os.path.join(eval_path, "grader.test.ts"))
             tests_ratio = 0.0
             try:
-                print(f"[eval] Running tests: {test_file}", flush=True)
+                print(f"[{category}/{name}] Running tests", flush=True)
                 pass_rate = run_tests(output_backend, answer_backend, test_file)
                 scores.append(Score("Tests pass", pass_rate))
                 tests_ratio = pass_rate
@@ -92,9 +111,33 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
                     scores.append(Score("Tests pass", 0))
                     tests_ratio = 0.0
 
-            status = "✅" if tests_ratio == 1 else "❌"
+            status = "✅" if (
+                passed_filesystem
+                and passed_install
+                and passed_codegen
+                and passed_tsc
+                and passed_eslint
+                and passed_deploy
+                and tests_ratio == 1
+            ) else "❌"
+
+            failures = []
+            if not passed_install:
+                failures.append("bun install fail")
+            if not passed_codegen:
+                failures.append("codegen fail")
+            if not passed_tsc:
+                failures.append("tsc fail")
+            if not passed_eslint:
+                failures.append("eslint fail")
+            if not passed_deploy:
+                failures.append("convex dev fail")
+            if tests_ratio != 1:
+                failures.append(f"tests fail ({tests_ratio:.0%})")
+
+            details = "ok" if len(failures) == 0 else ", ".join(failures)
             print(
-                f"[eval] Result {status} {category}/{name} – Tests pass: {tests_ratio:.0%} – dir: {output_project_dir_abs}",
+                f"Result {status} – {details} – dir: {output_project_dir_abs}",
                 flush=True,
             )
 
@@ -109,7 +152,6 @@ class TestsFailedException(Exception):
 
 @traced
 def write_filesystem(project_dir, output):
-    print(f"[eval] write_filesystem -> {project_dir}", flush=True)
     project_dir_abs = os.path.abspath(project_dir)
     for relative_path, file_content in output.items():
         file_path = os.path.normpath(os.path.join(project_dir_abs, relative_path))
@@ -123,7 +165,6 @@ def write_filesystem(project_dir, output):
 
 @traced
 def install_dependencies(project_dir):
-    print(f"[eval] install_dependencies -> {project_dir}", flush=True)
     done = subprocess.run(
         ["bun", "install"],
         cwd=project_dir,
@@ -137,7 +178,6 @@ def install_dependencies(project_dir):
 
 @traced
 def generate_code(project_dir):
-    print(f"[eval] generate_code -> {project_dir}", flush=True)
     done = subprocess.run(
         ["bunx", "convex", "codegen", "--typecheck", "disable", "--init"],
         cwd=project_dir,
@@ -151,7 +191,6 @@ def generate_code(project_dir):
 
 @traced
 def typecheck_code(project_dir):
-    print(f"[eval] typecheck_code -> {project_dir}", flush=True)
     convex_dir = os.path.abspath(os.path.join(project_dir, "convex"))
     done = subprocess.run(
         ["bunx", "tsc", "-noEmit", "-p", convex_dir],
@@ -178,7 +217,6 @@ def typecheck_code(project_dir):
 
 @traced
 def lint_code(project_dir):
-    print(f"[eval] lint_code -> {project_dir}", flush=True)
     eslint_config = os.path.abspath("eslint.config.mjs")
     done = subprocess.run(
         ["bunx", "eslint", "-c", eslint_config, "convex"],
@@ -206,7 +244,6 @@ def lint_code(project_dir):
 
 @traced
 def deploy(backend, project_dir):
-    print(f"[eval] deploy -> {project_dir} (port {backend['port']})", flush=True)
     done = subprocess.run(
         [
             "bunx",
@@ -229,7 +266,6 @@ def deploy(backend, project_dir):
 
 @traced
 def setup_answer_backend(tempdir, eval_path, model, category, name):
-    print(f"[eval] setup_answer_backend -> {eval_path}", flush=True)
     answer_project_dir = f"{tempdir}/answer/{model}/{category}/{name}"
     os.makedirs(answer_project_dir, exist_ok=True)
 
@@ -250,7 +286,6 @@ def setup_answer_backend(tempdir, eval_path, model, category, name):
 
 @traced
 def run_tests(backend, answer_backend, test_file):
-    print(f"[eval] run_tests -> {test_file}", flush=True)
     env = dict(
         os.environ,
         CONVEX_PORT=str(backend["port"]),
