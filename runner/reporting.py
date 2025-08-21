@@ -107,8 +107,19 @@ convex_reporter = Reporter(
 
 def _write_local_results(result: EvalResultWithSummary):
     try:
+        # Try to capture the tempdir from the first result's metadata (eval-level metadata is propagated)
+        tempdir_value = None
+        try:
+            if result and getattr(result, "results", None):
+                first = result.results[0]
+                if first and getattr(first, "metadata", None) and isinstance(first.metadata, dict):
+                    tempdir_value = first.metadata.get("tempdir")
+        except Exception:
+            tempdir_value = None
+
         entry = {
             "summary": result.summary.as_dict(),
+            "tempdir": tempdir_value,
         }
         with open(OUTPUT_RESULTS_FILE, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
