@@ -93,7 +93,10 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
                     tests_ratio = 0.0
 
             status = "✅" if tests_ratio == 1 else "❌"
-            print(f"[eval] Result {status} {category}/{name} – Tests pass: {tests_ratio:.0%}", flush=True)
+            print(
+                f"[eval] Result {status} {category}/{name} – Tests pass: {tests_ratio:.0%} – dir: {output_project_dir_abs}",
+                flush=True,
+            )
 
     return scores
 
