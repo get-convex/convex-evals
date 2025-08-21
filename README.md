@@ -53,50 +53,35 @@ OUTPUT_TEMPDIR=/tmp/convex-codegen-evals pdm run braintrust eval runner/eval_con
 
 ## Running locally (no Braintrust upload)
 
-You can run the evals locally without uploading anything to Braintrust. This flow writes a JSONL results file and prints a concise summary to the console.
+Run a small slice without uploading. Put the provider API key you need in `.env` (e.g. `OPENAI_API_KEY`).
 
-Prerequisites:
-
-- Put your provider API key(s) in `.env` (loaded automatically):
-  - `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `XAI_API_KEY`, or `TOGETHER_API_KEY`
-
-Helper scripts:
+Scripts:
 
 ```bash
-# Run a very small slice (fast): first Fundamental
+# Quick smoke test (first Fundamental)
 npm run local:run:one
 
-# Run the full Fundamentals category (still local-only)
+# Full Fundamentals category
 npm run local:run:fundamentals
 
-# Generic local run baseline (you can override TEST_FILTER manually)
+# Baseline local run (override TEST_FILTER as needed)
 npm run local:run
 ```
 
-What these scripts do:
+These set:
 
-- `local:run:one` sets `TEST_FILTER=000-fundamentals/000` (quickest smoke test)
-- `local:run:fundamentals` sets `TEST_FILTER=000-fundamentals`
-- All `local:run*` scripts set:
-  - `MODELS=gpt-4.1` (change to any supported model from `runner/models/__init__.py`)
-  - `LOCAL_MODE=1` (disables Braintrust uploads and enables local reporting)
-  - `BRAINTRUST_LOCAL_RESULTS=local_results.jsonl` (results file path)
-  - `BRAINTRUST_DISABLE_PROXY=1` (model calls go directly to the provider)
-- They ultimately run `npm run run:evals` → `pdm run python -m runner.eval_convex_coding`.
+- `LOCAL_MODE=1` (local reporter + no upload)
+- `MODELS=gpt-4.1` (change per `runner/models/__init__.py`)
+- `BRAINTRUST_LOCAL_RESULTS=local_results.jsonl`
+- `BRAINTRUST_DISABLE_PROXY=1`
 
-What you'll see:
+Output:
 
-- Live step logs prefixed with `[eval]` (install, codegen, tsc, eslint, deploy, tests)
-- Per-eval status lines with ✅/❌ and a clickable absolute path to the generated project dir
-- A pretty summary block at the end showing overall and per-category pass rates
-- A JSONL file at `local_results.jsonl` (or your chosen path)
+- Per-step progress lines with the eval id
+- Per-eval result with ✅/❌ and a clickable output dir
+- `local_results.jsonl` plus a `run.log` in each eval’s output directory
 
-Optional: post results to your Convex app
-
-- Set both env vars to enable posting an aggregate score JSON to your Convex function:
-  - `CONVEX_EVAL_ENDPOINT` – your HTTP function URL
-  - `CONVEX_AUTH_TOKEN` – bearer token included as `Authorization: Bearer <token>`
-- If either is missing, Convex posting is skipped automatically.
+Optional Convex summary posting (still local mode): set both `CONVEX_EVAL_ENDPOINT` and `CONVEX_AUTH_TOKEN`.
 
 ## Rerunning grading
 
