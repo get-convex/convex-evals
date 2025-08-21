@@ -33,6 +33,15 @@ async function main() {
     },
   );
 
+  const onExit = () => {
+    try {
+      proc.kill("SIGINT");
+    } catch {}
+  };
+
+  process.on("SIGINT", onExit);
+  process.on("SIGTERM", onExit);
+
   const code = await proc.exited;
   if (typeof code === "number") process.exit(code);
   process.exit(0);

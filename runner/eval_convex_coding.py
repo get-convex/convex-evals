@@ -14,7 +14,11 @@ PROJECT = "Convex Coding"
 
 load_dotenv()
 
-logger = init_logger(project=PROJECT)
+# Avoid initializing Braintrust logger in local-only mode to prevent login attempts
+_no_send_logs_env = os.getenv("BRAINTRUST_NO_SEND_LOGS") == "1" or os.getenv("BRAINTRUST_API_KEY") is None
+logger = None
+if not _no_send_logs_env:
+    logger = init_logger(project=PROJECT)
 
 if os.getenv("OUTPUT_TEMPDIR") is not None:
     tempdir = os.getenv("OUTPUT_TEMPDIR")

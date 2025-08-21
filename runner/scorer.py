@@ -7,7 +7,7 @@ from braintrust import traced, Score
 from runner.convex_backend import convex_backend, admin_key
 
 
-def convex_scorer(model, tempdir, *, args, expected, metadata, output):
+def convex_scorer(model, tempdir, *, input, expected, metadata, output):
     model = metadata["model"]
     category = metadata["category"]
     name = metadata["name"]
