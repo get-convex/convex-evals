@@ -133,6 +133,16 @@ def file_report_eval(evaluator, result: EvalResultWithSummary, verbose, jsonl):
     # Pretty console output as well
     results = result.results
     failing_results = [x for x in results if x.error]
+    if failing_results:
+        print()
+        print("=== Eval Failures ===")
+        for r in failing_results:
+            category = r.metadata.get("category") if r.metadata else "unknown"
+            name = r.metadata.get("name") if r.metadata else "unknown"
+            error_text = r.error if isinstance(r.error, str) else str(r.error)
+            print(f"- {category}/{name}: {error_text}")
+        print(f"Results written to: {OUTPUT_RESULTS_FILE}")
+        return False
 
     num_tests: dict[str, int] = {}
     tests_pass_scores: dict[str, float] = {}
