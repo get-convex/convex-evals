@@ -78,15 +78,22 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
             print(f"[eval] Deploying answer backend on port {answer_backend['port']}", flush=True)
             deploy(answer_backend, answer_project_dir)
             test_file = os.path.abspath(os.path.join(eval_path, "grader.test.ts"))
+            tests_ratio = 0.0
             try:
                 print(f"[eval] Running tests: {test_file}", flush=True)
                 pass_rate = run_tests(output_backend, answer_backend, test_file)
                 scores.append(Score("Tests pass", pass_rate))
+                tests_ratio = pass_rate
             except Exception as e:
                 if isinstance(e, TestsFailedException):
                     scores.append(Score("Tests pass", e.ratio))
+                    tests_ratio = e.ratio
                 else:
                     scores.append(Score("Tests pass", 0))
+                    tests_ratio = 0.0
+
+            status = "✅" if tests_ratio == 1 else "❌"
+            print(f"[eval] Result {status} {category}/{name} – Tests pass: {tests_ratio:.0%}", flush=True)
 
     return scores
 
