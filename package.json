@@ -34,6 +34,9 @@
     "braintrust:fundamentals": "cross-env TEST_FILTER=000-fundamentals npm run braintrust:run",
     "braintrust:run:one": "cross-env TEST_FILTER=000-fundamentals/000 npm run braintrust:run",
     "braintrust:run": "cross-env MODELS=gpt-5 LOCAL_RESULTS=local_results.jsonl npm run run:evals",
-    "run:evals": "pdm run python -m runner.eval_convex_coding"
+    "run:evals": "pdm run python -m runner.eval_convex_coding",
+    "answers:run": "bun run scripts/gradeAnswers.ts",
+    "answers:run:fundamentals": "cross-env TEST_FILTER=000-fundamentals bun run scripts/gradeAnswers.ts",
+    "answers:run:one": "cross-env TEST_FILTER=000-fundamentals/000 bun run scripts/gradeAnswers.ts"
   }
 }
