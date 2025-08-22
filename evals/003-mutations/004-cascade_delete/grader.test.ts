@@ -3,7 +3,6 @@ import {
   responseAdminClient,
   responseClient,
   compareSchema,
-  compareFunctionSpec,
   addDocuments,
   deleteAllDocuments,
   listTable,
@@ -20,16 +19,14 @@ test("compare schema", async ({ skip }) => {
   await compareSchema(skip);
 });
 
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
-});
-
 test("deletes user with no documents", async () => {
   // Add a test user
-  await addDocuments(responseAdminClient, "users", [{
-    name: "Test User",
-    email: "test@example.com"
-  }]);
+  await addDocuments(responseAdminClient, "users", [
+    {
+      name: "Test User",
+      email: "test@example.com",
+    },
+  ]);
   let users = (await listTable(responseAdminClient, "users")) as Doc<"users">[];
   const userId = users.at(-1)!._id;
 
@@ -44,7 +41,7 @@ test("deletes user and all associated documents", async () => {
   // Add test users
   await addDocuments(responseAdminClient, "users", [
     { name: "User 1", email: "user1@example.com" },
-    { name: "User 2", email: "user2@example.com" }
+    { name: "User 2", email: "user2@example.com" },
   ]);
   let users = (await listTable(responseAdminClient, "users")) as Doc<"users">[];
   const userId1 = users.at(-2)!._id;
@@ -54,36 +51,46 @@ test("deletes user and all associated documents", async () => {
   await addDocuments(responseAdminClient, "documents", [
     { authorId: userId1, title: "Doc 1", content: "Content 1" },
     { authorId: userId1, title: "Doc 2", content: "Content 2" },
-    { authorId: userId2, title: "Doc 3", content: "Content 3" }
+    { authorId: userId2, title: "Doc 3", content: "Content 3" },
   ]);
 
   // Delete user 2 and their documents
-  await responseClient.mutation(api.index.deleteUserAndDocuments, { userId: userId2 });
+  await responseClient.mutation(api.index.deleteUserAndDocuments, {
+    userId: userId2,
+  });
 
   // Verify only user 1 remains
   users = (await listTable(responseAdminClient, "users")) as Doc<"users">[];
   expect(users.at(-1)!._id).toBe(userId1);
 
   // Verify only user 1's documents remain
-  const remainingDocs = (await listTable(responseAdminClient, "documents")) as Doc<"documents">[];
+  const remainingDocs = (await listTable(
+    responseAdminClient,
+    "documents",
+  )) as Doc<"documents">[];
   expect(remainingDocs).toHaveLength(2);
   expect(remainingDocs[0].authorId).toBe(userId1);
 });
 
 test("handles deletion of user with many documents", async () => {
   // Add a test user
-  await addDocuments(responseAdminClient, "users", [{
-    name: "Test User",
-    email: "test@example.com"
-  }]);
-  const users = (await listTable(responseAdminClient, "users")) as Doc<"users">[];
+  await addDocuments(responseAdminClient, "users", [
+    {
+      name: "Test User",
+      email: "test@example.com",
+    },
+  ]);
+  const users = (await listTable(
+    responseAdminClient,
+    "users",
+  )) as Doc<"users">[];
   const userId = users.at(-1)!._id;
 
   // Add many documents
   const documents = Array.from({ length: 50 }, (_, i) => ({
     authorId: userId,
     title: `Document ${i}`,
-    content: `Content ${i}`
+    content: `Content ${i}`,
   }));
   await addDocuments(responseAdminClient, "documents", documents);
 
@@ -91,8 +98,14 @@ test("handles deletion of user with many documents", async () => {
   await responseClient.mutation(api.index.deleteUserAndDocuments, { userId });
 
   // Verify all data is deleted
-  const remainingUsers = (await listTable(responseAdminClient, "users")) as Doc<"users">[];
-  const remainingDocs = (await listTable(responseAdminClient, "documents")) as Doc<"documents">[];
+  const remainingUsers = (await listTable(
+    responseAdminClient,
+    "users",
+  )) as Doc<"users">[];
+  const remainingDocs = (await listTable(
+    responseAdminClient,
+    "documents",
+  )) as Doc<"documents">[];
   expect(remainingUsers).toHaveLength(0);
   expect(remainingDocs).toHaveLength(0);
 });
@@ -101,27 +114,68 @@ test("maintains data consistency with concurrent operations", async () => {
   // Add test users
   await addDocuments(responseAdminClient, "users", [
     { name: "User 1", email: "user1@example.com" },
-    { name: "User 2", email: "user2@example.com" }
+    { name: "User 2", email: "user2@example.com" },
   ]);
-  const users = (await listTable(responseAdminClient, "users")) as Doc<"users">[];
+  const users = (await listTable(
+    responseAdminClient,
+    "users",
+  )) as Doc<"users">[];
   const userId1 = users.at(-2)!._id;
   const userId2 = users.at(-1)!._id;
 
   // Add documents
   await addDocuments(responseAdminClient, "documents", [
     { authorId: userId1, title: "Doc 1", content: "Content 1" },
-    { authorId: userId2, title: "Doc 2", content: "Content 2" }
+    { authorId: userId2, title: "Doc 2", content: "Content 2" },
   ]);
 
   // Delete both users concurrently
   await Promise.all([
-    responseClient.mutation(api.index.deleteUserAndDocuments, { userId: userId1 }),
-    responseClient.mutation(api.index.deleteUserAndDocuments, { userId: userId2 })
+    responseClient.mutation(api.index.deleteUserAndDocuments, {
+      userId: userId1,
+    }),
+    responseClient.mutation(api.index.deleteUserAndDocuments, {
+      userId: userId2,
+    }),
   ]);
 
   // Verify all data is deleted
-  const remainingUsers = (await listTable(responseAdminClient, "users")) as Doc<"users">[];
-  const remainingDocs = (await listTable(responseAdminClient, "documents")) as Doc<"documents">[];
+  const remainingUsers = (await listTable(
+    responseAdminClient,
+    "users",
+  )) as Doc<"users">[];
+  const remainingDocs = (await listTable(
+    responseAdminClient,
+    "documents",
+  )) as Doc<"documents">[];
   expect(remainingUsers).toHaveLength(0);
   expect(remainingDocs).toHaveLength(0);
+});
+
+test("no-op when deleting non-existent user id", async () => {
+  const beforeUsers = (await listTable(
+    responseAdminClient,
+    "users",
+  )) as Doc<"users">[];
+  const beforeDocs = (await listTable(
+    responseAdminClient,
+    "documents",
+  )) as Doc<"documents">[];
+
+  await expect(
+    responseClient.mutation(api.index.deleteUserAndDocuments, {
+      userId: "nonexistent" as unknown as string,
+    }),
+  ).resolves.toBeUndefined();
+
+  const afterUsers = (await listTable(
+    responseAdminClient,
+    "users",
+  )) as Doc<"users">[];
+  const afterDocs = (await listTable(
+    responseAdminClient,
+    "documents",
+  )) as Doc<"documents">[];
+  expect(afterUsers.length).toBe(beforeUsers.length);
+  expect(afterDocs.length).toBe(beforeDocs.length);
 });

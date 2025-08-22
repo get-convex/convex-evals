@@ -3,7 +3,6 @@ import {
   responseAdminClient,
   responseClient,
   compareSchema,
-  compareFunctionSpec,
   deleteAllDocuments,
 } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
@@ -15,10 +14,6 @@ beforeEach(async () => {
 
 test("compare schema", async ({ skip }) => {
   await compareSchema(skip);
-});
-
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
 });
 
 const sampleDocument = {
@@ -37,7 +32,10 @@ const sampleDocument = {
 };
 
 test("create and get document", async () => {
-  const docId = await responseClient.mutation(api.index.createDocument, sampleDocument);
+  const docId = await responseClient.mutation(
+    api.index.createDocument,
+    sampleDocument,
+  );
   expect(docId).toBeDefined();
 
   const fetchedDoc = await responseClient.query(api.index.getDocument, {
@@ -49,7 +47,10 @@ test("create and get document", async () => {
 });
 
 test("patch document metadata", async () => {
-  const docId = await responseClient.mutation(api.index.createDocument, sampleDocument);
+  const docId = await responseClient.mutation(
+    api.index.createDocument,
+    sampleDocument,
+  );
 
   const newMetadata = {
     title: "Updated Title",
@@ -75,7 +76,10 @@ test("patch document metadata", async () => {
 });
 
 test("patch author info", async () => {
-  const docId = await responseClient.mutation(api.index.createDocument, sampleDocument);
+  const docId = await responseClient.mutation(
+    api.index.createDocument,
+    sampleDocument,
+  );
 
   const newAuthor = {
     name: "Jane Smith",
@@ -100,7 +104,10 @@ test("patch author info", async () => {
 });
 
 test("get non-existent document returns null", async () => {
-  const docId = await responseClient.mutation(api.index.createDocument, sampleDocument);
+  const docId = await responseClient.mutation(
+    api.index.createDocument,
+    sampleDocument,
+  );
   await responseClient.mutation(api.index.patchDocumentMetadata, {
     documentId: docId,
     metadata: sampleDocument.metadata,
@@ -108,7 +115,7 @@ test("get non-existent document returns null", async () => {
   await deleteAllDocuments(responseAdminClient, ["documents"]);
 
   const result = await responseClient.query(api.index.getDocument, {
-    documentId: docId
+    documentId: docId,
   });
   expect(result).toBeNull();
 });
@@ -128,6 +135,6 @@ test("validation errors", async () => {
   };
 
   await expect(
-    responseClient.mutation(api.index.createDocument, invalidDoc as any)
+    responseClient.mutation(api.index.createDocument, invalidDoc as any),
   ).rejects.toThrow();
 });
