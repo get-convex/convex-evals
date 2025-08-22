@@ -8,10 +8,11 @@ import { expect } from "vitest";
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 
-const responsePort = process.env.CONVEX_PORT;
-if (!responsePort) {
+const responsePortStr = process.env.CONVEX_PORT;
+if (!responsePortStr) {
   throw new Error("CONVEX_PORT is not set");
 }
+const responsePort = Number(responsePortStr);
 
 export const cloudUrl = `http://0.0.0.0:${responsePort}`;
 export const siteUrl = `http://0.0.0.0:${responsePort + 1}`;
