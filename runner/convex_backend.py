@@ -79,18 +79,22 @@ download_binary_lock = threading.Lock()
 
 
 @functools.cache
-def fetch_convex_release():
-    releases = requests.get(
-        "https://api.github.com/repos/get-convex/convex-backend/releases"
-    ).json()
-    return releases[0]
+def fetch_convex_releases():
+    # Fetch a page of releases; if needed this can be extended to paginate
+    response = requests.get(
+        "https://api.github.com/repos/get-convex/convex-backend/releases",
+        params={"per_page": 50},
+    )
+    response.raise_for_status()
+    return response.json()
 
 
 def download_convex_binary():
-    latest = fetch_convex_release()
-    version = latest["tag_name"]
+    releases = fetch_convex_releases()
 
-    arch = {"x86_64": "x86_64", "arm64": "aarch64", "AMD64": "x86_64"}[platform.machine()]
+    arch = {"x86_64": "x86_64", "arm64": "aarch64", "AMD64": "x86_64"}.get(
+        platform.machine(), platform.machine()
+    )
     triple_os = {
         "Darwin": "apple-darwin",
         "Linux": "unknown-linux-gnu",
@@ -98,14 +102,19 @@ def download_convex_binary():
     }[platform.system()]
     target_pattern = f"convex-local-backend-{arch}-{triple_os}"
 
-    # Find the matching asset from the release
+    # Find the first release that contains a matching asset
     matching_asset = None
-    for asset in latest["assets"]:
-        if target_pattern in asset["name"]:
-            matching_asset = asset
+    version = None
+    for release in releases:
+        for asset in release.get("assets", []):
+            if target_pattern in asset.get("name", ""):
+                matching_asset = asset
+                version = release.get("tag_name")
+                break
+        if matching_asset:
             break
 
-    if not matching_asset:
+    if not matching_asset or not version:
         raise RuntimeError(f"Could not find matching asset for {target_pattern}")
 
     binary_dir = os.path.expanduser("~/.convex-evals/releases")

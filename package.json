@@ -29,11 +29,11 @@
   "scripts": {   
     "local:run:fundamentals": "cross-env TEST_FILTER=000-fundamentals npm run local:run",
     "local:run:one": "cross-env TEST_FILTER=000-fundamentals/000 npm run local:run",
-    "local:run": "cross-env MODELS=gpt-5-mini DISABLE_BRAINTRUST=1 LOCAL_RESULTS=local_results.jsonl npm run run:evals",
+    "local:run": "cross-env MODELS=gpt-5 DISABLE_BRAINTRUST=1 LOCAL_RESULTS=local_results.jsonl npm run run:evals",
     "grade:last": "bun run scripts/gradeLast.ts --concise",
     "braintrust:fundamentals": "cross-env TEST_FILTER=000-fundamentals npm run braintrust:run",
     "braintrust:run:one": "cross-env TEST_FILTER=000-fundamentals/000 npm run braintrust:run",
-    "braintrust:run": "cross-env MODELS=gpt-5-mini LOCAL_RESULTS=local_results.jsonl npm run run:evals",
+    "braintrust:run": "cross-env MODELS=gpt-5 LOCAL_RESULTS=local_results.jsonl npm run run:evals",
     "run:evals": "pdm run python -m runner.eval_convex_coding"
   }
 }
