@@ -108,3 +108,16 @@ test("get author dashboard returns complete data", async () => {
     expect(post.reactionCounts).toHaveProperty("celebrate");
   }
 });
+
+test("get author dashboard throws if preferences missing", async () => {
+  // Create user without preferences
+  await addDocuments(responseAdminClient, "users", [
+    { name: "NoPref", email: "nopref@example.com" },
+  ]);
+
+  await expect(
+    responseClient.query(anyApi.public.getAuthorDashboard, {
+      email: "nopref@example.com",
+    }),
+  ).rejects.toThrow();
+});

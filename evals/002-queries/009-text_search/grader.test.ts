@@ -110,3 +110,22 @@ test("search articles handles long content correctly", async () => {
   expect(articles[0].preview.length).toBe(100);
   expect(articles[0].preview).toBe(longContent.substring(0, 100));
 });
+
+test("search articles returns at most 10 results", async () => {
+  // Seed 15 matching published articles for the same author
+  const manyArticles = Array.from({ length: 15 }, (_, i) => ({
+    title: `Post ${i + 1}`,
+    content: `match me content ${i + 1}`,
+    author: "alice",
+    tags: ["bulk"],
+    isPublished: true,
+  }));
+  await addDocuments(responseAdminClient, "articles", manyArticles);
+
+  const results = await responseClient.query(anyApi.public.searchArticles, {
+    searchTerm: "match me",
+    author: "alice",
+  });
+
+  expect(results.length).toBeLessThanOrEqual(10);
+});
