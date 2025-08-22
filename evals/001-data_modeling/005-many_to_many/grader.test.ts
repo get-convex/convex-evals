@@ -3,7 +3,7 @@ import {
   responseAdminClient,
   addDocuments,
   listTable,
-  hasIndexOn,
+  hasIndexWithPrefix,
 } from "../../../grader";
 
 // Basic sanity: can insert students and courses, and an enrollment row that references both with metadata
@@ -29,12 +29,16 @@ test("students, courses, and enrollments accept required fields", async () => {
 });
 
 test("schema has indexes to support enrollments by student and by course", async () => {
-  const byStudent = await hasIndexOn(responseAdminClient, "enrollments", [
-    "studentId",
-  ]);
-  const byCourse = await hasIndexOn(responseAdminClient, "enrollments", [
-    "courseId",
-  ]);
+  const byStudent = await hasIndexWithPrefix(
+    responseAdminClient,
+    "enrollments",
+    ["studentId"],
+  );
+  const byCourse = await hasIndexWithPrefix(
+    responseAdminClient,
+    "enrollments",
+    ["courseId"],
+  );
   expect(byStudent).toBe(true);
   expect(byCourse).toBe(true);
 });
