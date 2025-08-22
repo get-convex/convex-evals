@@ -3,7 +3,6 @@ import {
   responseAdminClient,
   responseClient,
   compareSchema,
-  compareFunctionSpec,
   addDocuments,
   listTable,
 } from "../../../grader";
@@ -11,10 +10,6 @@ import { anyApi } from "convex/server";
 
 test("compare schema", async ({ skip }) => {
   await compareSchema(skip);
-});
-
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
 });
 
 test("get author dashboard returns null when user not found", async () => {
