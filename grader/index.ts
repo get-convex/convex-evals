@@ -135,3 +135,80 @@ export async function compareFunctionSpec(skip: (note?: string) => void) {
   const answerFunctionSpec = await getFunctionSpec(answerAdminClient);
   expect(responseFunctionSpec).toEqual(answerFunctionSpec);
 }
+
+/**
+ * Helpers for inspecting schema indexes in graders
+ */
+export function findTable(
+  schema: any,
+  tableName: string,
+): {
+  tableName: string;
+  indexes?: { fields?: string[]; fieldNames?: string[] }[];
+} | null {
+  if (!schema || !Array.isArray(schema.tables)) return null;
+  return schema.tables.find((t: any) => t.tableName === tableName) ?? null;
+}
+
+export function hasIndexForFields(
+  schema: any,
+  tableName: string,
+  fields: string[],
+): boolean {
+  const table = findTable(schema, tableName);
+  if (!table) return false;
+  const indexes = (table.indexes ?? []) as {
+    fields?: string[];
+    fieldNames?: string[];
+  }[];
+  return indexes.some((idx) => {
+    const idxFields = idx.fields ?? idx.fieldNames ?? [];
+    return (
+      Array.isArray(idxFields) &&
+      idxFields.length === fields.length &&
+      idxFields.every((f, i) => f === fields[i])
+    );
+  });
+}
+
+export async function hasIndexOn(
+  adminClient: any,
+  tableName: string,
+  fields: string[],
+): Promise<boolean> {
+  const schema = await getSchema(adminClient);
+  if (!schema) return false;
+  return hasIndexForFields(schema, tableName, fields);
+}
+
+export function hasIndexForPrefix(
+  schema: any,
+  tableName: string,
+  fieldsPrefix: string[],
+): boolean {
+  const table = findTable(schema, tableName);
+  if (!table) return false;
+  const indexes = (table.indexes ?? []) as {
+    fields?: string[];
+    fieldNames?: string[];
+  }[];
+  return indexes.some((idx) => {
+    const idxFields = (idx.fields ?? idx.fieldNames ?? []) as string[];
+    if (!Array.isArray(idxFields)) return false;
+    if (idxFields.length < fieldsPrefix.length) return false;
+    for (let i = 0; i < fieldsPrefix.length; i++) {
+      if (idxFields[i] !== fieldsPrefix[i]) return false;
+    }
+    return true;
+  });
+}
+
+export async function hasIndexWithPrefix(
+  adminClient: any,
+  tableName: string,
+  fieldsPrefix: string[],
+): Promise<boolean> {
+  const schema = await getSchema(adminClient);
+  if (!schema) return false;
+  return hasIndexForPrefix(schema, tableName, fieldsPrefix);
+}

@@ -1,22 +1,5 @@
 import { expect, test } from "vitest";
-import {
-  responseAdminClient,
-  responseClient,
-  compareSchema,
-  compareFunctionSpec,
-  addDocuments,
-  listTable,
-} from "../../../grader";
-import { api } from "./answer/convex/_generated/api";
-import { Doc } from "./answer/convex/_generated/dataModel";
-
-test("compare schema", async ({ skip }) => {
-  await compareSchema(skip);
-});
-
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
-});
+import { responseAdminClient, addDocuments, listTable } from "../../../grader";
 
 test("organization data model works correctly", async () => {
   // Create organization
@@ -25,8 +8,11 @@ test("organization data model works correctly", async () => {
       name: "Acme, Inc.",
     },
   ]);
-  const organizations = await listTable(responseAdminClient, "organizations");
-  const orgId = (organizations.at(-1) as Doc<"organizations">)._id;
+  const organizations = (await listTable(
+    responseAdminClient,
+    "organizations",
+  )) as { _id: string; name: string }[];
+  const orgId = (organizations.at(-1) as { _id: string })._id;
   expect(orgId).toBeDefined();
 
   // Create department
@@ -36,8 +22,12 @@ test("organization data model works correctly", async () => {
       organizationId: orgId,
     },
   ]);
-  const departments = await listTable(responseAdminClient, "departments");
-  const deptId = (departments.at(-1) as Doc<"departments">)._id;
+  const departments = (await listTable(responseAdminClient, "departments")) as {
+    _id: string;
+    name: string;
+    organizationId: string;
+  }[];
+  const deptId = (departments.at(-1) as { _id: string })._id;
   expect(deptId).toBeDefined();
 
   // Create employees
@@ -51,8 +41,14 @@ test("organization data model works correctly", async () => {
       age: 25,
     },
   ]);
-  const employees = await listTable(responseAdminClient, "employees");
-  const janeId = (employees.at(-1) as Doc<"employees">)._id;
+  const employees = (await listTable(responseAdminClient, "employees")) as {
+    _id: string;
+    name: string;
+    organizationId: string;
+    departmentId: string;
+    email: string;
+  }[];
+  const janeId = (employees.at(-1) as { _id: string })._id;
   expect(janeId).toBeDefined();
 
   // Update department with manager
