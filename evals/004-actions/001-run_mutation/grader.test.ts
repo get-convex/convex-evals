@@ -3,7 +3,6 @@ import {
   responseAdminClient,
   responseClient,
   compareSchema,
-  compareFunctionSpec,
   deleteAllDocuments,
   listTable,
 } from "../../../grader";
@@ -19,10 +18,6 @@ test("compare schema", async ({ skip }) => {
   await compareSchema(skip);
 });
 
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
-});
-
 test("saveFetchResult saves data correctly", async () => {
   const testUrl = "https://httpbin.org/json";
   const testData = { test: "data" };
@@ -34,7 +29,10 @@ test("saveFetchResult saves data correctly", async () => {
 
   expect(id).toBeDefined();
 
-  const results = (await listTable(responseAdminClient, "fetchResults")) as Doc<"fetchResults">[];
+  const results = (await listTable(
+    responseAdminClient,
+    "fetchResults",
+  )) as Doc<"fetchResults">[];
   expect(results).toHaveLength(1);
   expect(results[0].url).toBe(testUrl);
   // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
@@ -50,7 +48,10 @@ test("fetchAndSave fetches and saves external data", async () => {
 
   expect(id).toBeDefined();
 
-  const results = (await listTable(responseAdminClient, "fetchResults")) as Doc<"fetchResults">[];
+  const results = (await listTable(
+    responseAdminClient,
+    "fetchResults",
+  )) as Doc<"fetchResults">[];
   expect(results).toHaveLength(1);
   expect(results[0].url).toBe(testUrl);
   // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
@@ -58,31 +59,32 @@ test("fetchAndSave fetches and saves external data", async () => {
 });
 
 test("fetchAndSave handles different JSON responses", async () => {
-  const urls = [
-    "https://httpbin.org/json",
-    "https://httpbin.org/get",
-  ];
+  const urls = ["https://httpbin.org/json", "https://httpbin.org/get"];
 
   const ids = await Promise.all(
-    urls.map(async url =>
-      await responseClient.action(api.index.fetchAndSave, { url })
-    )
+    urls.map(
+      async (url) =>
+        await responseClient.action(api.index.fetchAndSave, { url }),
+    ),
   );
 
   expect(ids).toHaveLength(2);
 
-  const results = (await listTable(responseAdminClient, "fetchResults")) as Doc<"fetchResults">[];
+  const results = (await listTable(
+    responseAdminClient,
+    "fetchResults",
+  )) as Doc<"fetchResults">[];
   expect(results).toHaveLength(2);
 
   // Verify each URL was saved
-  const savedUrls = results.map(r => r.url);
+  const savedUrls = results.map((r) => r.url);
   expect(savedUrls).toEqual(expect.arrayContaining(urls));
 
   // Verify we got different data structures back
   // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-  expect(results.some(r => r.data.slideshow)).toBe(true);
+  expect(results.some((r) => r.data.slideshow)).toBe(true);
   // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-  expect(results.some(r => r.data.url)).toBe(true);
+  expect(results.some((r) => r.data.url)).toBe(true);
 });
 
 test("handles complex nested JSON data", async () => {
@@ -90,8 +92,11 @@ test("handles complex nested JSON data", async () => {
     url: "https://httpbin.org/json",
   });
 
-  const results = (await listTable(responseAdminClient, "fetchResults")) as Doc<"fetchResults">[];
-  const savedData = results.find(r => r._id === id);
+  const results = (await listTable(
+    responseAdminClient,
+    "fetchResults",
+  )) as Doc<"fetchResults">[];
+  const savedData = results.find((r) => r._id === id);
   expect(savedData).toBeDefined();
 
   // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access

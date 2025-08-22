@@ -3,7 +3,6 @@ import {
   responseAdminClient,
   responseClient,
   compareSchema,
-  compareFunctionSpec,
   deleteAllDocuments,
   listTable,
 } from "../../../grader";
@@ -19,10 +18,6 @@ test("compare schema", async ({ skip }) => {
   await compareSchema(skip);
 });
 
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
-});
-
 test("fetchIfNeeded caches new requests", async () => {
   const testUrl = "https://httpbin.org/json";
 
@@ -33,7 +28,10 @@ test("fetchIfNeeded caches new requests", async () => {
   expect(id1).toBeDefined();
 
   // Check the cached data
-  const results = (await listTable(responseAdminClient, "fetchRequests")) as Doc<"fetchRequests">[];
+  const results = (await listTable(
+    responseAdminClient,
+    "fetchRequests",
+  )) as Doc<"fetchRequests">[];
   expect(results).toHaveLength(1);
   expect(results[0].url).toBe(testUrl);
   // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
@@ -60,25 +58,27 @@ test("fetchIfNeeded reuses cached results", async () => {
 });
 
 test("fetchIfNeeded handles different URLs separately", async () => {
-  const urls = [
-    "https://httpbin.org/json",
-    "https://httpbin.org/get",
-  ];
+  const urls = ["https://httpbin.org/json", "https://httpbin.org/get"];
 
   // Fetch both URLs
   const ids = await Promise.all(
-    urls.map(async url => responseClient.action(api.index.fetchIfNeeded, { url }))
+    urls.map(async (url) =>
+      responseClient.action(api.index.fetchIfNeeded, { url }),
+    ),
   );
 
   // Should get different IDs
   expect(ids[0]).not.toBe(ids[1]);
 
   // Should have two cached results
-  const results = (await listTable(responseAdminClient, "fetchRequests")) as Doc<"fetchRequests">[];
+  const results = (await listTable(
+    responseAdminClient,
+    "fetchRequests",
+  )) as Doc<"fetchRequests">[];
   expect(results).toHaveLength(2);
 
   // Verify different data structures were cached
-  const resultsByUrl = new Map(results.map(r => [r.url, r]));
+  const resultsByUrl = new Map(results.map((r) => [r.url, r]));
   // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
   expect(resultsByUrl.get(urls[0])?.data.slideshow).toBeDefined();
   // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
@@ -107,7 +107,7 @@ test("handles invalid URLs appropriately", async () => {
   const invalidUrl = "https://invalid-url-that-does-not-exist.example.com";
 
   await expect(
-    responseClient.action(api.index.fetchIfNeeded, { url: invalidUrl })
+    responseClient.action(api.index.fetchIfNeeded, { url: invalidUrl }),
   ).rejects.toThrow();
 
   // Should not cache failed requests

@@ -3,7 +3,7 @@ Create a backend that demonstrates using the "node" runtime within a Convex acti
 Implement this function in `convex/index.ts`:
 
 1. Create an action `processWithNode` that:
-   - Takes data (string) as argument
+   - Takes arguments:  `{ data: string }`
    - Uses Node.js 'crypto' module to generate a hash of the input
    - Uses Node.js 'path' module to manipulate file paths
    - Returns an object containing:

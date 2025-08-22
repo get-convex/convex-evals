@@ -9,7 +9,7 @@ Implement these HTTP handlers in `convex/http.ts`:
 
 They should all return a JSON response: `{ ok: true }` and only accept the specified methods.
 
-Also create a query `getSiteURL` that takes no arguments and returns `process.env.CONVEX_SITE_URL!`.
+Also create a query `getSiteURL` that takes no arguments (empty object `{}`) and returns `process.env.CONVEX_SITE_URL!`.
 This will require the @types/node npm dev dependency.
 
 Create only the `convex/http.ts` and `package.json` files. Do not generate any other files.
