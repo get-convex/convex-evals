@@ -59,6 +59,11 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
         passed_install = True
     else:
         scores.append(Score("`bun install` succeeds", 0))
+        print(
+            f"Result ❌ – bun install fail – dir: {output_project_dir_abs}",
+            flush=True,
+        )
+        return scores
 
     print(f"[{category}/{name}] Running convex codegen", flush=True)
     if run_command_step(run_log_path, lambda: generate_code(output_project_dir_abs), "codegen", "convex codegen"):
@@ -66,6 +71,11 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
         passed_codegen = True
     else:
         scores.append(Score("`convex codegen` succeeds", 0))
+        print(
+            f"Result ❌ – codegen fail – dir: {output_project_dir_abs}",
+            flush=True,
+        )
+        return scores
 
     print(f"[{category}/{name}] Typechecking (tsc)", flush=True)
     if run_command_step(run_log_path, lambda: typecheck_code(output_project_dir_abs), "tsc", "tsc"):
@@ -73,6 +83,11 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
         passed_tsc = True
     else:
         scores.append(Score("Passes tsc", 0))
+        print(
+            f"Result ❌ – tsc fail – dir: {output_project_dir_abs}",
+            flush=True,
+        )
+        return scores
 
     print(f"[{category}/{name}] Linting (eslint)", flush=True)
     if run_command_step(run_log_path, lambda: lint_code(output_project_dir_abs), "eslint", "eslint"):
@@ -80,6 +95,11 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
         passed_eslint = True
     else:
         scores.append(Score("Passes eslint", 0))
+        print(
+            f"Result ❌ – eslint fail – dir: {output_project_dir_abs}",
+            flush=True,
+        )
+        return scores
 
     output_backend_dir = f"{tempdir}/backends/output/{model}/{category}/{name}"
     os.makedirs(output_backend_dir, exist_ok=True)
@@ -91,6 +111,11 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
             passed_deploy = True
         else:
             scores.append(Score("`convex dev` succeeds", 0))
+            print(
+                f"Result ❌ – convex dev fail – dir: {output_project_dir_abs}",
+                flush=True,
+            )
+            return scores
 
         eval_path = f"evals/{category}/{name}"
         answer_project_dir, answer_backend_dir = setup_answer_backend(
