@@ -1,8 +1,8 @@
 Create a demo that demonstrates all of the ways to interact with the scheduler in Convex.
 
 Start by implementing two internal logging functions in `index.ts`:
-- An internal mutation `logMutation` that takes a message string and logs it
-- An internal action `logAction` that takes a message string and logs it
+- An internal mutation `logMutation` that takes a message string argument named "message" and logs it
+- An internal action `logAction` that takes a message string argument named "message" and logs it
 
 Then create two public caller functions in `index.ts` to demonstrate scheduler functionality:
 
