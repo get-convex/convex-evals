@@ -1,5 +1,10 @@
 import { expect, test } from "vitest";
-import { responseAdminClient, addDocuments, listTable } from "../../../grader";
+import {
+  responseAdminClient,
+  addDocuments,
+  listTable,
+  hasIndexOn,
+} from "../../../grader";
 
 // Basic sanity: can insert students and courses, and an enrollment row that references both with metadata
 
@@ -21,4 +26,15 @@ test("students, courses, and enrollments accept required fields", async () => {
   ]);
   const enrollments = await listTable(responseAdminClient, "enrollments");
   expect(enrollments.length).toBeGreaterThan(0);
+});
+
+test("schema has indexes to support enrollments by student and by course", async () => {
+  const byStudent = await hasIndexOn(responseAdminClient, "enrollments", [
+    "studentId",
+  ]);
+  const byCourse = await hasIndexOn(responseAdminClient, "enrollments", [
+    "courseId",
+  ]);
+  expect(byStudent).toBe(true);
+  expect(byCourse).toBe(true);
 });

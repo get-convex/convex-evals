@@ -9,7 +9,7 @@ test("example table accepts correct simple datatypes", async () => {
       b: 42,
       c: 3.14,
       d: BigInt(10),
-      e: 7,
+      e: BigInt(7),
       f: true,
       g: "hello",
       h: bytes,

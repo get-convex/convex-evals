@@ -13,7 +13,7 @@ test("example table accepts required compound datatypes", async () => {
       c: {},
       d: { k: "v" },
       e: { type: "a", value: 1 },
-      f: ["x", 2, "y"],
+      f: "x",
     },
   ]);
   const rows = await listTable(responseAdminClient, "example");

@@ -1,5 +1,11 @@
 import { expect, test } from "vitest";
-import { responseAdminClient, addDocuments, listTable } from "../../../grader";
+import {
+  responseAdminClient,
+  addDocuments,
+  listTable,
+  hasIndexOn,
+  hasIndexWithPrefix,
+} from "../../../grader";
 
 test("organization data model works correctly", async () => {
   // Create organization
@@ -59,4 +65,23 @@ test("organization data model works correctly", async () => {
       managerId: janeId,
     },
   ]);
+});
+
+test("schema has indexes for departments by organization and employees by email, department, organization", async () => {
+  const deptByOrg = await hasIndexOn(responseAdminClient, "departments", [
+    "organizationId",
+  ]);
+  const empByEmail = await hasIndexOn(responseAdminClient, "employees", [
+    "email",
+  ]);
+  const empByDept = await hasIndexOn(responseAdminClient, "employees", [
+    "departmentId",
+  ]);
+  const empByOrg = await hasIndexOn(responseAdminClient, "employees", [
+    "organizationId",
+  ]);
+  expect(deptByOrg).toBe(true);
+  expect(empByEmail).toBe(true);
+  expect(empByDept).toBe(true);
+  expect(empByOrg).toBe(true);
 });

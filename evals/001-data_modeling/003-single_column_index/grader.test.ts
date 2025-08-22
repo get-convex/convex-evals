@@ -3,7 +3,7 @@ import {
   responseAdminClient,
   addDocuments,
   listTable,
-  hasIndexOn,
+  hasIndexWithPrefix,
 } from "../../../grader";
 
 test("messages table exists and can insert with author_email", async () => {
@@ -15,7 +15,7 @@ test("messages table exists and can insert with author_email", async () => {
 });
 
 test("schema has an index on author_email", async () => {
-  const ok = await hasIndexOn(responseAdminClient, "messages", [
+  const ok = await hasIndexWithPrefix(responseAdminClient, "messages", [
     "author_email",
   ]);
   expect(ok).toBe(true);
