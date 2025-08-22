@@ -119,6 +119,26 @@ test("handles multiple concurrent requests", async () => {
   }
 });
 
+test("initiateRequest does not duplicate async work for same URL concurrently", async () => {
+  const testUrl = "https://httpbin.org/post";
+
+  const ids = await Promise.all([
+    responseClient.mutation(api.index.initiateRequest, { url: testUrl }),
+    responseClient.mutation(api.index.initiateRequest, { url: testUrl }),
+    responseClient.mutation(api.index.initiateRequest, { url: testUrl }),
+  ]);
+
+  // All should be same id
+  expect(new Set(ids).size).toBe(1);
+
+  // Only one request record
+  const records = (await listTable(
+    responseAdminClient,
+    "requests",
+  )) as Doc<"requests">[];
+  expect(records).toHaveLength(1);
+});
+
 test("handles request failures gracefully", async () => {
   const invalidUrl = "https://invalid-url-that-will-fail.example.com";
 

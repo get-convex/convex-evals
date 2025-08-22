@@ -114,3 +114,55 @@ test("handles invalid URLs appropriately", async () => {
   const results = await listTable(responseAdminClient, "fetchRequests");
   expect(results).toHaveLength(0);
 });
+
+test("getFetchResult returns null when URL not cached", async () => {
+  const missing = await responseClient.query(api.index.getFetchResult, {
+    url: "https://not-cached.example.com",
+  });
+  expect(missing).toBeNull();
+});
+
+test("saveFetchResult updates existing record for same URL", async () => {
+  const testUrl = "https://httpbin.org/json";
+  const firstData = { v: 1 } as const;
+  const secondData = { v: 2 } as const;
+
+  const id1 = await responseClient.mutation(api.index.saveFetchResult, {
+    url: testUrl,
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    data: firstData,
+  });
+  expect(id1).toBeDefined();
+
+  const id2 = await responseClient.mutation(api.index.saveFetchResult, {
+    url: testUrl,
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    data: secondData,
+  });
+  expect(id2).toBeDefined();
+
+  const results = (await listTable(
+    responseAdminClient,
+    "fetchRequests",
+  )) as Doc<"fetchRequests">[];
+  expect(results).toHaveLength(1);
+  expect(results[0].url).toBe(testUrl);
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+  expect(results[0].data.v).toBe(2);
+});
+
+test("getFetchResult returns ID when URL is cached", async () => {
+  const testUrl = "https://httpbin.org/get";
+
+  // Seed cache via action
+  const createdId = await responseClient.action(api.index.fetchIfNeeded, {
+    url: testUrl,
+  });
+  expect(createdId).toBeDefined();
+
+  // Query should return same ID
+  const queriedId = await responseClient.query(api.index.getFetchResult, {
+    url: testUrl,
+  });
+  expect(queriedId).toBe(createdId);
+});

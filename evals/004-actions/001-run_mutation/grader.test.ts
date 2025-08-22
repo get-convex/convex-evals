@@ -58,6 +58,24 @@ test("fetchAndSave fetches and saves external data", async () => {
   expect(results[0].data.slideshow).toBeDefined();
 });
 
+test("fetchAndSave then saveFetchResult persists identical URL and data", async () => {
+  const testUrl = "https://httpbin.org/get";
+
+  const id = await responseClient.action(api.index.fetchAndSave, {
+    url: testUrl,
+  });
+  expect(id).toBeDefined();
+
+  const results = (await listTable(
+    responseAdminClient,
+    "fetchResults",
+  )) as Doc<"fetchResults">[];
+  const saved = results.find((r) => r._id === id);
+  expect(saved?.url).toBe(testUrl);
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+  expect(saved?.data).toBeDefined();
+});
+
 test("fetchAndSave handles different JSON responses", async () => {
   const urls = ["https://httpbin.org/json", "https://httpbin.org/get"];
 

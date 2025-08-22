@@ -95,6 +95,14 @@ test("returns valid URL", async () => {
   expect(url).toMatch(/^https?:\/\//);
 });
 
+test("readTextFromStorage throws for invalid storageId", async () => {
+  await expect(
+    responseClient.action(api.index.readTextFromStorage, {
+      storageId: "invalid",
+    }),
+  ).rejects.toThrow();
+});
+
 test("handles Unicode characters", async () => {
   const unicodeText = "Hello, 世界! 👋 🌍";
 
