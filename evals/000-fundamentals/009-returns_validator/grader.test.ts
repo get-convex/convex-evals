@@ -57,7 +57,7 @@ test("getPost returns raw document with correct type", async () => {
   ]);
 
   const post = await responseClient.query(api.index.getPost, {
-    id: postId,
+    postId,
   });
 
   expect(post).toEqual({
@@ -73,7 +73,7 @@ test("getPost returns raw document with correct type", async () => {
   let error = null;
   try {
     await responseClient.query(api.index.getPost, {
-      id: "posts:nonexistent" as Id<"posts">,
+      postId: "posts:nonexistent" as Id<"posts">,
     });
   } catch (e) {
     error = e;
@@ -103,7 +103,7 @@ test("getPostWithStatus handles success and error cases", async () => {
   const successResult = await responseClient.query(
     api.index.getPostWithStatus,
     {
-      id: postIds[0],
+      postId: postIds[0],
     },
   );
   expect(successResult).toEqual({
@@ -121,7 +121,7 @@ test("getPostWithStatus handles success and error cases", async () => {
   // Test empty title case
   const emptyTitleResult = await responseClient.query(
     api.index.getPostWithStatus,
-    { id: postIds[1] },
+    { postId: postIds[1] },
   );
   expect(emptyTitleResult).toEqual({
     success: false,
@@ -133,7 +133,7 @@ test("getPostWithStatus handles success and error cases", async () => {
   // Test non-existent post
   const nonExistentResult = await responseClient.query(
     api.index.getPostWithStatus,
-    { id: postIds[0] },
+    { postId: postIds[0] },
   );
   expect(nonExistentResult).toEqual({
     success: false,
@@ -155,7 +155,7 @@ test("getPostWithAuthor returns correct tuple", async () => {
   ]);
 
   const result = await responseClient.query(api.index.getPostWithAuthor, {
-    id: postId,
+    postId,
   });
 
   expect(result).toHaveLength(2);
@@ -179,7 +179,7 @@ test("getPostWithAuthor returns correct tuple", async () => {
   let error = null;
   try {
     await responseClient.query(api.index.getPostWithAuthor, {
-      id: "posts:nonexistent" as Id<"posts">,
+      postId: "posts:nonexistent" as Id<"posts">,
     });
   } catch (e) {
     error = e;
