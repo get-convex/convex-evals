@@ -5,7 +5,7 @@ import json
 import re
 from braintrust import traced, Score
 from runner.convex_backend import convex_backend, admin_key
-from runner.logging import append_log, append_log_block, log_cmd_results, log_info
+from runner.logging import append_log, append_log_block, log_cmd_results, log_info, run_command_step
 
 
 def convex_scorer(model, tempdir, *, input, expected, metadata, output):
@@ -41,14 +41,7 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
         log_info(f"[eval] Result {status} {category}/{name} – filesystem fail – dir: {output_project_dir_abs}")
         return scores
 
-    def run_command_step(log_path, handler, prefix, error_label, *, cmd_prefix=""):
-        try:
-            results = handler()
-            log_cmd_results(log_path, results, prefix, cmd_prefix=cmd_prefix)
-            return True
-        except Exception as e:
-            append_log(log_path, f"[error] {error_label}: {e}")
-            return False
+    # run_command_step moved to runner.logging for reuse across modules
 
     log_info(f"[{category}/{name}] Installing dependencies (bun install)")
     if run_command_step(run_log_path, lambda: install_dependencies(output_project_dir_abs), "bun", "bun install"):
@@ -203,9 +196,9 @@ def generate_code(project_dir):
 def typecheck_code(project_dir):
     results = []
     convex_dir = os.path.abspath(os.path.join(project_dir, "convex"))
-    cmd1 = ["bunx", "tsc", "-noEmit", "-p", convex_dir]
+    tsc_convex_cmd = ["bunx", "tsc", "-noEmit", "-p", convex_dir]
     done = subprocess.run(
-        cmd1,
+        tsc_convex_cmd,
         cwd=project_dir,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -213,13 +206,13 @@ def typecheck_code(project_dir):
     )
     if done.returncode != 0:
         raise Exception(f"Failed to typecheck code:\n{done.stdout}")
-    results.append((cmd1, done.stdout))
+    results.append((tsc_convex_cmd, done.stdout))
 
     src_dir = os.path.abspath(os.path.join(project_dir, "src"))
     if os.path.exists(src_dir):
-        cmd2 = ["bunx", "tsc", "-noEmit", "-p", "."]
+        tsc_src_cmd = ["bunx", "tsc", "-noEmit", "-p", "."]
         done = subprocess.run(
-            cmd2,
+            tsc_src_cmd,
             cwd=project_dir,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -227,7 +220,7 @@ def typecheck_code(project_dir):
         )
         if done.returncode != 0:
             raise Exception(f"Failed to typecheck code:\n{done.stdout}")
-        results.append((cmd2, done.stdout))
+        results.append((tsc_src_cmd, done.stdout))
     return results
 
 
@@ -235,9 +228,9 @@ def typecheck_code(project_dir):
 def lint_code(project_dir):
     results = []
     eslint_config = os.path.abspath("eslint.config.mjs")
-    cmd1 = ["bunx", "eslint", "-c", eslint_config, "convex"]
+    eslint_convex_cmd = ["bunx", "eslint", "-c", eslint_config, "convex"]
     done = subprocess.run(
-        cmd1,
+        eslint_convex_cmd,
         cwd=project_dir,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -245,14 +238,14 @@ def lint_code(project_dir):
     )
     if done.returncode != 0:
         raise Exception(f"Failed to lint code:\n{done.stdout}")
-    results.append((cmd1, done.stdout))
+    results.append((eslint_convex_cmd, done.stdout))
 
     src_eslint_config = os.path.abspath("src.eslint.config.mjs")
     src_dir = os.path.join(project_dir, "src")
     if os.path.exists(src_dir):
-        cmd2 = ["bunx", "eslint", "-c", src_eslint_config, "src"]
+        eslint_src_cmd = ["bunx", "eslint", "-c", src_eslint_config, "src"]
         done = subprocess.run(
-            cmd2,
+            eslint_src_cmd,
             cwd=project_dir,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -260,7 +253,7 @@ def lint_code(project_dir):
         )
         if done.returncode != 0:
             raise Exception(f"Failed to lint code:\n{done.stdout}")
-        results.append((cmd2, done.stdout))
+        results.append((eslint_src_cmd, done.stdout))
     return results
 
 
