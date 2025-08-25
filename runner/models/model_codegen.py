@@ -1,7 +1,7 @@
 import openai
 import os
 import textwrap
-from . import ConvexCodegenModel, SYSTEM_PROMPT, ModelTemplate
+from . import ConvexCodegenModel, SYSTEM_PROMPT, ModelTemplate, ModelProvider
 from markdown_it import MarkdownIt
 from typing import Union
 from .guidelines import Guideline, GuidelineSection, CONVEX_GUIDELINES
@@ -11,12 +11,32 @@ from braintrust import wrap_openai
 class Model(ConvexCodegenModel):
     def __init__(self, api_key: str, model: ModelTemplate):
         self.model = model
+        # Allow disabling Braintrust proxy entirely via env toggle
+        disable_proxy = os.getenv("DISABLE_BRAINTRUST") == "1"
+
         url = "https://api.braintrust.dev/v1/proxy"
+
+        if disable_proxy:
+            match model.provider:
+                case ModelProvider.OPENAI:
+                    url = "https://api.openai.com/v1"
+                case ModelProvider.ANTHROPIC:
+                    url = "https://api.anthropic.com/v1"
+                case ModelProvider.TOGETHER:
+                    url = "https://api.together.xyz/v1"
+                case ModelProvider.GOOGLE:
+                    url = "https://generativelanguage.googleapis.com/v1beta"
+                case ModelProvider.XAI:
+                    url = "https://api.x.ai/v1"
+                case _:
+                    raise ValueError(f"Unknown model provider for disable-proxy mode: {model.provider}")
+
         if model.override_proxy:
             url = model.override_proxy
             client = openai.OpenAI(base_url=url, api_key=api_key)
         else:
-            client = wrap_openai(openai.OpenAI(base_url=url, api_key=api_key))
+            base_client = openai.OpenAI(base_url=url, api_key=api_key)
+            client = base_client if disable_proxy else wrap_openai(base_client)
         self.client = client
 
     def generate(self, prompt: str):

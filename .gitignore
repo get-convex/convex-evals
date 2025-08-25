@@ -187,3 +187,5 @@ convex-local-backend
 dist/
 
 CLAUDE.md
+
+local_results.jsonl

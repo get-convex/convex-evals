@@ -3,6 +3,7 @@ import sys
 import re
 import concurrent.futures
 from runner.scorer import install_dependencies, generate_code, typecheck_code, lint_code, deploy, run_tests
+from runner.logging import log_info
 from runner.convex_backend import convex_backend
 
 
@@ -63,7 +64,7 @@ def run_grader(category: str, name: str, project_dir: str):
         except Exception as e:
             message.append(f"  - Tests fail: {e}")
 
-    print("\n".join(message))
+    log_info("\n".join(message))
     return success
 
 
@@ -80,7 +81,7 @@ def run_graders(directory: str):
             if test_filter is None or test_filter.search(f"{model}/{category}/{name}")
         ]
         project_paths.sort()
-        print(f"Running grader for {len(project_paths)} projects")
+        log_info(f"Running grader for {len(project_paths)} projects")
     elif is_project_dir(directory):
         if os.path.basename(directory) == "answer":
             evals_dir = os.path.dirname(directory)

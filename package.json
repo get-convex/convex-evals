@@ -11,16 +11,28 @@
     "@typescript-eslint/eslint-plugin": "^8.19.1",
     "@typescript-eslint/parser": "^8.19.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "cross-env": "^10.0.0",
     "eslint": "^9.19.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.18",
     "typescript": "^5.7.3"
   },
   "dependencies": {
+    "@types/bun": "^1.2.20",
     "@types/node": "^22.12.0",
     "convex": "^1.18.2",
+    "dotenv": "^17.2.1",
     "prettier": "^3.4.2",
     "typescript-eslint": "^8.23.0",
     "vitest": "^3.0.2"
+  },
+  "scripts": {   
+    "local:run:fundamentals": "cross-env TEST_FILTER=000-fundamentals npm run local:run",
+    "local:run:one": "cross-env TEST_FILTER=000-fundamentals/000 npm run local:run",
+    "local:run": "cross-env MODELS=gpt-4.1 DISABLE_BRAINTRUST=1 VERBOSE_INFO_LOGS=1 LOCAL_RESULTS=local_results.jsonl npm run run:evals",
+    "braintrust:fundamentals": "cross-env TEST_FILTER=000-fundamentals npm run braintrust:run",
+    "braintrust:run:one": "cross-env TEST_FILTER=000-fundamentals/000 npm run braintrust:run",
+    "braintrust:run": "cross-env MODELS=gpt-4.1 VERBOSE_INFO_LOGS=1 LOCAL_RESULTS=local_results.jsonl npm run run:evals",
+    "run:evals": "pdm run python -m runner.eval_convex_coding"
   }
 }

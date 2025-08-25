@@ -51,6 +51,37 @@ with the `OUTPUT_TEMPDIR` environment variable.
 OUTPUT_TEMPDIR=/tmp/convex-codegen-evals pdm run braintrust eval runner/eval_convex_coding.py
 ```
 
+## Running locally (no Braintrust upload)
+
+Run a small slice without uploading. Put the provider API key you need in `.env` (e.g. `OPENAI_API_KEY`).
+
+Scripts:
+
+```bash
+# Quick smoke test (first Fundamental)
+npm run local:run:one
+
+# Full Fundamentals category
+npm run local:run:fundamentals
+
+# Baseline local run (override TEST_FILTER as needed)
+npm run local:run
+```
+
+These set:
+
+- `DISABLE_BRAINTRUST=1` (disables Braintrust upload and proxy)
+- `MODELS=gpt-4.1` (change per `runner/models/__init__.py`)
+- `LOCAL_RESULTS=local_results.jsonl`
+
+Output:
+
+- Per-step progress lines with the eval id
+- Per-eval result with ✅/❌ and a clickable output dir
+- `local_results.jsonl` plus a `run.log` in each eval’s output directory
+
+Optional Convex summary posting (still local mode): set both `CONVEX_EVAL_ENDPOINT` and `CONVEX_AUTH_TOKEN`.
+
 ## Rerunning grading
 
 After running the evals, you may want to dig into a particular test failure. You can use the `run_grader.py` script to grade the evaluations again without regenerating them:
