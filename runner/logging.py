@@ -1,4 +1,5 @@
 import re
+import os
 
 
 def sanitize_output(text: str) -> str:
@@ -52,5 +53,30 @@ def log_cmd_results(log_path: str, results, prefix: str, *, cmd_prefix: str = ""
         else:
             append_log(log_path, f"[cmd] {cmd_str}")
         append_log_block(log_path, prefix, stdout)
+
+
+def log_info(message: str) -> None:
+    verbose = os.getenv("VERBOSE_INFO_LOGS", "").lower() in {"1", "true", "yes"}
+    if not verbose:
+        return
+    print(message, flush=True)
+
+
+def run_command_step(log_path: str, handler, prefix: str, error_label: str, *, cmd_prefix: str = "") -> bool:
+    """Execute a handler that returns (cmd, stdout) pairs; log results or error.
+
+    - handler: callable with no args that returns list[tuple[list[str] | str, str]]
+    - prefix: label for stdout lines in append_log_block
+    - error_label: label used when recording an error
+    - cmd_prefix: optional prefix for the recorded command line
+    Returns True on success, False on exception.
+    """
+    try:
+        results = handler()
+        log_cmd_results(log_path, results, prefix, cmd_prefix=cmd_prefix)
+        return True
+    except Exception as e:
+        append_log(log_path, f"[error] {error_label}: {e}")
+        return False
 
 

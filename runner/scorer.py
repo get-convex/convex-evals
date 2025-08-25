@@ -5,7 +5,7 @@ import json
 import re
 from braintrust import traced, Score
 from runner.convex_backend import convex_backend, admin_key
-from runner.logging import append_log, append_log_block, log_cmd_results
+from runner.logging import append_log, append_log_block, log_cmd_results, log_info, run_command_step
 
 
 def convex_scorer(model, tempdir, *, input, expected, metadata, output):
@@ -26,7 +26,7 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
     passed_eslint = False
     passed_deploy = False
 
-    print(f"[{category}/{name}] Writing generated filesystem", flush=True)
+    log_info(f"[{category}/{name}] Writing generated filesystem")
     run_log_path = os.path.join(output_project_dir_abs, "run.log")
     append_log(run_log_path, f"=== Eval: {category}/{name} ===")
     try:
@@ -38,22 +38,12 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
         scores.append(Score("Valid filesystem output", 0))
         append_log(run_log_path, f"[error] write_filesystem: {e}")
         status = "❌"
-        print(
-            f"[eval] Result {status} {category}/{name} – filesystem fail – dir: {output_project_dir_abs}",
-            flush=True,
-        )
+        log_info(f"[eval] Result {status} {category}/{name} – filesystem fail – dir: {output_project_dir_abs}")
         return scores
 
-    def run_command_step(log_path, handler, prefix, error_label, *, cmd_prefix=""):
-        try:
-            results = handler()
-            log_cmd_results(log_path, results, prefix, cmd_prefix=cmd_prefix)
-            return True
-        except Exception as e:
-            append_log(log_path, f"[error] {error_label}: {e}")
-            return False
+    # run_command_step moved to runner.logging for reuse across modules
 
-    print(f"[{category}/{name}] Installing dependencies (bun install)", flush=True)
+    log_info(f"[{category}/{name}] Installing dependencies (bun install)")
     if run_command_step(run_log_path, lambda: install_dependencies(output_project_dir_abs), "bun", "bun install"):
         scores.append(Score("`bun install` succeeds", 1))
         passed_install = True
@@ -65,7 +55,7 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
         )
         return scores
 
-    print(f"[{category}/{name}] Running convex codegen", flush=True)
+    log_info(f"[{category}/{name}] Running convex codegen")
     if run_command_step(run_log_path, lambda: generate_code(output_project_dir_abs), "codegen", "convex codegen"):
         scores.append(Score("`convex codegen` succeeds", 1))
         passed_codegen = True
@@ -77,7 +67,7 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
         )
         return scores
 
-    print(f"[{category}/{name}] Typechecking (tsc)", flush=True)
+    log_info(f"[{category}/{name}] Typechecking (tsc)")
     if run_command_step(run_log_path, lambda: typecheck_code(output_project_dir_abs), "tsc", "tsc"):
         scores.append(Score("Passes tsc", 1))
         passed_tsc = True
@@ -89,7 +79,7 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
         )
         return scores
 
-    print(f"[{category}/{name}] Linting (eslint)", flush=True)
+    log_info(f"[{category}/{name}] Linting (eslint)")
     if run_command_step(run_log_path, lambda: lint_code(output_project_dir_abs), "eslint", "eslint"):
         scores.append(Score("Passes eslint", 1))
         passed_eslint = True
@@ -105,7 +95,7 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
     os.makedirs(output_backend_dir, exist_ok=True)
 
     with convex_backend(output_backend_dir) as output_backend:
-        print(f"[{category}/{name}] Deploying generated backend on port {output_backend['port']}", flush=True)
+        log_info(f"[{category}/{name}] Deploying generated backend on port {output_backend['port']}")
         if run_command_step(run_log_path, lambda: deploy(output_backend, output_project_dir_abs), "convex-dev", "convex dev"):
             scores.append(Score("`convex dev` succeeds", 1))
             passed_deploy = True
@@ -121,19 +111,19 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
         answer_project_dir, answer_backend_dir = setup_answer_backend(
             tempdir, eval_path, model, category, name
         )
-        print(f"[{category}/{name}] Setting up answer backend", flush=True)
-        print(f"[{category}/{name}] Installing answer dependencies", flush=True)
+        log_info(f"[{category}/{name}] Setting up answer backend")
+        log_info(f"[{category}/{name}] Installing answer dependencies")
         run_command_step(run_log_path, lambda: install_dependencies(answer_project_dir), "answer-bun", "(answer) bun install", cmd_prefix="(answer) ")
-        print(f"[{category}/{name}] Generating answer code", flush=True)
+        log_info(f"[{category}/{name}] Generating answer code")
         run_command_step(run_log_path, lambda: generate_code(answer_project_dir), "answer-codegen", "(answer) convex codegen", cmd_prefix="(answer) ")
 
         with convex_backend(answer_backend_dir) as answer_backend:
-            print(f"[{category}/{name}] Deploying answer backend on port {answer_backend['port']}", flush=True)
+            log_info(f"[{category}/{name}] Deploying answer backend on port {answer_backend['port']}")
             run_command_step(run_log_path, lambda: deploy(answer_backend, answer_project_dir), "answer-convex-dev", "(answer) convex dev", cmd_prefix="(answer) ")
             test_file = os.path.abspath(os.path.join(eval_path, "grader.test.ts"))
             tests_ratio = 0.0
             try:
-                print(f"[{category}/{name}] Running tests", flush=True)
+                log_info(f"[{category}/{name}] Running tests")
                 pass_rate, vitest_stdout, test_cmd = run_tests(output_backend, answer_backend, test_file)
                 scores.append(Score("Tests pass", pass_rate))
                 tests_ratio = pass_rate
@@ -172,10 +162,7 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
                 failures.append(f"tests fail ({tests_ratio:.0%})")
 
             details = "ok" if len(failures) == 0 else ", ".join(failures)
-            print(
-                f"Result {status} – {details} – dir: {output_project_dir_abs}",
-                flush=True,
-            )
+            log_info(f"Result {status} – {details} – dir: {output_project_dir_abs}")
 
     return scores
 
@@ -234,9 +221,9 @@ def generate_code(project_dir):
 def typecheck_code(project_dir):
     results = []
     convex_dir = os.path.abspath(os.path.join(project_dir, "convex"))
-    cmd1 = ["bunx", "tsc", "-noEmit", "-p", convex_dir]
+    tsc_convex_cmd = ["bunx", "tsc", "-noEmit", "-p", convex_dir]
     done = subprocess.run(
-        cmd1,
+        tsc_convex_cmd,
         cwd=project_dir,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -244,13 +231,13 @@ def typecheck_code(project_dir):
     )
     if done.returncode != 0:
         raise Exception(f"Failed to typecheck code:\n{done.stdout}")
-    results.append((cmd1, done.stdout))
+    results.append((tsc_convex_cmd, done.stdout))
 
     src_dir = os.path.abspath(os.path.join(project_dir, "src"))
     if os.path.exists(src_dir):
-        cmd2 = ["bunx", "tsc", "-noEmit", "-p", "."]
+        tsc_src_cmd = ["bunx", "tsc", "-noEmit", "-p", "."]
         done = subprocess.run(
-            cmd2,
+            tsc_src_cmd,
             cwd=project_dir,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -258,7 +245,7 @@ def typecheck_code(project_dir):
         )
         if done.returncode != 0:
             raise Exception(f"Failed to typecheck code:\n{done.stdout}")
-        results.append((cmd2, done.stdout))
+        results.append((tsc_src_cmd, done.stdout))
     return results
 
 
@@ -266,9 +253,9 @@ def typecheck_code(project_dir):
 def lint_code(project_dir):
     results = []
     eslint_config = os.path.abspath("eslint.config.mjs")
-    cmd1 = ["bunx", "eslint", "-c", eslint_config, "convex"]
+    eslint_convex_cmd = ["bunx", "eslint", "-c", eslint_config, "convex"]
     done = subprocess.run(
-        cmd1,
+        eslint_convex_cmd,
         cwd=project_dir,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -276,14 +263,14 @@ def lint_code(project_dir):
     )
     if done.returncode != 0:
         raise Exception(f"Failed to lint code:\n{done.stdout}")
-    results.append((cmd1, done.stdout))
+    results.append((eslint_convex_cmd, done.stdout))
 
     src_eslint_config = os.path.abspath("src.eslint.config.mjs")
     src_dir = os.path.join(project_dir, "src")
     if os.path.exists(src_dir):
-        cmd2 = ["bunx", "eslint", "-c", src_eslint_config, "src"]
+        eslint_src_cmd = ["bunx", "eslint", "-c", src_eslint_config, "src"]
         done = subprocess.run(
-            cmd2,
+            eslint_src_cmd,
             cwd=project_dir,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -291,7 +278,7 @@ def lint_code(project_dir):
         )
         if done.returncode != 0:
             raise Exception(f"Failed to lint code:\n{done.stdout}")
-        results.append((cmd2, done.stdout))
+        results.append((eslint_src_cmd, done.stdout))
     return results
 
 

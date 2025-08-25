@@ -10,6 +10,7 @@ from runner.reporting import (
 )
 import tempfile
 from dotenv import load_dotenv
+from runner.logging import log_info
 import os
 import re
 import json
@@ -29,7 +30,7 @@ if os.getenv("OUTPUT_TEMPDIR") is not None:
     tempdir = os.getenv("OUTPUT_TEMPDIR")
 else:
     tempdir = tempfile.mkdtemp()
-print(f"Using tempdir: {tempdir}")
+log_info(f"Using tempdir: {tempdir}")
 
 test_filter = None
 if os.getenv("TEST_FILTER") is not None:

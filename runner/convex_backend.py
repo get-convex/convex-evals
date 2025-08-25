@@ -8,6 +8,7 @@ import threading
 import functools
 import contextlib
 import zipfile
+from runner.logging import log_info
 
 port_lock = threading.Lock()
 
@@ -133,10 +134,10 @@ def download_convex_binary():
         if os.path.exists(binary_path):
             return binary_path
 
-        print("Latest release:", version)
+        log_info("Latest release:", version)
 
         url = matching_asset["browser_download_url"]
-        print("Downloading:", url)
+        log_info("Downloading:", url)
         response = requests.get(url, stream=True)
         response.raise_for_status()
 
@@ -144,7 +145,7 @@ def download_convex_binary():
         with open(zip_path, "wb") as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
-        print("Downloaded:", matching_asset["name"])
+        log_info("Downloaded:", matching_asset["name"])
 
         # Unzip the file
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
@@ -162,6 +163,6 @@ def download_convex_binary():
 
         # Clean up zip file
         os.remove(zip_path)
-        print("Extracted binary to:", binary_path)
+        log_info("Extracted binary to:", binary_path)
 
     return binary_path

@@ -2,6 +2,7 @@ import os
 import json
 import requests
 from braintrust import Reporter
+from runner.logging import log_info
 from braintrust.framework import report_failures, EvalResultWithSummary
 
 
@@ -24,12 +25,12 @@ def post_scores_to_convex(model_name: str, category_scores: dict, total_score: f
                 },
             )
             if response.status_code == 200:
-                print(f"Successfully posted scores for model {model_name} to Convex")
+                log_info(f"Successfully posted scores for model {model_name} to Convex")
             else:
-                print(f"Failed to post scores: HTTP {response.status_code}")
-                print(f"Response: {response.text}")
+                log_info(f"Failed to post scores: HTTP {response.status_code}")
+                log_info(f"Response: {response.text}")
         except Exception as e:
-            print(f"Error posting scores to Convex: {str(e)}")
+            log_info(f"Error posting scores to Convex: {str(e)}")
 
 
 def report_eval(evaluator, result: EvalResultWithSummary, verbose, jsonl):
@@ -76,20 +77,20 @@ def report_eval(evaluator, result: EvalResultWithSummary, verbose, jsonl):
 
         # Pretty console summary
         overall_rate = (total_score / total_num_tests) if total_num_tests > 0 else 0
-        print()
-        print("=== Eval Summary ===")
-        print(f"Model: {results[0].metadata.get('model_name', 'unknown') if results and results[0].metadata else 'unknown'}")
-        print(f"Overall: {overall_rate:.2%} ({total_passed} pass, {total_num_tests - total_passed} fail)")
+        log_info("")
+        log_info("=== Eval Summary ===")
+        log_info(f"Model: {results[0].metadata.get('model_name', 'unknown') if results and results[0].metadata else 'unknown'}")
+        log_info(f"Overall: {overall_rate:.2%} ({total_passed} pass, {total_num_tests - total_passed} fail)")
         for category in sorted(num_tests.keys()):
             rate = scores[category] / num_tests[category]
             cat_pass = passed_counts.get(category, 0)
-            print(f"- {category}: {rate:.2%} ({cat_pass} pass, {num_tests[category] - cat_pass} fail)")
+            log_info(f"- {category}: {rate:.2%} ({cat_pass} pass, {num_tests[category] - cat_pass} fail)")
 
         # Always write local results; print the path
-        print(f"Results written to: {OUTPUT_RESULTS_FILE}")
+        log_info(f"Results written to: {OUTPUT_RESULTS_FILE}")
 
         if jsonl:
-            print(json.dumps(summary.as_dict()))
+            log_info(json.dumps(summary.as_dict()))
 
     return len(failing_results) == 0
 
@@ -163,16 +164,16 @@ def file_report_eval(evaluator, result: EvalResultWithSummary, verbose, jsonl):
     if results and results[0].metadata and "model_name" in results[0].metadata:
         model_name = results[0].metadata["model_name"]
 
-    print()
-    print("=== Eval Summary ===")
-    print(f"Model: {model_name if model_name else 'unknown'}")
-    print(f"Overall: {overall_rate:.2%} ({total_num_tests} tests)")
+    log_info("")
+    log_info("=== Eval Summary ===")
+    log_info(f"Model: {model_name if model_name else 'unknown'}")
+    log_info(f"Overall: {overall_rate:.2%} ({total_num_tests} tests)")
     for category in sorted(num_tests.keys()):
         rate = (tests_pass_scores.get(category, 0.0) / num_tests[category]) if num_tests[category] > 0 else 0.0
-        print(f"- {category}: {rate:.2%} ({num_tests[category]} tests)")
+        log_info(f"- {category}: {rate:.2%} ({num_tests[category]} tests)")
     if failing_results:
-        print(f"Failures: {len(failing_results)} case(s)")
-    print(f"Results written to: {OUTPUT_RESULTS_FILE}")
+        log_info(f"Failures: {len(failing_results)} case(s)")
+    log_info(f"Results written to: {OUTPUT_RESULTS_FILE}")
 
     return len(failing_results) == 0
 

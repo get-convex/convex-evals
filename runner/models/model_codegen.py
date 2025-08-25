@@ -17,18 +17,19 @@ class Model(ConvexCodegenModel):
         url = "https://api.braintrust.dev/v1/proxy"
 
         if disable_proxy:
-            if model.provider == ModelProvider.OPENAI:
-                url = "https://api.openai.com/v1"
-            elif model.provider == ModelProvider.ANTHROPIC:
-                url = "https://api.anthropic.com/v1"
-            elif model.provider == ModelProvider.TOGETHER:
-                url = "https://api.together.xyz/v1"
-            elif model.provider == ModelProvider.GOOGLE:
-                url = "https://generativelanguage.googleapis.com/v1beta"
-            elif model.provider == ModelProvider.XAI:
-                url = "https://api.x.ai/v1"
-            else:
-                raise ValueError(f"Unknown model provider for disable-proxy mode: {model.provider}")
+            match model.provider:
+                case ModelProvider.OPENAI:
+                    url = "https://api.openai.com/v1"
+                case ModelProvider.ANTHROPIC:
+                    url = "https://api.anthropic.com/v1"
+                case ModelProvider.TOGETHER:
+                    url = "https://api.together.xyz/v1"
+                case ModelProvider.GOOGLE:
+                    url = "https://generativelanguage.googleapis.com/v1beta"
+                case ModelProvider.XAI:
+                    url = "https://api.x.ai/v1"
+                case _:
+                    raise ValueError(f"Unknown model provider for disable-proxy mode: {model.provider}")
 
         if model.override_proxy:
             url = model.override_proxy
