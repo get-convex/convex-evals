@@ -8,7 +8,7 @@ Implement these functions in `convex/index.ts`:
    - Should be accessible to client applications
 
 2. Create a mutation `logClientEvent` that:
-   - Takes eventName (string) and data (any) as arguments
+   - Takes arguments:  `{ eventName: string, data: any }`
    - Logs the event to the console
    - Returns the current timestamp
    - Should be accessible to client applications

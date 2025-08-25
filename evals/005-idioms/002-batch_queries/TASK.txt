@@ -22,15 +22,15 @@ Implement these functions:
 
 1. In convex/users.ts:
    - Create an internal query `getUserByEmail` that:
-     - Takes email (string) as argument
+     - Takes arguments:  `{ email: string }`
      - Returns the user document or null
 
 2. In convex/posts.ts:
    - Create an internal query `getPostsByUserId` that:
-     - Takes userId (Id<"users">) as argument
+     - Takes arguments:  `{ userId: Id<"users"> }`
      - Returns array of post documents
    - Create a query `getUserAndPosts` that:
-     - Takes an argument of an email.
+     - Takes arguments:  `{ email: string }`
      - Fetches the user and their posts
      - Returns an object with the user and their posts
 
