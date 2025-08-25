@@ -18,15 +18,18 @@
     "typescript": "^5.7.3"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^2.0.19",
+    "zod": "^3.23.8",
     "@types/bun": "^1.2.20",
     "@types/node": "^22.12.0",
+    "ai": "^5.0.22",
     "convex": "^1.18.2",
     "dotenv": "^17.2.1",
     "prettier": "^3.4.2",
     "typescript-eslint": "^8.23.0",
     "vitest": "^3.0.2"
   },
-  "scripts": {   
+  "scripts": {
     "local:run:fundamentals": "cross-env TEST_FILTER=000-fundamentals npm run local:run",
     "local:run:one": "cross-env TEST_FILTER=000-fundamentals/000 npm run local:run",
     "local:run": "cross-env MODELS=gpt-5 DISABLE_BRAINTRUST=1 VERBOSE_INFO_LOGS=1 LOCAL_RESULTS=local_results.jsonl npm run run:evals",

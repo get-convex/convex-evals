@@ -3,6 +3,7 @@ import shutil
 import subprocess
 import json
 import re
+import tempfile
 from braintrust import traced, Score
 from runner.convex_backend import convex_backend, admin_key
 from runner.logging import append_log, append_log_block, log_cmd_results, log_info, run_command_step
@@ -132,6 +133,9 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
                 if isinstance(e, TestsFailedException):
                     scores.append(Score("Tests pass", e.ratio))
                     tests_ratio = e.ratio
+                    # Even on failure, capture and log Vitest stdout (includes console logs)
+                    if getattr(e, "stdout", None) is not None and getattr(e, "cmd", None) is not None:
+                        log_cmd_results(run_log_path, [(e.cmd, e.stdout)], "vitest")
                 else:
                     scores.append(Score("Tests pass", 0))
                     tests_ratio = 0.0
@@ -168,9 +172,11 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
 
 
 class TestsFailedException(Exception):
-    def __init__(self, message, ratio):
+    def __init__(self, message, ratio, stdout=None, cmd=None):
         super().__init__(message)
         self.ratio = ratio
+        self.stdout = stdout
+        self.cmd = cmd
 
 
 @traced
@@ -344,12 +350,20 @@ def run_tests(backend, answer_backend, test_file):
     )
     if answer_backend is not None:
         env["CONVEX_ANSWER_PORT"] = str(answer_backend["port"])
+    # Write JSON reporter output to a temp file so stdout can include human output + console logs
+    tmp_json = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
+    tmp_json_path = tmp_json.name
+    tmp_json.close()
+    # Vitest supports multiple reporters; keep JSON (to parse) and default (to include logs on stdout)
     cmd = [
         "bunx",
         "vitest",
         "run",
         test_file,
         "--reporter=json",
+        "--outputFile",
+        tmp_json_path,
+        "--reporter=default",
         "--no-color",
     ]
     done = subprocess.run(
@@ -361,9 +375,15 @@ def run_tests(backend, answer_backend, test_file):
     )
 
     try:
-        # Removes all characters before the first `{` and after the last `}`
-        cleaned_stdout = re.sub(r"^.*?(\{.*\}).*$", r"\1", done.stdout, flags=re.DOTALL)
-        results = json.loads(cleaned_stdout)
+        # Prefer reading structured results from the JSON reporter file
+        results = None
+        try:
+            with open(tmp_json_path, "r", encoding="utf-8") as f:
+                results = json.load(f)
+        except Exception:
+            # Fallback: extract JSON blob from stdout if file missing or invalid
+            cleaned_stdout = re.sub(r"^.*?(\{.*\}).*$", r"\1", done.stdout, flags=re.DOTALL)
+            results = json.loads(cleaned_stdout)
 
         total = results["numTotalTests"]
         passed = results["numPassedTests"]
@@ -373,13 +393,18 @@ def run_tests(backend, answer_backend, test_file):
             raise Exception(f"Failed to run tests:\n{done.stdout}")
         else:
             raise Exception(f"Failed to parse tests results: {e}")
+    finally:
+        try:
+            os.remove(tmp_json_path)
+        except Exception:
+            pass
 
     if ratio != 1:
         error_message = ""
         for test in results["testResults"][0]["assertionResults"]:
             if test["status"] == "failed":
                 error_message += f"{test['title']}: {test['failureMessages']}\n"
-        raise TestsFailedException(f"Tests failed:\n{error_message}", ratio)
+        raise TestsFailedException(f"Tests failed:\n{error_message}", ratio, done.stdout, cmd)
     return ratio, done.stdout, cmd
 
 
