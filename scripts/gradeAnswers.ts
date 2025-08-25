@@ -110,7 +110,7 @@ function copyAnswerToOutput(
   return files.length;
 }
 
-// -------- Grader runner (full streaming) --------
+// -------- Grader runner (streaming output) --------
 async function runGraderStreaming(tempdir: string): Promise<number> {
   const p = Bun.spawn(
     ["pdm", "run", "python", "-m", "runner.run_grader", tempdir],
@@ -171,7 +171,11 @@ async function main() {
     console.log("Starting grader run...");
     const code = await runGraderStreaming(absTempdir);
     console.log(`Grader finished with exit code: ${code}`);
-    if (code !== 0) process.exit(code || 1);
+    if (code !== 0) {
+      const tempdirLink = absTempdir.replace(/\\/g, "/");
+      console.log(`One or more gradings failed. See logs in: ${tempdirLink}`);
+      return;
+    }
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
