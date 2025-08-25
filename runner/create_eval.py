@@ -3,6 +3,7 @@ import sys
 import subprocess
 
 from runner.models.model_codegen import Model
+from runner.logging import log_info
 
 import glob
 from dotenv import load_dotenv
@@ -187,11 +188,11 @@ def main():
         next_id = max(existing) + 1 if existing else 0
         testdir_name = f"{next_id:03d}-{name}"
     testdir = os.path.join(category_dir, testdir_name)
-    print(f"\nCreating eval for category '{category}' and name '{name}': {testdir}")
+    log_info(f"\nCreating eval for category '{category}' and name '{name}': {testdir}")
     os.makedirs(testdir, exist_ok=True)
 
     task_file = os.path.join(testdir, "TASK.txt")
-    print("\nStep 1: Generate TASK.txt with a one-line description")
+    log_info("\nStep 1: Generate TASK.txt with a one-line description")
     if should_run_step(1):
         one_line_desc = input("Description: ")
 
@@ -201,7 +202,7 @@ def main():
             f.write(task_description)
         open_in_cursor([task_file])
 
-    print("\nStep 2: Creating answer based on task description")
+    log_info("\nStep 2: Creating answer based on task description")
     answer_dir = os.path.join(testdir, "answer")
     convex_dir = os.path.join(answer_dir, "convex")
     if should_run_step(2):
@@ -250,7 +251,7 @@ def main():
                 files_to_open.append(os.path.join(answer_dir, "src", file))
         open_in_cursor(files_to_open)
 
-    print("\nStep 3: Generating grader.test.ts")
+    log_info("\nStep 3: Generating grader.test.ts")
     grader_file = os.path.join(testdir, "grader.test.ts")
     if should_run_step(3):
         # Get implementation files
@@ -269,11 +270,11 @@ def main():
         with open(grader_file, "w") as f:
             f.write(grader_test)
 
-        print("\nOpening grader.test.ts for editing")
+        log_info("\nOpening grader.test.ts for editing")
         open_in_cursor([grader_file])
 
     env = os.environ.copy()
-    print("\nStep 4: Running tests interactively")
+    log_info("\nStep 4: Running tests interactively")
     if should_run_step(4):
         backend_dir = os.path.join(testdir, "backend")
         with convex_backend(backend_dir) as backend:
@@ -332,7 +333,7 @@ def main():
             )
             convex_dev_process.kill()
 
-    print("\nStep 5: Running eval and reporting gaps")
+    log_info("\nStep 5: Running eval and reporting gaps")
     if should_run_step(5):
         test_filter = f"{category}/{testdir_name}"
         env["TEST_FILTER"] = test_filter
@@ -349,12 +350,12 @@ def main():
             f.write(f"{category}, {name}:\n")
         open_in_cursor([gaps_file])
 
-    print("\nStep 6: Committing to git")
+    log_info("\nStep 6: Committing to git")
     if should_run_step(6):
         subprocess.run(["git", "add", testdir], check=True)
         subprocess.run(["git", "commit", "-m", f"eval: {category} {name}"], check=True)
 
-    print("\nDone! New eval created at:", testdir)
+    log_info(f"\nDone! New eval created at: {testdir}")
 
 
 if __name__ == "__main__":

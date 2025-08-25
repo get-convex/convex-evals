@@ -1,4 +1,5 @@
 import re
+import os
 
 
 def sanitize_output(text: str) -> str:
@@ -52,5 +53,12 @@ def log_cmd_results(log_path: str, results, prefix: str, *, cmd_prefix: str = ""
         else:
             append_log(log_path, f"[cmd] {cmd_str}")
         append_log_block(log_path, prefix, stdout)
+
+
+def log_info(message: str) -> None:
+    verbose = os.getenv("VERBOSE_INFO_LOGS", "").lower() in {"1", "true", "yes"}
+    if not verbose:
+        return
+    print(message, flush=True)
 
 
