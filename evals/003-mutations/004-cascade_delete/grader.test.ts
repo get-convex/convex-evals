@@ -152,7 +152,7 @@ test("maintains data consistency with concurrent operations", async () => {
   expect(remainingDocs).toHaveLength(0);
 });
 
-test("no-op when deleting non-existent user id", async () => {
+test("throws when deleting non-existent user id", async () => {
   const beforeUsers = (await listTable(
     responseAdminClient,
     "users",
@@ -163,10 +163,11 @@ test("no-op when deleting non-existent user id", async () => {
   )) as Doc<"documents">[];
 
   await expect(
-    responseClient.mutation(api.index.deleteUserAndDocuments, {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    responseClient.mutation(api.index.deleteUserAndDocuments as any, {
       userId: "nonexistent" as unknown as string,
     }),
-  ).resolves.toBeUndefined();
+  ).rejects.toThrow(/not found/i);
 
   const afterUsers = (await listTable(
     responseAdminClient,

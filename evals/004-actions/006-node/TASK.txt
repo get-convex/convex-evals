@@ -10,6 +10,10 @@ Implement this function in `convex/index.ts`:
      - hash: The SHA-256 hash of the input string
      - normalizedPath: A normalized version of "/some/test/path"
 
+Behavioral expectations:
+- The hash must be a lowercase hexadecimal SHA-256 string of length 64.
+- `normalizedPath` must equal "/some/test/path" consistently for all inputs.
+
 This function should assume it needs libraries not available with the default Convex runtime.
 Create only the `convex/index.ts` and `package.json` files. Do not generate any other files.
 No schema is required for this demo since it doesn't use the database.

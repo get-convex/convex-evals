@@ -125,7 +125,7 @@ test("deletes user and all associated content", async () => {
   expect(remainingLikes[0].userId).toBe(user2Id);
 });
 
-test("deleteUser no-op for non-existent id", async () => {
+test("deleteUser throws for non-existent id", async () => {
   const beforeUsers = (await listTable(
     responseAdminClient,
     "users",
@@ -147,7 +147,7 @@ test("deleteUser no-op for non-existent id", async () => {
     responseClient.mutation(api.index.deleteUser, {
       userId: "nonexistent" as unknown as string,
     }),
-  ).resolves.toBeUndefined();
+  ).rejects.toThrow(/User not found/i);
 
   const afterUsers = (await listTable(
     responseAdminClient,

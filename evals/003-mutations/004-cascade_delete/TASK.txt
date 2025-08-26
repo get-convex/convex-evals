@@ -26,6 +26,7 @@ The implementation should demonstrate:
 - Parallel operations for better performance
 - Proper error handling
 - Transaction handling to ensure data consistency
+ - Should handle concurrent deletions correctly without leaving orphaned data
 
 Type all arguments and return values appropriately using TypeScript.
 
