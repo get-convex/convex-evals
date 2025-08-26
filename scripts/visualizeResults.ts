@@ -636,6 +636,7 @@ function generateMainContent(
         <div class="tab-nav">
           <button class="tab-button active" onclick="switchTab('task', '${category}', '${evalName}')">📋 Task</button>
           <button class="tab-button" onclick="switchTab('steps', '${category}', '${evalName}')">📊 Steps</button>
+          <button class="tab-button" onclick="switchTab('answer', '${category}', '${evalName}')">💡 Answer</button>
           <button class="tab-button" onclick="switchTab('output', '${category}', '${evalName}')">📁 Output</button>
         </div>
         
@@ -661,6 +662,31 @@ function generateMainContent(
           `
                 : ""
             }
+          </div>
+          
+          <!-- Answer Tab -->
+          <div class="tab-pane" id="answer-tab-${category}-${evalName}">
+            <div class="file-browser">
+              <div class="file-tree">
+                <div class="file-tree-header">
+                  Answer Directory
+                  <button onclick="copyDirectoryPath('${process.cwd()}/evals/${category}/${evalName}/answer')" class="copy-path-button" title="Copy answer directory path">
+                    📋
+                  </button>
+                </div>
+                <div id="answer-file-tree-content-${category}-${evalName}">
+                  <p><em>Loading answer directory...</em></p>
+                </div>
+              </div>
+              <div class="file-viewer">
+                <div class="file-viewer-header">
+                  <span id="answer-current-file-name-${category}-${evalName}">Select a file</span>
+                </div>
+                <div class="file-content" id="answer-file-content-${category}-${evalName}">
+                  <p><em>Select a file to view its contents</em></p>
+                </div>
+              </div>
+            </div>
           </div>
           
           <!-- Output Tab -->
@@ -706,7 +732,7 @@ function generateMainContent(
               if (response.ok) {
                 const data = await response.json();
                 if (taskElement) {
-                  taskElement.innerHTML = \`<pre style="white-space: pre-wrap; background: #f8fafc; padding: 1rem; border-radius: 4px; border: 1px solid #e5e7eb; margin: 0; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 0.875rem; line-height: 1.5;">\${data.content}</pre>\`;
+                  taskElement.innerHTML = \`<pre style="white-space: pre-wrap; margin: 0; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 0.875rem; line-height: 1.6; height: 100%; overflow-y: auto;">\${data.content}</pre>\`;
                 }
               } else {
                 if (taskElement) {
@@ -754,6 +780,14 @@ function generateMainContent(
                   const runLogFile = data.files.find(f => f.name === 'run.log');
                   if (runLogFile) {
                     loadFile(runLogFile.path, 'run.log', '${category}', '${evalName}');
+                    
+                    // Mark run.log as active in the file tree
+                    setTimeout(() => {
+                      const runLogButton = document.querySelector(\`#file-tree-content-\${category}-\${evalName} .file-tree-item[title="run.log"]\`);
+                      if (runLogButton) {
+                        runLogButton.classList.add('active');
+                      }
+                    }, 100);
                   }
                 }
               } else {
@@ -884,17 +918,31 @@ function generateHTML(
         .main-content {
             flex: 1;
             background: white;
-            overflow-y: auto;
+            overflow: hidden;
             padding: 2rem;
+            display: flex;
+            flex-direction: column;
         }
         
         /* Remove padding for eval details with tabs */
         .main-content .tab-container {
             margin: -2rem;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
         }
         
         .main-content .tab-container .tab-nav {
-            padding: 0 2rem;
+            padding: 0;
+        }
+        
+        .main-content .tab-container .tab-button:first-child {
+            margin-left: 0;
+            padding-left: 2rem;
+        }
+        
+        .main-content .tab-container .tab-button:last-child {
+            padding-right: 2rem;
         }
         
         .sidebar-header {
@@ -1088,21 +1136,44 @@ function generateHTML(
         }
         
         .tab-content {
-            min-height: 400px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
         }
         
         .tab-pane {
             display: none;
+            flex: 1;
+            overflow: hidden;
         }
         
         .tab-pane.active {
-            display: block;
+            display: flex;
+            flex-direction: column;
         }
         
         /* Add padding to specific content within tabs */
         .task-content {
-            padding: 1.5rem;
+            flex: 1;
+            overflow: hidden;
+            height: 100%;
+            background: #f8fafc;
+            border: 1px solid #e5e7eb;
+            border-radius: 4px;
+            margin: 1.5rem;
         }
+        
+        .task-content pre {
+            padding: 1.5rem;
+            margin: 0;
+            height: 100%;
+            overflow-y: auto;
+            box-sizing: border-box;
+            background: transparent;
+            border: none;
+        }
+        
+
         
         .failure-summary {
             margin: 0 1.5rem 1.5rem 1.5rem;
@@ -1155,6 +1226,8 @@ function generateHTML(
             flex-direction: column;
             gap: 0.5rem;
             padding: 1.5rem;
+            flex: 1;
+            overflow-y: auto;
         }
         
         .score-item {
@@ -1250,7 +1323,7 @@ function generateHTML(
         /* File Browser Styles */
         .file-browser {
             display: flex;
-            min-height: 600px;
+            flex: 1;
             border: 1px solid #e5e7eb;
             border-radius: 4px;
             overflow: hidden;
@@ -1945,6 +2018,11 @@ function generateHTML(
             
             // Add active class to the clicked button
             event.target.classList.add('active');
+            
+            // Load answer directory if answer tab is selected
+            if (tabName === 'answer') {
+                loadAnswerDirectory(category, evalName);
+            }
         }
 
         function toggleCollapse(sectionId) {
@@ -2076,7 +2154,11 @@ function generateHTML(
                 // Update active state in file tree
                 const treeItems = document.querySelectorAll(\`#file-tree-content-\${category}-\${evalName} .file-tree-item\`);
                 treeItems.forEach(item => item.classList.remove('active'));
-                event.target.classList.add('active');
+                
+                // Only update active state if event.target exists (when clicked)
+                if (typeof event !== 'undefined' && event.target) {
+                    event.target.classList.add('active');
+                }
                 
                 // Update file name in header
                 const fileNameElement = document.getElementById(\`current-file-name-\${category}-\${evalName}\`);
@@ -2175,6 +2257,104 @@ function generateHTML(
         // setTimeout(() => {
         //     window.location.reload();
         // }, 30000);
+        
+        // Answer directory functions
+        async function loadAnswerDirectory(category, evalName) {
+            try {
+                const answerPath = 'evals/' + category + '/' + evalName + '/answer';
+                const response = await fetch(\`/browse/\${encodeURIComponent(answerPath)}\`);
+                const treeElement = document.getElementById(\`answer-file-tree-content-\${category}-\${evalName}\`);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (treeElement && data.files) {
+                        const fileTreeHTML = data.files.map(file => {
+                            const safeId = btoa(file.path).replace(/[^a-zA-Z0-9]/g, '');
+                            if (file.isDirectory) {
+                                return \`
+                                    <div class="directory-container">
+                                        <button class="file-tree-item directory" onclick="toggleAnswerDirectory('\${file.path.replace(/\\\\/g, '\\\\\\\\')}', '\${file.name}', '\${category}', '\${evalName}')">
+                                            <span>📁 \${file.name}</span>
+                                            <span class="expand-arrow">▶</span>
+                                        </button>
+                                        <div class="file-tree-children collapsed" id="answer-children-\${safeId}"></div>
+                                    </div>
+                                \`;
+                            } else {
+                                return \`<button class="file-tree-item file" onclick="loadAnswerFile('\${file.path.replace(/\\\\/g, '\\\\\\\\')}', '\${file.name}', '\${category}', '\${evalName}')" title="\${file.name}">📄 \${file.name}</button>\`;
+                            }
+                        }).join('');
+                        treeElement.innerHTML = fileTreeHTML;
+                    }
+                } else {
+                    if (treeElement) {
+                        treeElement.innerHTML = '<p style="color: #dc2626;">Answer directory not found.</p>';
+                    }
+                }
+            } catch (error) {
+                const treeElement = document.getElementById(\`answer-file-tree-content-\${category}-\${evalName}\`);
+                if (treeElement) {
+                    treeElement.innerHTML = \`<p style="color: #dc2626;">Error loading answer directory: \${error.message}</p>\`;
+                }
+            }
+        }
+        
+        async function loadAnswerFile(filePath, fileName, category, evalName) {
+            try {
+                const treeItems = document.querySelectorAll(\`#answer-file-tree-content-\${category}-\${evalName} .file-tree-item\`);
+                treeItems.forEach(item => item.classList.remove('active'));
+                
+                if (typeof event !== 'undefined' && event.target) {
+                    event.target.classList.add('active');
+                }
+                
+                const fileNameElement = document.getElementById(\`answer-current-file-name-\${category}-\${evalName}\`);
+                if (fileNameElement) {
+                    fileNameElement.textContent = fileName;
+                }
+                
+                const response = await fetch(\`/file/\${encodeURIComponent(filePath)}\`);
+                const contentElement = document.getElementById(\`answer-file-content-\${category}-\${evalName}\`);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (contentElement) {
+                        const language = getLanguageFromFileName(fileName);
+                        const isLogFile = fileName.endsWith('.log') || fileName.endsWith('.txt');
+                        
+                        if (isLogFile || language === 'text' || language === 'log') {
+                            const style = isLogFile 
+                                ? 'white-space: pre-wrap; background: #1f2937; color: #f3f4f6; padding: 1rem; margin: 0; font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace; font-size: 0.875rem; line-height: 1.4; height: 100%; overflow-y: auto;'
+                                : 'white-space: pre-wrap; background: #f8fafc; color: #374151; padding: 1rem; margin: 0; font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace; font-size: 0.875rem; line-height: 1.4; height: 100%; overflow-y: auto; border: 1px solid #e5e7eb;';
+                            
+                            contentElement.innerHTML = \`<pre style="\${style}">\${data.content}</pre>\`;
+                        } else {
+                            const escapedContent = data.content
+                                .replace(/&/g, '&amp;')
+                                .replace(/</g, '&lt;')
+                                .replace(/>/g, '&gt;');
+                            
+                            contentElement.innerHTML = \`
+                                <pre class="language-\${language}" style="margin: 0; height: 100%; overflow-y: auto; font-size: 0.875rem; line-height: 1.4;"><code class="language-\${language}">\${escapedContent}</code></pre>
+                            \`;
+                            
+                            if (window.Prism) {
+                                Prism.highlightAllUnder(contentElement);
+                            }
+                        }
+                    }
+                } else {
+                    if (contentElement) {
+                        contentElement.innerHTML = '<p style="color: #dc2626; padding: 1rem;">File not found or could not be loaded.</p>';
+                    }
+                }
+            } catch (error) {
+                const contentElement = document.getElementById(\`answer-file-content-\${category}-\${evalName}\`);
+                if (contentElement) {
+                    contentElement.innerHTML = \`<p style="color: #dc2626; padding: 1rem;">Error loading file: \${error.message}</p>\`;
+                }
+            }
+        }
     </script>
 </body>
 </html>
