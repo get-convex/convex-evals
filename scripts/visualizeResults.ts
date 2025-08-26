@@ -746,6 +746,45 @@ function generateMainContent(
       </div>
         
                  <script>
+           // Define helper functions first
+           function makeLogPathsClickable(logContent, category, evalName) {
+               // Escape HTML first
+               const escapedContent = logContent
+                   .replace(/&/g, '&amp;')
+                   .replace(/</g, '&lt;')
+                   .replace(/>/g, '&gt;');
+               
+               // Regular expression to match file paths with optional line/column numbers
+               const filePathRegex = /(?:^|\\s)((?:[a-zA-Z0-9_-]+\\/)*[a-zA-Z0-9_-]+\\.[a-zA-Z0-9]+)(?:\\((\\d+)(?:,\\d+)?\\)|:(\\d+)(?::\\d+)?)?/gm;
+               
+               return escapedContent.replace(filePathRegex, (match, filePath, lineNumber1, lineNumber2) => {
+                   const lineNumber = lineNumber1 || lineNumber2;
+                   const cleanPath = filePath.trim();
+                   const displayPath = match.trim();
+                   
+                   // Create clickable link that switches to Output tab and opens the file
+                   return \` <span class="log-file-path" onclick="openFileFromLog('\${cleanPath}', '\${category}', '\${evalName}', \${lineNumber || 'null'})" title="Click to open \${cleanPath}">\${displayPath}</span>\`;
+               });
+           }
+           
+           function openFileFromLog(filePath, category, evalName, lineNumber) {
+               // Update URL to navigate to output tab with the specific file
+               const runIndex = getCurrentRunIndex();
+               let newUrl = \`/run-\${runIndex}/\${category}/\${evalName}/output#\${encodeURIComponent(filePath)}\`;
+               if (lineNumber) {
+                   newUrl += \`:\${lineNumber}\`;
+               }
+               
+               // Navigate to the new URL, which will trigger a page reload with the correct state
+               window.location.href = newUrl;
+           }
+           
+           function getCurrentRunIndex() {
+               const path = window.location.pathname;
+               const match = path.match(/\\/run-(\\d+)/);
+               return match ? parseInt(match[1]) : 0;
+           }
+           
            // Auto-load task file and run log when page loads
            (async function() {
              // Load run log into the Log tab
@@ -1592,24 +1631,38 @@ function generateHTML(
              color: #1d4ed8;
          }
          
-         /* Line numbers styling */
+         /* Line numbers styling - IDE-like gutter */
+         .line-numbers {
+             display: table;
+             width: 100%;
+             font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+             font-size: 0.875rem;
+             line-height: 1.5;
+             white-space: pre;
+         }
+         
+         .line-numbers .code-line {
+             display: table-row;
+         }
+         
          .line-numbers .line-number {
-             display: inline-block;
-             width: 45px;
-             padding-right: 8px;
+             display: table-cell;
+             width: 50px;
+             padding: 0 8px 0 4px;
              color: #9ca3af;
+             background-color: #f8fafc;
              text-align: right;
              user-select: none;
              border-right: 1px solid #e5e7eb;
-             margin-right: 12px;
-             font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+             vertical-align: top;
              font-size: 0.75rem;
-             line-height: 1.4;
          }
          
          .line-numbers .line-content {
-             display: inline;
-             padding-left: 4px;
+             display: table-cell;
+             padding: 0 0 0 12px;
+             vertical-align: top;
+             width: 100%;
          }
          
          /* Clickable log file paths */
@@ -2252,11 +2305,7 @@ function generateHTML(
             window.location.href = \`/run-\${runIndex}/\${category}\`;
         }
         
-        function getCurrentRunIndex() {
-            const path = window.location.pathname;
-            const match = path.match(/\\/run-(\\d+)/);
-            return match ? parseInt(match[1]) : 0;
-        }
+
         
         // Auto-load file and line from URL fragment on page load (backup for non-output tabs)
         document.addEventListener('DOMContentLoaded', function() {
@@ -2285,10 +2334,29 @@ function generateHTML(
                     const buttonPath = button.getAttribute('onclick');
                     const buttonTitle = button.getAttribute('title');
                     
-                    // Check if this button matches our file path
-                    if ((buttonPath && buttonPath.includes(filePath)) || 
-                        (buttonTitle && filePath.endsWith(buttonTitle))) {
-                        console.log('Found matching file button, clicking:', buttonTitle);
+                    console.log('Checking button - Title:', buttonTitle, 'Path in onclick:', buttonPath);
+                    
+                    // Extract the actual file path from the onclick attribute
+                    let extractedPath = '';
+                    if (buttonPath) {
+                        // Extract path from onclick="loadFile('path', 'name', ...)"
+                        const loadFileRegex = new RegExp("loadFile\\\\('([^']+)'");
+                        const pathMatch = buttonPath.match(loadFileRegex);
+                        if (pathMatch) {
+                            extractedPath = pathMatch[1].replace(/\\\\\\\\/g, '/').replace(/\\\\/g, '/');
+                        }
+                    }
+                    
+                    console.log('Extracted path:', extractedPath, 'Target path:', filePath);
+                    
+                    // Check if this button matches our file path (exact match or ends with the relative path)
+                    const isExactMatch = extractedPath === filePath;
+                    const isRelativeMatch = extractedPath.endsWith(filePath) && extractedPath.includes('/');
+                    const isFileNameMatch = buttonTitle === filePath.split('/').pop() && filePath.includes('/');
+                    
+                    if (isExactMatch || isRelativeMatch || isFileNameMatch) {
+                        console.log('Found matching file button, clicking:', buttonTitle, 'Match type:', 
+                                   isExactMatch ? 'exact' : isRelativeMatch ? 'relative' : 'filename');
                         
                         // Simulate the click
                         button.click();
@@ -2530,16 +2598,19 @@ function generateHTML(
                                      .replace(/&/g, '&amp;')
                                      .replace(/</g, '&lt;')
                                      .replace(/>/g, '&gt;');
-                                 return \`<span class="line-number">\${lineNumber}</span><span class="line-content">\${escapedLine}</span>\`;
-                             }).join('\\n');
+                                 return \`<div class="code-line"><span class="line-number">\${lineNumber}</span><span class="line-content"><code class="language-\${language}">\${escapedLine}</code></span></div>\`;
+                             }).join('');
                              
                              contentElement.innerHTML = \`
-                                 <pre class="language-\${language} line-numbers" style="margin: 0; height: 100%; overflow-y: auto; font-size: 0.875rem; line-height: 1.4;"><code class="language-\${language}">\${numberedContent}</code></pre>
+                                 <div class="line-numbers" style="margin: 0; height: 100%; overflow-y: auto;">\${numberedContent}</div>
                              \`;
                              
-                             // Apply syntax highlighting
+                             // Apply syntax highlighting to each line
                              if (window.Prism) {
-                                 Prism.highlightAllUnder(contentElement);
+                                 const codeElements = contentElement.querySelectorAll('.line-content code');
+                                 codeElements.forEach(codeEl => {
+                                     Prism.highlightElement(codeEl);
+                                 });
                              }
                          }
                         
@@ -2616,15 +2687,19 @@ function generateHTML(
                                      .replace(/&/g, '&amp;')
                                      .replace(/</g, '&lt;')
                                      .replace(/>/g, '&gt;');
-                                 return \`<span class="line-number">\${lineNumber}</span><span class="line-content">\${escapedLine}</span>\`;
-                             }).join('\\n');
+                                 return \`<div class="code-line"><span class="line-number">\${lineNumber}</span><span class="line-content"><code class="language-\${language}">\${escapedLine}</code></span></div>\`;
+                             }).join('');
                              
                              answerContentElement.innerHTML = \`
-                                 <pre class="language-\${language} line-numbers" style="margin: 0; height: 100%; overflow-y: auto; font-size: 0.875rem; line-height: 1.4;"><code class="language-\${language}">\${numberedContent}</code></pre>
+                                 <div class="line-numbers" style="margin: 0; height: 100%; overflow-y: auto;">\${numberedContent}</div>
                              \`;
                              
+                             // Apply syntax highlighting to each line
                              if (window.Prism) {
-                                 Prism.highlightAllUnder(answerContentElement);
+                                 const codeElements = answerContentElement.querySelectorAll('.line-content code');
+                                 codeElements.forEach(codeEl => {
+                                     Prism.highlightElement(codeEl);
+                                 });
                              }
                          }
                     
@@ -2770,41 +2845,7 @@ function generateHTML(
              }
          }
          
-         // Make file paths in log content clickable
-         function makeLogPathsClickable(logContent, category, evalName) {
-             // Escape HTML first
-             const escapedContent = logContent
-                 .replace(/&/g, '&amp;')
-                 .replace(/</g, '&lt;')
-                 .replace(/>/g, '&gt;');
-             
-             // Regex to match file paths - looking for patterns like:
-             // convex/file.ts, src/file.js, ./file.ts, /path/to/file.ts
-             // Also match paths with line numbers like: convex/file.ts(14,18) or convex/file.ts:14:18
-             const filePathRegex = /(?:^|\\s)((?:[a-zA-Z0-9_-]+\\/)*[a-zA-Z0-9_-]+\\.[a-zA-Z0-9]+)(?:\\((\\d+)(?:,\\d+)?\\)|:(\\d+)(?::\\d+)?)?/gm;
-             
-             return escapedContent.replace(filePathRegex, (match, filePath, lineNum1, lineNum2) => {
-                 const lineNumber = lineNum1 || lineNum2;
-                 const displayPath = match.trim();
-                 const cleanPath = filePath.replace(/\\\\/g, '/');
-                 
-                 // Create clickable link that switches to Output tab and opens the file
-                 return \` <span class="log-file-path" onclick="openFileFromLog('\${cleanPath}', '\${category}', '\${evalName}', \${lineNumber || 'null'})" title="Click to open \${cleanPath}">\${displayPath}</span>\`;
-             });
-         }
-         
-         // Function to open a file from log click
-         async function openFileFromLog(filePath, category, evalName, lineNumber) {
-             // Update URL to navigate to output tab with the specific file
-             const runIndex = getCurrentRunIndex();
-             let newUrl = \`/run-\${runIndex}/\${category}/\${evalName}/output#\${encodeURIComponent(filePath)}\`;
-             if (lineNumber) {
-                 newUrl += \`:\${lineNumber}\`;
-             }
-             
-             // Navigate to the new URL, which will trigger a page reload with the correct state
-             window.location.href = newUrl;
-         }
+
          
          // Function to scroll to a specific line number
          function scrollToLineNumber(lineNumber, category, evalName) {
@@ -2971,15 +3012,19 @@ function generateHTML(
                                      .replace(/&/g, '&amp;')
                                      .replace(/</g, '&lt;')
                                      .replace(/>/g, '&gt;');
-                                 return \`<span class="line-number">\${lineNumber}</span><span class="line-content">\${escapedLine}</span>\`;
-                             }).join('\\n');
+                                 return \`<div class="code-line"><span class="line-number">\${lineNumber}</span><span class="line-content"><code class="language-\${language}">\${escapedLine}</code></span></div>\`;
+                             }).join('');
                              
                              contentElement.innerHTML = \`
-                                 <pre class="language-\${language} line-numbers" style="margin: 0; height: 100%; overflow-y: auto; font-size: 0.875rem; line-height: 1.4;"><code class="language-\${language}">\${numberedContent}</code></pre>
+                                 <div class="line-numbers" style="margin: 0; height: 100%; overflow-y: auto;">\${numberedContent}</div>
                              \`;
                              
+                             // Apply syntax highlighting to each line
                              if (window.Prism) {
-                                 Prism.highlightAllUnder(contentElement);
+                                 const codeElements = contentElement.querySelectorAll('.line-content code');
+                                 codeElements.forEach(codeEl => {
+                                     Prism.highlightElement(codeEl);
+                                 });
                              }
                          }
                     }
