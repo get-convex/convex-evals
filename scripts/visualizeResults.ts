@@ -632,21 +632,29 @@ function generateMainContent(
       .join("");
 
     return `
-      <div class="tab-container">
-        <div class="tab-nav">
-          <button class="tab-button active" onclick="switchTab('task', '${category}', '${evalName}')">📋 Task</button>
-          <button class="tab-button" onclick="switchTab('steps', '${category}', '${evalName}')">📊 Steps</button>
-          <button class="tab-button" onclick="switchTab('answer', '${category}', '${evalName}')">💡 Answer</button>
-          <button class="tab-button" onclick="switchTab('output', '${category}', '${evalName}')">📁 Output</button>
-        </div>
+             <div class="tab-container">
+         <div class="tab-nav">
+           <button class="tab-button active" onclick="switchTab('log', '${category}', '${evalName}')">📄 Log</button>
+           <button class="tab-button" onclick="switchTab('task', '${category}', '${evalName}')">📋 Task</button>
+           <button class="tab-button" onclick="switchTab('steps', '${category}', '${evalName}')">📊 Steps</button>
+           <button class="tab-button" onclick="switchTab('answer', '${category}', '${evalName}')">💡 Answer</button>
+           <button class="tab-button" onclick="switchTab('output', '${category}', '${evalName}')">📁 Output</button>
+         </div>
         
-        <div class="tab-content">
-          <!-- Task Tab -->
-          <div class="tab-pane active" id="task-tab-${category}-${evalName}">
-            <div class="task-content" id="task-content-${category}-${evalName}">
-              <p><em>Loading task description...</em></p>
-            </div>
-          </div>
+                 <div class="tab-content">
+           <!-- Log Tab (default active) -->
+           <div class="tab-pane active" id="log-tab-${category}-${evalName}">
+             <div class="log-content" id="log-content-${category}-${evalName}">
+               <p><em>Loading run log...</em></p>
+             </div>
+           </div>
+           
+           <!-- Task Tab -->
+           <div class="tab-pane" id="task-tab-${category}-${evalName}">
+             <div class="task-content" id="task-content-${category}-${evalName}">
+               <p><em>Loading task description...</em></p>
+             </div>
+           </div>
           
           <!-- Steps Tab -->
           <div class="tab-pane" id="steps-tab-${category}-${evalName}">
@@ -670,7 +678,7 @@ function generateMainContent(
               <div class="file-tree">
                 <div class="file-tree-header">
                   Answer Directory
-                  <button onclick="copyDirectoryPath('${process.cwd()}/evals/${category}/${evalName}/answer')" class="copy-path-button" title="Copy answer directory path">
+                  <button onclick="copyDirectoryPath('evals/${category}/${evalName}/answer')" class="copy-path-button" title="Copy answer directory path">
                     📋
                   </button>
                 </div>
@@ -713,38 +721,83 @@ function generateMainContent(
                 <div class="file-viewer-header">
                   <span id="current-file-name-${category}-${evalName}">run.log</span>
                 </div>
-                <div class="file-content" id="file-content-${category}-${evalName}">
-                  <p><em>Loading run log...</em></p>
-                </div>
+                                 <div class="file-content-split" id="file-content-split-${category}-${evalName}">
+                   <div class="file-content-pane">
+                     <div class="file-content-header">Generated Output</div>
+                     <div class="file-content" id="file-content-${category}-${evalName}">
+                       <p><em>Loading run log...</em></p>
+                     </div>
+                   </div>
+                   <div class="split-handle" onmousedown="initSplitResize(event, '${category}', '${evalName}')"></div>
+                   <div class="file-content-pane" id="answer-pane-${category}-${evalName}" style="display: flex; flex-direction: column;">
+                     <div class="file-content-header answer">Answer (Reference)</div>
+                     <div class="file-content" id="answer-content-${category}-${evalName}">
+                       <p><em>No corresponding answer file</em></p>
+                     </div>
+                   </div>
+                 </div>
               </div>
             </div>
           </div>
         </div>
       </div>
         
-        <script>
-          // Auto-load task file and run log when page loads
-          (async function() {
-            // Load task file
-            try {
-              const response = await fetch(\`/task/\${encodeURIComponent('${category}')}/\${encodeURIComponent('${evalName}')}\`);
-              const taskElement = document.getElementById('task-content-${category}-${evalName}');
-              if (response.ok) {
-                const data = await response.json();
-                if (taskElement) {
-                  taskElement.innerHTML = \`<pre style="white-space: pre-wrap; margin: 0; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 0.875rem; line-height: 1.6; height: 100%; overflow-y: auto;">\${data.content}</pre>\`;
-                }
-              } else {
-                if (taskElement) {
-                  taskElement.innerHTML = '<p style="color: #dc2626;">Task file not found.</p>';
-                }
-              }
-            } catch (error) {
-              const taskElement = document.getElementById('task-content-${category}-${evalName}');
-              if (taskElement) {
-                taskElement.innerHTML = \`<p style="color: #dc2626;">Error loading task: \${error.message}</p>\`;
-              }
-            }
+                 <script>
+           // Auto-load task file and run log when page loads
+           (async function() {
+             // Load run log into the Log tab
+             ${
+               evalResult.directory_path
+                 ? `
+             try {
+               const logPath = '${evalResult.directory_path.replace(/\\/g, "/")}/run.log';
+               const response = await fetch(\`/file/\${encodeURIComponent(logPath)}\`);
+               const logElement = document.getElementById('log-content-${category}-${evalName}');
+               if (response.ok) {
+                 const data = await response.json();
+                 if (logElement) {
+                   logElement.innerHTML = \`<pre>\${data.content}</pre>\`;
+                 }
+               } else {
+                 if (logElement) {
+                   logElement.innerHTML = '<p style="color: #f87171; padding: 1.5rem;">Run log not found.</p>';
+                 }
+               }
+             } catch (error) {
+               const logElement = document.getElementById('log-content-${category}-${evalName}');
+               if (logElement) {
+                 logElement.innerHTML = \`<p style="color: #f87171; padding: 1.5rem;">Error loading run log: \${error.message}</p>\`;
+               }
+             }
+             `
+                 : `
+             const logElement = document.getElementById('log-content-${category}-${evalName}');
+             if (logElement) {
+               logElement.innerHTML = '<p style="color: #9ca3af; padding: 1.5rem;">No run log available.</p>';
+             }
+             `
+             }
+             
+             // Load task file
+             try {
+               const response = await fetch(\`/task/\${encodeURIComponent('${category}')}/\${encodeURIComponent('${evalName}')}\`);
+               const taskElement = document.getElementById('task-content-${category}-${evalName}');
+               if (response.ok) {
+                 const data = await response.json();
+                 if (taskElement) {
+                   taskElement.innerHTML = \`<pre style="white-space: pre-wrap; margin: 0; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 0.875rem; line-height: 1.6; height: 100%; overflow-y: auto;">\${data.content}</pre>\`;
+                 }
+               } else {
+                 if (taskElement) {
+                   taskElement.innerHTML = '<p style="color: #dc2626;">Task file not found.</p>';
+                 }
+               }
+             } catch (error) {
+               const taskElement = document.getElementById('task-content-${category}-${evalName}');
+               if (taskElement) {
+                 taskElement.innerHTML = \`<p style="color: #dc2626;">Error loading task: \${error.message}</p>\`;
+               }
+             }
             
             // Load file browser
             ${
@@ -788,6 +841,13 @@ function generateMainContent(
                         runLogButton.classList.add('active');
                       }
                     }, 100);
+                  }
+                  
+                  // Also try to load answer for the first file (usually index.ts or similar)
+                  const firstCodeFile = data.files.find(f => !f.isDirectory && (f.name.endsWith('.ts') || f.name.endsWith('.js')));
+                  if (firstCodeFile) {
+                    console.log('Testing answer loading for first code file:', firstCodeFile.path);
+                    loadCorrespondingAnswerFile(firstCodeFile.path, firstCodeFile.name, '${category}', '${evalName}');
                   }
                 }
               } else {
@@ -898,22 +958,32 @@ function generateHTML(
             flex-shrink: 0;
         }
         
-        .runs-sidebar {
-            width: 350px;
-            background: #f9fafb;
-            padding-left: 0;
-        }
-        
-        .categories-sidebar {
-            width: 240px;
-            background: white;
-            display: none; /* Hide the separate categories sidebar */
-        }
-        
-        .evals-sidebar {
-            width: 300px;
-            background: #f9fafb;
-        }
+                 .runs-sidebar {
+             width: 280px;
+             background: #f9fafb;
+             padding-left: 0;
+             transition: width 0.3s ease;
+         }
+         
+         .runs-sidebar.collapsed {
+             width: 40px;
+         }
+         
+         .categories-sidebar {
+             width: 240px;
+             background: white;
+             display: none; /* Hide the separate categories sidebar */
+         }
+         
+         .evals-sidebar {
+             width: 300px;
+             background: #f9fafb;
+             transition: width 0.3s ease;
+         }
+         
+         .evals-sidebar.collapsed {
+             width: 40px;
+         }
         
         .main-content {
             flex: 1;
@@ -945,18 +1015,56 @@ function generateHTML(
             padding-right: 2rem;
         }
         
-        .sidebar-header {
-            padding: 1.5rem 1rem;
-            border-bottom: 1px solid #e5e7eb;
-            background: #4f46e5;
-            color: white;
-        }
-        
-        .sidebar-header h3 {
-            font-size: 1.1rem;
-            font-weight: 600;
-            margin: 0;
-        }
+                 .sidebar-header {
+             padding: 1.5rem 1rem;
+             border-bottom: 1px solid #e5e7eb;
+             background: #4f46e5;
+             color: white;
+             display: flex;
+             justify-content: space-between;
+             align-items: center;
+         }
+         
+         .sidebar-header h3 {
+             font-size: 1.1rem;
+             font-weight: 600;
+             margin: 0;
+         }
+         
+         .sidebar-collapse-btn {
+             background: rgba(255, 255, 255, 0.2);
+             border: none;
+             color: white;
+             width: 24px;
+             height: 24px;
+             border-radius: 4px;
+             cursor: pointer;
+             display: flex;
+             align-items: center;
+             justify-content: center;
+             font-size: 14px;
+             transition: all 0.2s ease;
+         }
+         
+         .sidebar-collapse-btn:hover {
+             background: rgba(255, 255, 255, 0.3);
+         }
+         
+         .sidebar.collapsed .sidebar-header {
+             padding: 1rem 0.5rem;
+         }
+         
+         .sidebar.collapsed .sidebar-header h3 {
+             display: none;
+         }
+         
+         .sidebar.collapsed .sidebar-content {
+             display: none;
+         }
+         
+         .sidebar.collapsed .sidebar-collapse-btn {
+             margin: 0 auto;
+         }
         
         .sidebar-content {
             padding: 0;
@@ -1163,15 +1271,40 @@ function generateHTML(
             margin: 1.5rem;
         }
         
-        .task-content pre {
-            padding: 1.5rem;
-            margin: 0;
-            height: 100%;
-            overflow-y: auto;
-            box-sizing: border-box;
-            background: transparent;
-            border: none;
-        }
+                 .task-content pre {
+             padding: 1.5rem;
+             margin: 0;
+             height: 100%;
+             overflow-y: auto;
+             box-sizing: border-box;
+             background: transparent;
+             border: none;
+         }
+         
+         .log-content {
+             flex: 1;
+             overflow: hidden;
+             height: 100%;
+             background: #1f2937;
+             border: 1px solid #374151;
+             border-radius: 4px;
+             margin: 1.5rem;
+         }
+         
+         .log-content pre {
+             padding: 1.5rem;
+             margin: 0;
+             height: 100%;
+             overflow-y: auto;
+             box-sizing: border-box;
+             background: transparent;
+             border: none;
+             color: #f3f4f6;
+             font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+             font-size: 0.875rem;
+             line-height: 1.4;
+             white-space: pre-wrap;
+         }
         
 
         
@@ -1439,6 +1572,73 @@ function generateHTML(
             display: flex;
             flex-direction: column;
             background: white;
+        }
+        
+                 .file-content-split {
+             display: flex;
+             flex: 1;
+             position: relative;
+         }
+         
+         .file-content-pane {
+             display: flex;
+             flex-direction: column;
+             overflow: hidden;
+         }
+         
+         .file-content-pane:first-child {
+             flex: 0 0 50%;
+         }
+         
+         .file-content-pane:last-child {
+             flex: 1;
+         }
+         
+         .split-handle {
+             width: 6px;
+             background: #e5e7eb;
+             cursor: col-resize;
+             position: relative;
+             flex-shrink: 0;
+             transition: background-color 0.2s ease;
+         }
+         
+         .split-handle:hover {
+             background: #d1d5db;
+         }
+         
+         .split-handle::after {
+             content: '';
+             position: absolute;
+             top: 50%;
+             left: 50%;
+             transform: translate(-50%, -50%);
+             width: 2px;
+             height: 40px;
+             background: #9ca3af;
+             border-radius: 1px;
+         }
+         
+         .file-content-split:has(.file-content-pane[style*="display: none"]) .file-content-pane:not([style*="display: none"]) {
+             flex: 1;
+         }
+         
+         .file-content-split:has(.file-content-pane[style*="display: none"]) .split-handle {
+             display: none;
+         }
+        
+        .file-content-header {
+            padding: 0.5rem 0.75rem;
+            background: #f8fafc;
+            border-bottom: 1px solid #e5e7eb;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #374151;
+        }
+        
+        .file-content-header.answer {
+            background: #fef3c7;
+            color: #92400e;
         }
         
         .file-viewer-header {
@@ -1928,33 +2128,39 @@ function generateHTML(
 </head>
 <body>
     <div class="layout">
-        <!-- Runs Sidebar -->
-        <div class="sidebar runs-sidebar">
-            <div class="sidebar-header">
-                <h3>🚀 Evaluation Runs</h3>
-            </div>
-            <div class="sidebar-content">
-                ${runsSidebarHTML}
-            </div>
-        </div>
+                 <!-- Runs Sidebar -->
+         <div class="sidebar runs-sidebar" id="runs-sidebar">
+             <div class="sidebar-header">
+                 <h3>🚀 Evaluation Runs</h3>
+                 <button class="sidebar-collapse-btn" onclick="toggleSidebar('runs-sidebar')" title="Collapse sidebar">
+                     ◀
+                 </button>
+             </div>
+             <div class="sidebar-content">
+                 ${runsSidebarHTML}
+             </div>
+         </div>
         
 
         
         <!-- Evals Sidebar (shown when a category is selected) -->
-        ${
-          runIndex >= 0 && category
-            ? `
-        <div class="sidebar evals-sidebar">
-            <div class="sidebar-header">
-                <h3>🔍 Evaluations</h3>
-            </div>
-            <div class="sidebar-content">
-                ${evalsSidebarHTML}
-            </div>
-        </div>
-        `
-            : ""
-        }
+                 ${
+                   runIndex >= 0 && category
+                     ? `
+         <div class="sidebar evals-sidebar" id="evals-sidebar">
+             <div class="sidebar-header">
+                 <h3>🔍 Evaluations</h3>
+                 <button class="sidebar-collapse-btn" onclick="toggleSidebar('evals-sidebar')" title="Collapse sidebar">
+                     ◀
+                 </button>
+             </div>
+             <div class="sidebar-content">
+                 ${evalsSidebarHTML}
+             </div>
+         </div>
+         `
+                     : ""
+                 }
         
         <!-- Main Content -->
         <div class="main-content">
@@ -2199,6 +2405,9 @@ function generateHTML(
                                 Prism.highlightAllUnder(contentElement);
                             }
                         }
+                        
+                        // Try to load corresponding answer file for split view
+                        await loadCorrespondingAnswerFile(filePath, fileName, category, evalName);
                     }
                 } else {
                     if (contentElement) {
@@ -2209,6 +2418,90 @@ function generateHTML(
                 const contentElement = document.getElementById(\`file-content-\${category}-\${evalName}\`);
                 if (contentElement) {
                     contentElement.innerHTML = \`<p style="color: #dc2626; padding: 1rem;">Error loading file: \${error.message}</p>\`;
+                }
+            }
+        }
+        
+        async function loadCorrespondingAnswerFile(outputFilePath, fileName, category, evalName) {
+            try {
+                console.log('Trying to find answer for:', outputFilePath, 'fileName:', fileName);
+                
+                // Convert output file path to answer file path
+                // Example: /path/to/output/gpt-5/000-fundamentals/007-basic_file_storage/convex/index.ts
+                // Should become: evals/000-fundamentals/007-basic_file_storage/answer/convex/index.ts
+                
+                // Normalize path separators for both Windows and Unix
+                const normalizedPath = outputFilePath.replace(/\\\\/g, '/');
+                const pathParts = normalizedPath.split('/');
+                console.log('Path parts:', pathParts);
+                
+                // Find the category and eval name in the path
+                const categoryIndex = pathParts.findIndex(part => part === category);
+                const evalIndex = pathParts.findIndex(part => part === evalName);
+                
+                if (categoryIndex === -1 || evalIndex === -1) {
+                    console.log('Category or eval not found in path');
+                    return;
+                }
+                
+                // Get the relative path after the eval name
+                const relativePathParts = pathParts.slice(evalIndex + 1);
+                console.log('Relative path parts:', relativePathParts);
+                
+                // Build answer path: evals/category/evalName/answer/relativePath
+                const answerFilePath = \`evals/\${category}/\${evalName}/answer/\${relativePathParts.join('/')}\`;
+                console.log('Trying answer path:', answerFilePath);
+                
+                // Try to load the answer file
+                const response = await fetch(\`/file/\${encodeURIComponent(answerFilePath)}\`);
+                const answerPane = document.getElementById(\`answer-pane-\${category}-\${evalName}\`);
+                const answerContentElement = document.getElementById(\`answer-content-\${category}-\${evalName}\`);
+                
+                if (response.ok && answerContentElement) {
+                    console.log('Answer file found! Loading content...');
+                    const data = await response.json(); // Back to json() since endpoint returns JSON
+                    const content = data.content;
+                    const language = getLanguageFromFileName(fileName);
+                    const isLogFile = fileName.endsWith('.log') || fileName.endsWith('.txt');
+                    
+                    if (isLogFile || language === 'text' || language === 'log') {
+                        const style = isLogFile 
+                            ? 'white-space: pre-wrap; background: #1f2937; color: #f3f4f6; padding: 1rem; margin: 0; font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace; font-size: 0.875rem; line-height: 1.4; height: 100%; overflow-y: auto;'
+                            : 'white-space: pre-wrap; background: #f8fafc; color: #374151; padding: 1rem; margin: 0; font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace; font-size: 0.875rem; line-height: 1.4; height: 100%; overflow-y: auto; border: 1px solid #e5e7eb;';
+                        
+                        answerContentElement.innerHTML = \`<pre style="\${style}">\${content}</pre>\`;
+                    } else {
+                        const escapedContent = content
+                            .replace(/&/g, '&amp;')
+                            .replace(/</g, '&lt;')
+                            .replace(/>/g, '&gt;');
+                        
+                        answerContentElement.innerHTML = \`
+                            <pre class="language-\${language}" style="margin: 0; height: 100%; overflow-y: auto; font-size: 0.875rem; line-height: 1.4;"><code class="language-\${language}">\${escapedContent}</code></pre>
+                        \`;
+                        
+                        if (window.Prism) {
+                            Prism.highlightAllUnder(answerContentElement);
+                        }
+                    }
+                    
+                    // Show the answer pane
+                    if (answerPane) {
+                        answerPane.style.display = 'flex';
+                        console.log('Answer pane shown');
+                    }
+                } else {
+                    console.log('No answer file found, response status:', response.status);
+                    // Hide the answer pane if no corresponding file found
+                    if (answerPane) {
+                        answerPane.style.display = 'none';
+                    }
+                }
+            } catch (error) {
+                // Hide the answer pane on error
+                const answerPane = document.getElementById(\`answer-pane-\${category}-\${evalName}\`);
+                if (answerPane) {
+                    answerPane.style.display = 'none';
                 }
             }
         }
@@ -2258,6 +2551,82 @@ function generateHTML(
         //     window.location.reload();
         // }, 30000);
         
+                 // Debug function to test answer loading
+         window.testAnswerLoad = function(category, evalName) {
+             console.log('Testing answer load for:', category, evalName);
+             const testPath = \`C:\\\\Users\\\\mikec\\\\AppData\\\\Local\\\\Temp\\\\tmp123/output/gpt-5/\${category}/\${evalName}/convex/index.ts\`;
+             loadCorrespondingAnswerFile(testPath, 'index.ts', category, evalName);
+         };
+         
+         // Split pane resizing functionality
+         let isResizing = false;
+         let currentSplitContainer = null;
+         
+         function initSplitResize(event, category, evalName) {
+             isResizing = true;
+             currentSplitContainer = document.getElementById(\`file-content-split-\${category}-\${evalName}\`);
+             
+             // Prevent text selection during drag
+             document.body.style.userSelect = 'none';
+             document.body.style.cursor = 'col-resize';
+             
+             // Add event listeners
+             document.addEventListener('mousemove', handleSplitResize);
+             document.addEventListener('mouseup', stopSplitResize);
+             
+             event.preventDefault();
+         }
+         
+         function handleSplitResize(event) {
+             if (!isResizing || !currentSplitContainer) return;
+             
+             const containerRect = currentSplitContainer.getBoundingClientRect();
+             const mouseX = event.clientX;
+             const containerLeft = containerRect.left;
+             const containerWidth = containerRect.width;
+             
+             // Calculate percentage (between 20% and 80%)
+             let percentage = ((mouseX - containerLeft) / containerWidth) * 100;
+             percentage = Math.max(20, Math.min(80, percentage));
+             
+             // Update the flex basis of the first pane
+             const firstPane = currentSplitContainer.querySelector('.file-content-pane:first-child');
+             if (firstPane) {
+                 firstPane.style.flex = \`0 0 \${percentage}%\`;
+             }
+         }
+         
+         function stopSplitResize() {
+             isResizing = false;
+             currentSplitContainer = null;
+             
+             // Restore normal cursor and text selection
+             document.body.style.userSelect = '';
+             document.body.style.cursor = '';
+             
+             // Remove event listeners
+             document.removeEventListener('mousemove', handleSplitResize);
+             document.removeEventListener('mouseup', stopSplitResize);
+         }
+         
+         // Sidebar collapse/expand functionality
+         function toggleSidebar(sidebarId) {
+             const sidebar = document.getElementById(sidebarId);
+             const button = sidebar.querySelector('.sidebar-collapse-btn');
+             
+             if (sidebar.classList.contains('collapsed')) {
+                 // Expand
+                 sidebar.classList.remove('collapsed');
+                 button.innerHTML = '◀';
+                 button.title = 'Collapse sidebar';
+             } else {
+                 // Collapse
+                 sidebar.classList.add('collapsed');
+                 button.innerHTML = '▶';
+                 button.title = 'Expand sidebar';
+             }
+         }
+        
         // Answer directory functions
         async function loadAnswerDirectory(category, evalName) {
             try {
@@ -2296,6 +2665,51 @@ function generateHTML(
                 if (treeElement) {
                     treeElement.innerHTML = \`<p style="color: #dc2626;">Error loading answer directory: \${error.message}</p>\`;
                 }
+            }
+        }
+        
+        async function toggleAnswerDirectory(dirPath, dirName, category, evalName) {
+            const safeId = btoa(dirPath).replace(/[^a-zA-Z0-9]/g, '');
+            const childrenContainer = document.getElementById(\`answer-children-\${safeId}\`);
+            const button = event.target.closest('.file-tree-item.directory');
+            const arrow = button ? button.querySelector('.expand-arrow') : null;
+            
+            if (!childrenContainer) return;
+            
+            if (childrenContainer.classList.contains('collapsed')) {
+                try {
+                    const response = await fetch(\`/browse/\${encodeURIComponent(dirPath)}\`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.files) {
+                            const childrenHTML = data.files.map(file => {
+                                const childSafeId = btoa(file.path).replace(/[^a-zA-Z0-9]/g, '');
+                                if (file.isDirectory) {
+                                    return \`
+                                        <div class="directory-container">
+                                            <button class="file-tree-item directory" onclick="toggleAnswerDirectory('\${file.path.replace(/\\\\/g, '\\\\\\\\')}', '\${file.name}', '\${category}', '\${evalName}')">
+                                                <span>📁 \${file.name}</span>
+                                                <span class="expand-arrow">▶</span>
+                                            </button>
+                                            <div class="file-tree-children collapsed" id="answer-children-\${childSafeId}"></div>
+                                        </div>
+                                    \`;
+                                } else {
+                                    return \`<button class="file-tree-item file" onclick="loadAnswerFile('\${file.path.replace(/\\\\/g, '\\\\\\\\')}', '\${file.name}', '\${category}', '\${evalName}')" title="\${file.name}">📄 \${file.name}</button>\`;
+                                }
+                            }).join('');
+                            childrenContainer.innerHTML = childrenHTML;
+                        }
+                    }
+                } catch (error) {
+                    childrenContainer.innerHTML = '<p style="color: #dc2626; padding: 0.5rem;">Error loading directory</p>';
+                }
+                
+                childrenContainer.classList.remove('collapsed');
+                if (arrow) arrow.classList.add('expanded');
+            } else {
+                childrenContainer.classList.add('collapsed');
+                if (arrow) arrow.classList.remove('expanded');
             }
         }
         
