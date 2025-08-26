@@ -8,6 +8,12 @@ import {
 import { api } from "./answer/convex/_generated/api";
 import { Doc, Id } from "./answer/convex/_generated/dataModel";
 
+import { aiGradeGeneratedOutput } from "../../../grader/aiGrader";
+
+test("AI grader assessment", { timeout: 60000 }, async () => {
+  await expect(aiGradeGeneratedOutput(import.meta.url)).resolves.toBe("pass");
+});
+
 test("getItem and updateItem handle non-existent items", async () => {
   // Try to get a non-existent item
   let error = null;

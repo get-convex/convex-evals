@@ -9,6 +9,11 @@ import {
 } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
 import { beforeEach } from "vitest";
+import { aiGradeGeneratedOutput } from "../../../grader/aiGrader";
+
+test("AI grader assessment", { timeout: 60000 }, async () => {
+  await expect(aiGradeGeneratedOutput(import.meta.url)).resolves.toBe("pass");
+});
 import { Doc } from "./answer/convex/_generated/dataModel";
 
 beforeEach(async () => {

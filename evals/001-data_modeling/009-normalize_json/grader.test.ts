@@ -9,15 +9,9 @@ import {
 } from "../../../grader";
 import { aiGradeGeneratedOutput } from "../../../grader/aiGrader";
 
-test(
-  "AI grader assessment",
-  {
-    timeout: 60000,
-  },
-  async () => {
-    await expect(aiGradeGeneratedOutput(import.meta.url)).resolves.toBe("pass");
-  },
-);
+test("AI grader assessment", { timeout: 60000 }, async () => {
+  await expect(aiGradeGeneratedOutput(import.meta.url)).resolves.toBe("pass");
+});
 
 test("organization data model works correctly", async () => {
   const schema = (await getSchema(

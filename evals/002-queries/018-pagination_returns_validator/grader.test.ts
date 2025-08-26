@@ -10,6 +10,11 @@ import { api } from "./answer/convex/_generated/api";
 import { beforeEach } from "vitest";
 import { PaginationResult } from "convex/server";
 import { Doc } from "./answer/convex/_generated/dataModel";
+import { aiGradeGeneratedOutput } from "../../../grader/aiGrader";
+
+test("AI grader assessment", { timeout: 60000 }, async () => {
+  await expect(aiGradeGeneratedOutput(import.meta.url)).resolves.toBe("pass");
+});
 
 beforeEach(async () => {
   await deleteAllDocuments(responseAdminClient, ["posts"]);

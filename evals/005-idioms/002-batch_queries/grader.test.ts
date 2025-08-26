@@ -10,6 +10,11 @@ import {
 import { api, internal } from "./answer/convex/_generated/api";
 import { Doc, Id } from "./answer/convex/_generated/dataModel";
 import { beforeEach } from "vitest";
+import { aiGradeGeneratedOutput } from "../../../grader/aiGrader";
+
+test("AI grader assessment", { timeout: 60000 }, async () => {
+  await expect(aiGradeGeneratedOutput(import.meta.url)).resolves.toBe("pass");
+});
 
 beforeEach(async () => {
   await deleteAllDocuments(responseAdminClient, ["users", "posts"]);
@@ -19,12 +24,18 @@ test("compare schema", async ({ skip }) => {
   await compareSchema(skip);
 });
 
-async function setupTestData(): Promise<{ userId: Id<"users">, postIds: Id<"posts">[] }> {
+async function setupTestData(): Promise<{
+  userId: Id<"users">;
+  postIds: Id<"posts">[];
+}> {
   // Create a test user
   await addDocuments(responseAdminClient, "users", [
     { name: "Test User", email: "test@example.com" },
   ]);
-  const users = await listTable(responseAdminClient, "users") as Doc<"users">[];
+  const users = (await listTable(
+    responseAdminClient,
+    "users",
+  )) as Doc<"users">[];
   const userId = users[0]._id;
 
   // Create some test posts
@@ -32,8 +43,11 @@ async function setupTestData(): Promise<{ userId: Id<"users">, postIds: Id<"post
     { userId, content: "Post 1" },
     { userId, content: "Post 2" },
   ]);
-  const posts = await listTable(responseAdminClient, "posts") as Doc<"posts">[];
-  const [post1Id, post2Id] = posts.map(p => p._id);
+  const posts = (await listTable(
+    responseAdminClient,
+    "posts",
+  )) as Doc<"posts">[];
+  const [post1Id, post2Id] = posts.map((p) => p._id);
 
   return { userId, postIds: [post1Id, post2Id] };
 }
@@ -42,9 +56,12 @@ test("getUserByEmail returns correct user", async () => {
   const { userId } = await setupTestData();
 
   /* eslint-disable */
-  const user = await responseAdminClient.query(internal.users.getUserByEmail as any, {
-    email: "test@example.com",
-  });
+  const user = await responseAdminClient.query(
+    internal.users.getUserByEmail as any,
+    {
+      email: "test@example.com",
+    },
+  );
   /* eslint-enable */
 
   expect(user).toBeDefined();
@@ -56,9 +73,12 @@ test("getUserByEmail returns correct user", async () => {
 
 test("getUserByEmail returns null for non-existent user", async () => {
   /* eslint-disable */
-  const user = await responseAdminClient.query(internal.users.getUserByEmail as any, {
-    email: "nonexistent@example.com",
-  });
+  const user = await responseAdminClient.query(
+    internal.users.getUserByEmail as any,
+    {
+      email: "nonexistent@example.com",
+    },
+  );
   /* eslint-enable */
   expect(user).toBeNull();
 });
