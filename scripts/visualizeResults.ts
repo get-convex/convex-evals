@@ -632,53 +632,69 @@ function generateMainContent(
       .join("");
 
     return `
-      <div class="eval-details-grid">
-        <div class="card">
-          <div class="card-header">
-            📋 Task Description
-          </div>
-          <div class="card-content">
+      <div class="tab-container">
+        <div class="tab-nav">
+          <button class="tab-button active" onclick="switchTab('task', '${category}', '${evalName}')">📋 Task</button>
+          <button class="tab-button" onclick="switchTab('steps', '${category}', '${evalName}')">📊 Steps</button>
+          <button class="tab-button" onclick="switchTab('output', '${category}', '${evalName}')">📁 Output</button>
+        </div>
+        
+        <div class="tab-content">
+          <!-- Task Tab -->
+          <div class="tab-pane active" id="task-tab-${category}-${evalName}">
             <div class="task-content" id="task-content-${category}-${evalName}">
               <p><em>Loading task description...</em></p>
             </div>
           </div>
-        </div>
-        
-        <div class="card">
-          <div class="card-header">
-            🔍 Score Breakdown
-          </div>
-          <div class="card-content">
+          
+          <!-- Steps Tab -->
+          <div class="tab-pane" id="steps-tab-${category}-${evalName}">
             <div class="scores-list">
               ${scoresBreakdown}
             </div>
+            ${
+              evalResult.failure_reason
+                ? `
+            <div class="failure-summary">
+              <strong>Failure Reason:</strong> ${evalResult.failure_reason}
+            </div>
+          `
+                : ""
+            }
           </div>
-        </div>
-        
-        <div class="card full-width">
-          <div class="card-header">
-            📁 Files & Logs
-          </div>
-          <div class="card-content">
-            <div class="directory-info">
-              ${
-                evalResult.directory_path
-                  ? `
-                <div class="directory-path">
-                  <strong>Directory:</strong> <code>${evalResult.directory_path}</code>
-                  <button onclick="openDirectory('${evalResult.directory_path.replace(/\\/g, "\\\\")}')" class="action-button">
-                    📁 Open
-                  </button>
+          
+          <!-- Output Tab -->
+          <div class="tab-pane" id="output-tab-${category}-${evalName}">
+            <div class="file-browser">
+              <div class="file-tree">
+                <div class="file-tree-header">
+                  Directory Structure
+                  ${
+                    evalResult.directory_path
+                      ? `
+                    <button onclick="copyDirectoryPath('${evalResult.directory_path.replace(/\\/g, "\\\\")}')" class="copy-path-button" title="Copy directory path">
+                      📋
+                    </button>
+                  `
+                      : ""
+                  }
                 </div>
-              `
-                  : "<p>No directory information available</p>"
-              }
-            </div>
-            <div class="run-log-content" id="run-log-content-${category}-${evalName}">
-              <p><em>Loading run log...</em></p>
+                <div id="file-tree-content-${category}-${evalName}">
+                  <p><em>Loading directory structure...</em></p>
+                </div>
+              </div>
+              <div class="file-viewer">
+                <div class="file-viewer-header">
+                  <span id="current-file-name-${category}-${evalName}">run.log</span>
+                </div>
+                <div class="file-content" id="file-content-${category}-${evalName}">
+                  <p><em>Loading run log...</em></p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
+      </div>
         
         <script>
           // Auto-load task file and run log when page loads
@@ -704,35 +720,58 @@ function generateMainContent(
               }
             }
             
-            // Load run log
+            // Load file browser
             ${
               evalResult.directory_path
                 ? `
             try {
-              const logPath = '${evalResult.directory_path.replace(/\\/g, "/")}/run.log';
-              const response = await fetch(\`/logs/\${encodeURIComponent(logPath)}\`);
-              const logElement = document.getElementById('run-log-content-${category}-${evalName}');
+              const dirPath = '${evalResult.directory_path.replace(/\\/g, "/")}';
+              const response = await fetch(\`/browse/\${encodeURIComponent(dirPath)}\`);
+              const treeElement = document.getElementById('file-tree-content-${category}-${evalName}');
+              
               if (response.ok) {
-                const logContent = await response.text();
-                if (logElement) {
-                  logElement.innerHTML = \`<pre style="white-space: pre-wrap; background: #1f2937; color: #f3f4f6; padding: 1rem; border-radius: 4px; margin: 0; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 0.875rem; line-height: 1.4; max-height: 800px; overflow-y: auto;">\${logContent}</pre>\`;
+                const data = await response.json();
+                if (treeElement && data.files) {
+                  const fileTreeHTML = data.files.map(file => {
+                    const safeId = btoa(file.path).replace(/[^a-zA-Z0-9]/g, '');
+                    if (file.isDirectory) {
+                      return \`
+                        <div class="directory-container">
+                          <button class="file-tree-item directory" onclick="toggleDirectory('\${file.path.replace(/\\\\/g, '\\\\\\\\')}', '\${file.name}', '${category}', '${evalName}')">
+                            <span>📁 \${file.name}</span>
+                            <span class="expand-arrow">▶</span>
+                          </button>
+                          <div class="file-tree-children collapsed" id="children-\${safeId}"></div>
+                        </div>
+                      \`;
+                    } else {
+                      return \`<button class="file-tree-item file" onclick="loadFile('\${file.path.replace(/\\\\/g, '\\\\\\\\')}', '\${file.name}', '${category}', '${evalName}')" title="\${file.name}">📄 \${file.name}</button>\`;
+                    }
+                  }).join('');
+                  treeElement.innerHTML = fileTreeHTML;
+                  
+                  // Auto-load run.log if it exists
+                  const runLogFile = data.files.find(f => f.name === 'run.log');
+                  if (runLogFile) {
+                    loadFile(runLogFile.path, 'run.log', '${category}', '${evalName}');
+                  }
                 }
               } else {
-                if (logElement) {
-                  logElement.innerHTML = '<p style="color: #dc2626;">Run log not found.</p>';
+                if (treeElement) {
+                  treeElement.innerHTML = '<p style="color: #dc2626;">Directory not found.</p>';
                 }
               }
             } catch (error) {
-              const logElement = document.getElementById('run-log-content-${category}-${evalName}');
-              if (logElement) {
-                logElement.innerHTML = \`<p style="color: #dc2626;">Error loading log: \${error.message}</p>\`;
+              const treeElement = document.getElementById('file-tree-content-${category}-${evalName}');
+              if (treeElement) {
+                treeElement.innerHTML = \`<p style="color: #dc2626;">Error loading directory: \${error.message}</p>\`;
               }
             }
             `
                 : `
-            const logElement = document.getElementById('run-log-content-${category}-${evalName}');
-            if (logElement) {
-              logElement.innerHTML = '<p style="color: #6b7280;">No log available - directory path not found.</p>';
+            const treeElement = document.getElementById('file-tree-content-${category}-${evalName}');
+            if (treeElement) {
+              treeElement.innerHTML = '<p style="color: #6b7280;">No directory available.</p>';
             }
             `
             }
@@ -793,6 +832,9 @@ function generateHTML(
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Convex Evaluation Results</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -844,6 +886,15 @@ function generateHTML(
             background: white;
             overflow-y: auto;
             padding: 2rem;
+        }
+        
+        /* Remove padding for eval details with tabs */
+        .main-content .tab-container {
+            margin: -2rem;
+        }
+        
+        .main-content .tab-container .tab-nav {
+            padding: 0 2rem;
         }
         
         .sidebar-header {
@@ -1002,17 +1053,83 @@ function generateHTML(
             color: #6b7280;
         }
         
-        /* Eval Details Layout */
-        .eval-details-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-            padding: 0 1rem;
+        /* Tab Interface */
+        .tab-container {
+            padding: 0;
         }
         
-        .eval-details-grid .full-width {
-            grid-column: 1 / -1;
+        .tab-nav {
+            display: flex;
+            border-bottom: 2px solid #e5e7eb;
+            margin-bottom: 0;
+        }
+        
+        .tab-button {
+            background: none;
+            border: none;
+            padding: 1rem 2rem;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            color: #6b7280;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s ease;
+        }
+        
+        .tab-button:hover {
+            color: #4f46e5;
+            background: #f8fafc;
+        }
+        
+        .tab-button.active {
+            color: #4f46e5;
+            border-bottom-color: #4f46e5;
+            background: #f8fafc;
+        }
+        
+        .tab-content {
+            min-height: 400px;
+        }
+        
+        .tab-pane {
+            display: none;
+        }
+        
+        .tab-pane.active {
+            display: block;
+        }
+        
+        /* Add padding to specific content within tabs */
+        .task-content {
+            padding: 1.5rem;
+        }
+        
+        .failure-summary {
+            margin: 0 1.5rem 1.5rem 1.5rem;
+        }
+        
+        .directory-info {
+            background: #f8fafc;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+        
+        .directory-path {
+            flex: 1;
+        }
+        
+        .directory-path code {
+            background: #e5e7eb;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.875rem;
         }
         
         .status-badge {
@@ -1037,6 +1154,7 @@ function generateHTML(
             display: flex;
             flex-direction: column;
             gap: 0.5rem;
+            padding: 1.5rem;
         }
         
         .score-item {
@@ -1127,6 +1245,251 @@ function generateHTML(
         
         .run-log-content {
             margin-top: 0.5rem;
+        }
+        
+        /* File Browser Styles */
+        .file-browser {
+            display: flex;
+            min-height: 600px;
+            border: 1px solid #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .file-tree {
+            width: 300px;
+            min-width: 250px;
+            background: #f8fafc;
+            border-right: 1px solid #e5e7eb;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+        
+        .file-tree-header {
+            padding: 0.75rem;
+            background: #e5e7eb;
+            font-weight: 600;
+            font-size: 0.875rem;
+            border-bottom: 1px solid #d1d5db;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .copy-path-button {
+            background: #4f46e5;
+            color: white;
+            border: none;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-left: 0.5rem;
+        }
+        
+        .copy-path-button:hover {
+            background: #4338ca;
+            transform: scale(1.05);
+        }
+        
+        /* Syntax highlighting customizations */
+        pre[class*="language-"] {
+            background: #f8fafc !important;
+            border: 1px solid #e5e7eb;
+            border-radius: 4px;
+            padding: 1rem !important;
+        }
+        
+        code[class*="language-"] {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
+            font-size: 0.875rem !important;
+        }
+        
+        /* Override Prism's default colors for better readability */
+        .token.comment,
+        .token.prolog,
+        .token.doctype,
+        .token.cdata {
+            color: #6b7280;
+        }
+        
+        .token.punctuation {
+            color: #374151;
+        }
+        
+        .token.property,
+        .token.tag,
+        .token.constant,
+        .token.symbol,
+        .token.deleted {
+            color: #dc2626;
+        }
+        
+        .token.boolean,
+        .token.number {
+            color: #7c3aed;
+        }
+        
+        .token.selector,
+        .token.attr-name,
+        .token.string,
+        .token.char,
+        .token.builtin,
+        .token.inserted {
+            color: #059669;
+        }
+        
+        .token.operator,
+        .token.entity,
+        .token.url,
+        .language-css .token.string,
+        .style .token.string,
+        .token.variable {
+            color: #0891b2;
+        }
+        
+        .token.atrule,
+        .token.attr-value,
+        .token.function,
+        .token.class-name {
+            color: #7c2d12;
+        }
+        
+        .token.keyword {
+            color: #1d4ed8;
+        }
+        
+        .file-viewer {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: white;
+        }
+        
+        .file-viewer-header {
+            padding: 0.75rem;
+            background: #f3f4f6;
+            border-bottom: 1px solid #e5e7eb;
+            font-weight: 600;
+            font-size: 0.875rem;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        }
+        
+        .file-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0;
+        }
+        
+        .file-tree-item {
+            display: block;
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            border: none;
+            background: none;
+            text-align: left;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: background-color 0.2s ease;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        
+        .file-tree-item:hover {
+            background: #e2e8f0;
+        }
+        
+        .file-tree-item.active {
+            background: #ddd6fe;
+            color: #4f46e5;
+            font-weight: 600;
+        }
+        
+        .file-tree-item.folder {
+            font-weight: 500;
+        }
+        
+        .file-tree-item.file {
+            padding-left: 1.5rem;
+        }
+        
+        .file-tree-item.directory {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .file-tree-item.directory .expand-arrow {
+            font-size: 0.75rem;
+            transition: transform 0.2s ease;
+            color: #6b7280;
+        }
+        
+        .file-tree-item.directory .expand-arrow.expanded {
+            transform: rotate(90deg);
+        }
+        
+        .file-tree-children {
+            margin-left: 1rem;
+            border-left: 1px solid #e5e7eb;
+            padding-left: 0.5rem;
+        }
+        
+        .file-tree-children.collapsed {
+            display: none;
+        }
+        
+        .header-action-button {
+            background: #4f46e5;
+            color: white;
+            border: none;
+            padding: 0.375rem 0.75rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            margin-left: auto;
+            transition: background-color 0.2s ease;
+        }
+        
+        .header-action-button:hover {
+            background: #4338ca;
+        }
+        
+        /* Collapsible Card Styles */
+        .collapsible-header {
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background-color 0.2s ease;
+        }
+        
+        .collapsible-header:hover {
+            background: #3f3cbb;
+        }
+        
+        .collapse-arrow {
+            font-size: 0.75rem;
+            transition: transform 0.2s ease;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .collapse-arrow.expanded {
+            transform: rotate(180deg);
+        }
+        
+        .card-content.collapsed {
+            max-height: 0;
+            overflow: hidden;
+            padding: 0 1.5rem;
+            transition: max-height 0.3s ease, padding 0.3s ease;
+        }
+        
+        .card-content.expanded {
+            max-height: 1000px;
+            padding: 1.5rem;
+            transition: max-height 0.3s ease, padding 0.3s ease;
         }
         
         /* Accordion Styles */
@@ -1487,28 +1850,7 @@ function generateHTML(
             margin-top: 2rem;
         }
         
-        .refresh-btn {
-            position: fixed;
-            bottom: 2rem;
-            right: 2rem;
-            background: #4f46e5;
-            color: white;
-            border: none;
-            padding: 1rem;
-            border-radius: 50%;
-            width: 60px;
-            height: 60px;
-            cursor: pointer;
-            box-shadow: 0 4px 16px rgba(79, 70, 229, 0.3);
-            transition: all 0.3s ease;
-            font-size: 1.5rem;
-        }
-        
-        .refresh-btn:hover {
-            background: #4338ca;
-            transform: scale(1.1);
-            box-shadow: 0 6px 20px rgba(79, 70, 229, 0.4);
-        }
+
     </style>
 </head>
 <body>
@@ -1547,9 +1889,7 @@ function generateHTML(
         </div>
     </div>
     
-    <button class="refresh-btn" onclick="window.location.reload()" title="Refresh Results">
-        🔄
-    </button>
+
     
     <script>
         // Store the results data for navigation
@@ -1588,6 +1928,42 @@ function generateHTML(
             window.location.href = \`/run-\${runIndex}\`;
         }
         
+        function switchTab(tabName, category, evalName) {
+            // Hide all tab panes for this eval
+            const tabPanes = document.querySelectorAll(\`[id$="-tab-\${category}-\${evalName}"]\`);
+            tabPanes.forEach(pane => pane.classList.remove('active'));
+            
+            // Remove active class from all tab buttons
+            const tabButtons = document.querySelectorAll(\`[onclick*="switchTab"][onclick*="'\${category}'"][onclick*="'\${evalName}'"]\`);
+            tabButtons.forEach(button => button.classList.remove('active'));
+            
+            // Show the selected tab pane
+            const selectedPane = document.getElementById(\`\${tabName}-tab-\${category}-\${evalName}\`);
+            if (selectedPane) {
+                selectedPane.classList.add('active');
+            }
+            
+            // Add active class to the clicked button
+            event.target.classList.add('active');
+        }
+
+        function toggleCollapse(sectionId) {
+            const content = document.getElementById(\`\${sectionId}-content\`);
+            const arrow = document.getElementById(\`\${sectionId}-arrow\`);
+            
+            if (content && arrow) {
+                if (content.classList.contains('collapsed')) {
+                    content.classList.remove('collapsed');
+                    content.classList.add('expanded');
+                    arrow.classList.add('expanded');
+                } else {
+                    content.classList.remove('expanded');
+                    content.classList.add('collapsed');
+                    arrow.classList.remove('expanded');
+                }
+            }
+        }
+        
         async function loadTaskFile(directoryPath, category, evalName) {
             try {
                 const response = await fetch(\`/task/\${encodeURIComponent(category)}/\${encodeURIComponent(evalName)}\`);
@@ -1611,7 +1987,168 @@ function generateHTML(
             }
         }
         
+        async function toggleDirectory(dirPath, dirName, category, evalName) {
+            // Create a safe ID by encoding the path
+            const safeId = btoa(dirPath).replace(/[^a-zA-Z0-9]/g, '');
+            const childrenContainer = document.getElementById(\`children-\${safeId}\`);
+            
+            // Find the arrow within the button that was clicked
+            const button = event.target.closest('.file-tree-item.directory');
+            const arrow = button ? button.querySelector('.expand-arrow') : null;
+            
+            if (!childrenContainer) {
+                console.error('Children container not found for:', dirPath);
+                return;
+            }
+            
+            if (childrenContainer.classList.contains('collapsed')) {
+                // Expand directory
+                console.log('Expanding directory:', dirPath);
+                try {
+                    const response = await fetch(\`/browse/\${encodeURIComponent(dirPath)}\`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.files) {
+                            const childrenHTML = data.files.map(file => {
+                                const childSafeId = btoa(file.path).replace(/[^a-zA-Z0-9]/g, '');
+                                if (file.isDirectory) {
+                                    return \`
+                                        <div class="directory-container">
+                                            <button class="file-tree-item directory" onclick="toggleDirectory('\${file.path.replace(/\\\\/g, '\\\\\\\\')}', '\${file.name}', '\${category}', '\${evalName}')">
+                                                <span>📁 \${file.name}</span>
+                                                <span class="expand-arrow">▶</span>
+                                            </button>
+                                            <div class="file-tree-children collapsed" id="children-\${childSafeId}"></div>
+                                        </div>
+                                    \`;
+                                } else {
+                                    return \`<button class="file-tree-item file" onclick="loadFile('\${file.path.replace(/\\\\/g, '\\\\\\\\')}', '\${file.name}', '\${category}', '\${evalName}')" title="\${file.name}">📄 \${file.name}</button>\`;
+                                }
+                            }).join('');
+                            childrenContainer.innerHTML = childrenHTML;
+                        }
+                    } else {
+                        console.error('Failed to fetch directory:', response.status);
+                        childrenContainer.innerHTML = '<p style="color: #dc2626; padding: 0.5rem;">Error loading directory</p>';
+                    }
+                } catch (error) {
+                    console.error('Error fetching directory:', error);
+                    childrenContainer.innerHTML = '<p style="color: #dc2626; padding: 0.5rem;">Error loading directory</p>';
+                }
+                
+                childrenContainer.classList.remove('collapsed');
+                if (arrow) arrow.classList.add('expanded');
+            } else {
+                // Collapse directory
+                console.log('Collapsing directory:', dirPath);
+                childrenContainer.classList.add('collapsed');
+                if (arrow) arrow.classList.remove('expanded');
+            }
+        }
+
+        function getLanguageFromFileName(fileName) {
+            const ext = fileName.split('.').pop().toLowerCase();
+            const languageMap = {
+                'js': 'javascript',
+                'jsx': 'javascript',
+                'ts': 'typescript',
+                'tsx': 'typescript',
+                'py': 'python',
+                'json': 'json',
+                'html': 'html',
+                'css': 'css',
+                'scss': 'scss',
+                'md': 'markdown',
+                'yaml': 'yaml',
+                'yml': 'yaml',
+                'xml': 'xml',
+                'sql': 'sql',
+                'sh': 'bash',
+                'bash': 'bash',
+                'log': 'log',
+                'txt': 'text'
+            };
+            return languageMap[ext] || 'text';
+        }
+
+        async function loadFile(filePath, fileName, category, evalName) {
+            try {
+                // Update active state in file tree
+                const treeItems = document.querySelectorAll(\`#file-tree-content-\${category}-\${evalName} .file-tree-item\`);
+                treeItems.forEach(item => item.classList.remove('active'));
+                event.target.classList.add('active');
+                
+                // Update file name in header
+                const fileNameElement = document.getElementById(\`current-file-name-\${category}-\${evalName}\`);
+                if (fileNameElement) {
+                    fileNameElement.textContent = fileName;
+                }
+                
+                // Load file content
+                const response = await fetch(\`/file/\${encodeURIComponent(filePath)}\`);
+                const contentElement = document.getElementById(\`file-content-\${category}-\${evalName}\`);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (contentElement) {
+                        const language = getLanguageFromFileName(fileName);
+                        const isLogFile = fileName.endsWith('.log') || fileName.endsWith('.txt');
+                        
+                        if (isLogFile || language === 'text' || language === 'log') {
+                            // For log files and plain text, use simple styling
+                            const style = isLogFile 
+                                ? 'white-space: pre-wrap; background: #1f2937; color: #f3f4f6; padding: 1rem; margin: 0; font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace; font-size: 0.875rem; line-height: 1.4; height: 100%; overflow-y: auto;'
+                                : 'white-space: pre-wrap; background: #f8fafc; color: #374151; padding: 1rem; margin: 0; font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace; font-size: 0.875rem; line-height: 1.4; height: 100%; overflow-y: auto; border: 1px solid #e5e7eb;';
+                            
+                            contentElement.innerHTML = \`<pre style="\${style}">\${data.content}</pre>\`;
+                        } else {
+                            // For code files, use Prism.js syntax highlighting
+                            const escapedContent = data.content
+                                .replace(/&/g, '&amp;')
+                                .replace(/</g, '&lt;')
+                                .replace(/>/g, '&gt;');
+                            
+                            contentElement.innerHTML = \`
+                                <pre class="language-\${language}" style="margin: 0; height: 100%; overflow-y: auto; font-size: 0.875rem; line-height: 1.4;"><code class="language-\${language}">\${escapedContent}</code></pre>
+                            \`;
+                            
+                            // Apply syntax highlighting
+                            if (window.Prism) {
+                                Prism.highlightAllUnder(contentElement);
+                            }
+                        }
+                    }
+                } else {
+                    if (contentElement) {
+                        contentElement.innerHTML = '<p style="color: #dc2626; padding: 1rem;">File not found or could not be loaded.</p>';
+                    }
+                }
+            } catch (error) {
+                const contentElement = document.getElementById(\`file-content-\${category}-\${evalName}\`);
+                if (contentElement) {
+                    contentElement.innerHTML = \`<p style="color: #dc2626; padding: 1rem;">Error loading file: \${error.message}</p>\`;
+                }
+            }
+        }
+        
         // Directory and log functions
+        function copyDirectoryPath(path) {
+            navigator.clipboard.writeText(path).then(() => {
+                // Show a brief success indicator
+                const button = event.target;
+                const originalText = button.textContent;
+                button.textContent = '✓';
+                button.style.background = '#10b981';
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.style.background = '#4f46e5';
+                }, 1000);
+            }).catch(() => {
+                // Fallback for older browsers
+                prompt("Copy this directory path:", path);
+            });
+        }
+
         function openDirectory(path) {
             // Try different methods to open directory
             if (window.electronAPI) {
@@ -1699,6 +2236,51 @@ async function startServer() {
             });
           } catch (err) {
             return new Response("Error reading task file", { status: 500 });
+          }
+        }
+
+        // Handle directory listing requests
+        if (pathParts[0] === "browse") {
+          try {
+            const dirPath = decodeURIComponent(pathParts.slice(1).join("/"));
+            const fs = require("fs");
+            const path = require("path");
+
+            if (!fs.existsSync(dirPath)) {
+              return new Response("Directory not found", { status: 404 });
+            }
+
+            const items = fs.readdirSync(dirPath, { withFileTypes: true });
+            const fileTree = items.map((item: any) => ({
+              name: item.name,
+              isDirectory: item.isDirectory(),
+              path: path.join(dirPath, item.name),
+            }));
+
+            return new Response(JSON.stringify({ files: fileTree }), {
+              headers: { "Content-Type": "application/json" },
+            });
+          } catch (err) {
+            return new Response("Error reading directory", { status: 500 });
+          }
+        }
+
+        // Handle file content requests
+        if (pathParts[0] === "file") {
+          try {
+            const filePath = decodeURIComponent(pathParts.slice(1).join("/"));
+            const fs = require("fs");
+
+            if (!fs.existsSync(filePath)) {
+              return new Response("File not found", { status: 404 });
+            }
+
+            const content = fs.readFileSync(filePath, "utf-8");
+            return new Response(JSON.stringify({ content }), {
+              headers: { "Content-Type": "application/json" },
+            });
+          } catch (err) {
+            return new Response("Error reading file", { status: 500 });
           }
         }
 
