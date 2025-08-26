@@ -785,6 +785,97 @@ function generateMainContent(
                return match ? parseInt(match[1]) : 0;
            }
            
+           // Monaco Editor setup
+           let monacoLoaded = false;
+           let editors = new Map(); // Store editor instances
+           
+           // Initialize Monaco Editor
+           function initMonaco() {
+               if (monacoLoaded) return Promise.resolve();
+               
+               return new Promise((resolve) => {
+                   require.config({ paths: { vs: 'https://unpkg.com/monaco-editor@0.45.0/min/vs' } });
+                   require(['vs/editor/editor.main'], function() {
+                       monacoLoaded = true;
+                       resolve();
+                   });
+               });
+           }
+           
+           // Create or update Monaco editor
+           async function createMonacoEditor(containerId, content, language, isReadOnly = true) {
+               console.log('Creating Monaco editor for:', containerId, 'language:', language);
+               
+               try {
+                   await initMonaco();
+                   
+                   const container = document.getElementById(containerId);
+                   if (!container) {
+                       console.error('Container not found:', containerId);
+                       return null;
+                   }
+                   
+                   // Dispose existing editor if any
+                   const existingEditor = editors.get(containerId);
+                   if (existingEditor) {
+                       existingEditor.dispose();
+                   }
+                   
+                   const monacoLanguage = getMonacoLanguage(language);
+                   console.log('Using Monaco language:', monacoLanguage, 'for file language:', language);
+                   
+                   // Create new editor
+                   const editor = monaco.editor.create(container, {
+                       value: content,
+                       language: monacoLanguage,
+                       theme: 'vs',
+                       readOnly: isReadOnly,
+                       automaticLayout: true,
+                       minimap: { enabled: false },
+                       scrollBeyondLastLine: false,
+                       lineNumbers: 'on',
+                       renderWhitespace: 'selection',
+                       fontSize: 14,
+                       fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
+                       wordWrap: 'off',
+                       glyphMargin: false,
+                       folding: true,
+                       lineDecorationsWidth: 0,
+                       lineNumbersMinChars: 4
+                   });
+                   
+                   editors.set(containerId, editor);
+                   console.log('Monaco editor created successfully');
+                   return editor;
+               } catch (error) {
+                   console.error('Error creating Monaco editor:', error);
+                   return null;
+               }
+           }
+           
+           // Map file extensions to Monaco languages
+           function getMonacoLanguage(fileExt) {
+               const languageMap = {
+                   'ts': 'typescript',
+                   'tsx': 'typescript',
+                   'js': 'javascript',
+                   'jsx': 'javascript',
+                   'json': 'json',
+                   'html': 'html',
+                   'css': 'css',
+                   'scss': 'scss',
+                   'md': 'markdown',
+                   'py': 'python',
+                   'sql': 'sql',
+                   'yaml': 'yaml',
+                   'yml': 'yaml',
+                   'xml': 'xml',
+                   'log': 'plaintext',
+                   'txt': 'plaintext'
+               };
+               return languageMap[fileExt] || 'plaintext';
+           }
+           
            // Auto-load task file and run log when page loads
            (async function() {
              // Load run log into the Log tab
@@ -990,9 +1081,8 @@ function generateHTML(
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Convex Evaluation Results</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    <!-- Monaco Editor -->
+    <script src="https://unpkg.com/monaco-editor@0.45.0/min/vs/loader.js"></script>
     <style>
         * {
             margin: 0;
@@ -1631,38 +1721,22 @@ function generateHTML(
              color: #1d4ed8;
          }
          
-         /* Line numbers styling - IDE-like gutter */
-         .line-numbers {
-             display: table;
+         /* Monaco Editor container */
+         .monaco-editor-container {
              width: 100%;
-             font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
-             font-size: 0.875rem;
-             line-height: 1.5;
-             white-space: pre;
+             height: 100%;
+             border: 1px solid #e5e7eb;
+             border-radius: 4px;
+             overflow: hidden;
          }
          
-         .line-numbers .code-line {
-             display: table-row;
+         /* Monaco Editor line highlighting */
+         .highlight-line {
+             background-color: #fef3c7 !important;
          }
          
-         .line-numbers .line-number {
-             display: table-cell;
-             width: 50px;
-             padding: 0 8px 0 4px;
-             color: #9ca3af;
-             background-color: #f8fafc;
-             text-align: right;
-             user-select: none;
-             border-right: 1px solid #e5e7eb;
-             vertical-align: top;
-             font-size: 0.75rem;
-         }
-         
-         .line-numbers .line-content {
-             display: table-cell;
-             padding: 0 0 0 12px;
-             vertical-align: top;
-             width: 100%;
+         .highlight-line-gutter {
+             background-color: #f59e0b !important;
          }
          
          /* Clickable log file paths */
@@ -2338,16 +2412,18 @@ function generateHTML(
                     
                     // Extract the actual file path from the onclick attribute
                     let extractedPath = '';
+                    let fileName = '';
                     if (buttonPath) {
-                        // Extract path from onclick="loadFile('path', 'name', ...)"
-                        const loadFileRegex = new RegExp("loadFile\\\\('([^']+)'");
+                        // Extract path and filename from onclick="loadFile('path', 'name', ...)"
+                        const loadFileRegex = new RegExp("loadFile\\\\('([^']+)',\\\\s*'([^']+)'");
                         const pathMatch = buttonPath.match(loadFileRegex);
                         if (pathMatch) {
                             extractedPath = pathMatch[1].replace(/\\\\\\\\/g, '/').replace(/\\\\/g, '/');
+                            fileName = pathMatch[2];
                         }
                     }
                     
-                    console.log('Extracted path:', extractedPath, 'Target path:', filePath);
+                    console.log('Extracted path:', extractedPath, 'fileName:', fileName, 'Target path:', filePath);
                     
                     // Check if this button matches our file path (exact match or ends with the relative path)
                     const isExactMatch = extractedPath === filePath;
@@ -2355,18 +2431,23 @@ function generateHTML(
                     const isFileNameMatch = buttonTitle === filePath.split('/').pop() && filePath.includes('/');
                     
                     if (isExactMatch || isRelativeMatch || isFileNameMatch) {
-                        console.log('Found matching file button, clicking:', buttonTitle, 'Match type:', 
+                        console.log('Found matching file, loading directly:', fileName, 'Match type:', 
                                    isExactMatch ? 'exact' : isRelativeMatch ? 'relative' : 'filename');
                         
-                        // Simulate the click
-                        button.click();
+                        // Load the file directly instead of clicking the button
+                        loadFile(extractedPath, fileName, category, evalName);
+                        
+                        // Mark the button as active
+                        const treeItems = document.querySelectorAll(\`#file-tree-content-\${category}-\${evalName} .file-tree-item\`);
+                        treeItems.forEach(item => item.classList.remove('active'));
+                        button.classList.add('active');
                         
                         // If we have a line number, scroll to it after the file loads
                         if (lineNumber) {
                             setTimeout(() => {
                                 console.log('Scrolling to line:', lineNumber);
                                 scrollToLineNumber(lineNumber, category, evalName);
-                            }, 1000);
+                            }, 1500);
                         }
                         return true;
                     }
@@ -2590,28 +2671,14 @@ function generateHTML(
                              
                              contentElement.innerHTML = \`<pre style="\${style}">\${data.content}</pre>\`;
                          } else {
-                             // For code files, add line numbers and use Prism.js syntax highlighting
-                             const lines = data.content.split('\\n');
-                             const numberedContent = lines.map((line, index) => {
-                                 const lineNumber = (index + 1).toString().padStart(4, ' ');
-                                 const escapedLine = line
-                                     .replace(/&/g, '&amp;')
-                                     .replace(/</g, '&lt;')
-                                     .replace(/>/g, '&gt;');
-                                 return \`<div class="code-line"><span class="line-number">\${lineNumber}</span><span class="line-content"><code class="language-\${language}">\${escapedLine}</code></span></div>\`;
-                             }).join('');
+                             // Create Monaco editor container
+                             const editorId = \`monaco-editor-main-\${category}-\${evalName}-\${Date.now()}\`;
+                             contentElement.innerHTML = \`<div id="\${editorId}" class="monaco-editor-container"></div>\`;
                              
-                             contentElement.innerHTML = \`
-                                 <div class="line-numbers" style="margin: 0; height: 100%; overflow-y: auto;">\${numberedContent}</div>
-                             \`;
-                             
-                             // Apply syntax highlighting to each line
-                             if (window.Prism) {
-                                 const codeElements = contentElement.querySelectorAll('.line-content code');
-                                 codeElements.forEach(codeEl => {
-                                     Prism.highlightElement(codeEl);
-                                 });
-                             }
+                             // Create Monaco editor
+                             setTimeout(() => {
+                                 createMonacoEditor(editorId, data.content, language);
+                             }, 100);
                          }
                         
                         // Try to load corresponding answer file for split view
@@ -2672,36 +2739,14 @@ function generateHTML(
                     const language = getLanguageFromFileName(fileName);
                     const isLogFile = fileName.endsWith('.log') || fileName.endsWith('.txt');
                     
-                                             if (isLogFile || language === 'text' || language === 'log') {
-                             const style = isLogFile 
-                                 ? 'white-space: pre-wrap; background: #1f2937; color: #f3f4f6; padding: 1rem; margin: 0; font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace; font-size: 0.875rem; line-height: 1.4; height: 100%; overflow-y: auto;'
-                                 : 'white-space: pre-wrap; background: #f8fafc; color: #374151; padding: 1rem; margin: 0; font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace; font-size: 0.875rem; line-height: 1.4; height: 100%; overflow-y: auto; border: 1px solid #e5e7eb;';
-                             
-                             answerContentElement.innerHTML = \`<pre style="\${style}">\${content}</pre>\`;
-                         } else {
-                             // For code files, add line numbers and use Prism.js syntax highlighting
-                             const lines = content.split('\\n');
-                             const numberedContent = lines.map((line, index) => {
-                                 const lineNumber = (index + 1).toString().padStart(4, ' ');
-                                 const escapedLine = line
-                                     .replace(/&/g, '&amp;')
-                                     .replace(/</g, '&lt;')
-                                     .replace(/>/g, '&gt;');
-                                 return \`<div class="code-line"><span class="line-number">\${lineNumber}</span><span class="line-content"><code class="language-\${language}">\${escapedLine}</code></span></div>\`;
-                             }).join('');
-                             
-                             answerContentElement.innerHTML = \`
-                                 <div class="line-numbers" style="margin: 0; height: 100%; overflow-y: auto;">\${numberedContent}</div>
-                             \`;
-                             
-                             // Apply syntax highlighting to each line
-                             if (window.Prism) {
-                                 const codeElements = answerContentElement.querySelectorAll('.line-content code');
-                                 codeElements.forEach(codeEl => {
-                                     Prism.highlightElement(codeEl);
-                                 });
-                             }
-                         }
+                         // Create Monaco editor container for answer
+                         const answerEditorId = \`monaco-answer-editor-\${category}-\${evalName}-\${Date.now()}\`;
+                         answerContentElement.innerHTML = \`<div id="\${answerEditorId}" class="monaco-editor-container"></div>\`;
+                         
+                         // Create Monaco editor for answer
+                         setTimeout(() => {
+                             createMonacoEditor(answerEditorId, content, language);
+                         }, 100);
                     
                     // Show the answer pane
                     if (answerPane) {
@@ -2847,24 +2892,35 @@ function generateHTML(
          
 
          
-         // Function to scroll to a specific line number
+         // Function to scroll to a specific line number in Monaco Editor
          function scrollToLineNumber(lineNumber, category, evalName) {
-             const contentElement = document.getElementById(\`file-content-\${category}-\${evalName}\`);
-             if (contentElement) {
-                 const lineElements = contentElement.querySelectorAll('.line-number');
-                 for (const lineEl of lineElements) {
-                     if (lineEl.textContent.trim() === lineNumber.toString().padStart(4, ' ')) {
-                         lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                         // Highlight the line briefly
-                         const lineContent = lineEl.nextElementSibling;
-                         if (lineContent) {
-                             lineContent.style.backgroundColor = '#fef3c7';
-                             setTimeout(() => {
-                                 lineContent.style.backgroundColor = '';
-                             }, 2000);
+             console.log('Scrolling to line number:', lineNumber);
+             
+             // Find the Monaco editor for this file
+             for (const [containerId, editor] of editors.entries()) {
+                 if (containerId.includes(category) && containerId.includes(evalName) && !containerId.includes('answer')) {
+                     console.log('Found editor for scrolling:', containerId);
+                     
+                     // Scroll to the line and highlight it
+                     editor.revealLineInCenter(lineNumber);
+                     editor.setPosition({ lineNumber: lineNumber, column: 1 });
+                     
+                     // Highlight the line temporarily
+                     const decoration = editor.deltaDecorations([], [{
+                         range: new monaco.Range(lineNumber, 1, lineNumber, 1),
+                         options: {
+                             isWholeLine: true,
+                             className: 'highlight-line',
+                             linesDecorationsClassName: 'highlight-line-gutter'
                          }
-                         break;
-                     }
+                     }]);
+                     
+                     // Remove highlight after 3 seconds
+                     setTimeout(() => {
+                         editor.deltaDecorations(decoration, []);
+                     }, 3000);
+                     
+                     break;
                  }
              }
          }
@@ -2997,36 +3053,14 @@ function generateHTML(
                         const language = getLanguageFromFileName(fileName);
                         const isLogFile = fileName.endsWith('.log') || fileName.endsWith('.txt');
                         
-                                                 if (isLogFile || language === 'text' || language === 'log') {
-                             const style = isLogFile 
-                                 ? 'white-space: pre-wrap; background: #1f2937; color: #f3f4f6; padding: 1rem; margin: 0; font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace; font-size: 0.875rem; line-height: 1.4; height: 100%; overflow-y: auto;'
-                                 : 'white-space: pre-wrap; background: #f8fafc; color: #374151; padding: 1rem; margin: 0; font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace; font-size: 0.875rem; line-height: 1.4; height: 100%; overflow-y: auto; border: 1px solid #e5e7eb;';
-                             
-                             contentElement.innerHTML = \`<pre style="\${style}">\${data.content}</pre>\`;
-                         } else {
-                             // For code files, add line numbers and use Prism.js syntax highlighting
-                             const lines = data.content.split('\\n');
-                             const numberedContent = lines.map((line, index) => {
-                                 const lineNumber = (index + 1).toString().padStart(4, ' ');
-                                 const escapedLine = line
-                                     .replace(/&/g, '&amp;')
-                                     .replace(/</g, '&lt;')
-                                     .replace(/>/g, '&gt;');
-                                 return \`<div class="code-line"><span class="line-number">\${lineNumber}</span><span class="line-content"><code class="language-\${language}">\${escapedLine}</code></span></div>\`;
-                             }).join('');
-                             
-                             contentElement.innerHTML = \`
-                                 <div class="line-numbers" style="margin: 0; height: 100%; overflow-y: auto;">\${numberedContent}</div>
-                             \`;
-                             
-                             // Apply syntax highlighting to each line
-                             if (window.Prism) {
-                                 const codeElements = contentElement.querySelectorAll('.line-content code');
-                                 codeElements.forEach(codeEl => {
-                                     Prism.highlightElement(codeEl);
-                                 });
-                             }
-                         }
+                                                 // Create Monaco editor container
+                         const editorId = \`monaco-editor-\${category}-\${evalName}-\${Date.now()}\`;
+                         contentElement.innerHTML = \`<div id="\${editorId}" class="monaco-editor-container"></div>\`;
+                         
+                         // Create Monaco editor
+                         setTimeout(() => {
+                             createMonacoEditor(editorId, data.content, language);
+                         }, 100);
                     }
                 } else {
                     if (contentElement) {
