@@ -502,6 +502,9 @@ function generateMainContent(
   runIndex: number,
   category: string,
   evalName: string,
+  selectedTab: string = "log",
+  selectedFile: string = "",
+  selectedLine: number | null = null,
 ): string {
   if (currentView === "runs-list") {
     return `
@@ -634,30 +637,30 @@ function generateMainContent(
     return `
              <div class="tab-container">
          <div class="tab-nav">
-           <button class="tab-button active" onclick="switchTab('log', '${category}', '${evalName}')">📄 Log</button>
-           <button class="tab-button" onclick="switchTab('task', '${category}', '${evalName}')">📋 Task</button>
-           <button class="tab-button" onclick="switchTab('steps', '${category}', '${evalName}')">📊 Steps</button>
-           <button class="tab-button" onclick="switchTab('answer', '${category}', '${evalName}')">💡 Answer</button>
-           <button class="tab-button" onclick="switchTab('output', '${category}', '${evalName}')">📁 Output</button>
+           <button class="tab-button ${selectedTab === "log" ? "active" : ""}" onclick="switchTab('log', '${category}', '${evalName}')">📄 Log</button>
+           <button class="tab-button ${selectedTab === "task" ? "active" : ""}" onclick="switchTab('task', '${category}', '${evalName}')">📋 Task</button>
+           <button class="tab-button ${selectedTab === "steps" ? "active" : ""}" onclick="switchTab('steps', '${category}', '${evalName}')">📊 Steps</button>
+           <button class="tab-button ${selectedTab === "answer" ? "active" : ""}" onclick="switchTab('answer', '${category}', '${evalName}')">💡 Answer</button>
+           <button class="tab-button ${selectedTab === "output" ? "active" : ""}" onclick="switchTab('output', '${category}', '${evalName}')">📁 Output</button>
          </div>
         
                  <div class="tab-content">
-           <!-- Log Tab (default active) -->
-           <div class="tab-pane active" id="log-tab-${category}-${evalName}">
+           <!-- Log Tab -->
+           <div class="tab-pane ${selectedTab === "log" ? "active" : ""}" id="log-tab-${category}-${evalName}">
              <div class="log-content" id="log-content-${category}-${evalName}">
                <p><em>Loading run log...</em></p>
              </div>
            </div>
            
            <!-- Task Tab -->
-           <div class="tab-pane" id="task-tab-${category}-${evalName}">
+           <div class="tab-pane ${selectedTab === "task" ? "active" : ""}" id="task-tab-${category}-${evalName}">
              <div class="task-content" id="task-content-${category}-${evalName}">
                <p><em>Loading task description...</em></p>
              </div>
            </div>
           
           <!-- Steps Tab -->
-          <div class="tab-pane" id="steps-tab-${category}-${evalName}">
+          <div class="tab-pane ${selectedTab === "steps" ? "active" : ""}" id="steps-tab-${category}-${evalName}">
             <div class="scores-list">
               ${scoresBreakdown}
             </div>
@@ -673,7 +676,7 @@ function generateMainContent(
           </div>
           
           <!-- Answer Tab -->
-          <div class="tab-pane" id="answer-tab-${category}-${evalName}">
+          <div class="tab-pane ${selectedTab === "answer" ? "active" : ""}" id="answer-tab-${category}-${evalName}">
             <div class="file-browser">
               <div class="file-tree">
                 <div class="file-tree-header">
@@ -698,7 +701,7 @@ function generateMainContent(
           </div>
           
           <!-- Output Tab -->
-          <div class="tab-pane" id="output-tab-${category}-${evalName}">
+          <div class="tab-pane ${selectedTab === "output" ? "active" : ""}" id="output-tab-${category}-${evalName}">
             <div class="file-browser">
               <div class="file-tree">
                 <div class="file-tree-header">
@@ -756,7 +759,9 @@ function generateMainContent(
                if (response.ok) {
                  const data = await response.json();
                  if (logElement) {
-                   logElement.innerHTML = \`<pre>\${data.content}</pre>\`;
+                   // Process log content to make file paths clickable
+                   const processedContent = makeLogPathsClickable(data.content, '${category}', '${evalName}');
+                   logElement.innerHTML = \`<pre>\${processedContent}</pre>\`;
                  }
                } else {
                  if (logElement) {
@@ -829,18 +834,32 @@ function generateMainContent(
                   }).join('');
                   treeElement.innerHTML = fileTreeHTML;
                   
-                  // Auto-load run.log if it exists
-                  const runLogFile = data.files.find(f => f.name === 'run.log');
-                  if (runLogFile) {
-                    loadFile(runLogFile.path, 'run.log', '${category}', '${evalName}');
+                  // Check if we should auto-load a file from URL, otherwise default to run.log
+                  const fragment = window.location.hash.slice(1);
+                  const hasFileInUrl = fragment && (fragment.includes('/') || fragment.includes('.'));
+                  
+                  if (hasFileInUrl) {
+                    // Don't auto-load run.log, let the URL-based loading handle it
+                    console.log('URL fragment detected, skipping run.log auto-load:', fragment);
                     
-                    // Mark run.log as active in the file tree
+                    // Immediately try to load the file from URL
                     setTimeout(() => {
-                      const runLogButton = document.querySelector(\`#file-tree-content-\${category}-\${evalName} .file-tree-item[title="run.log"]\`);
-                      if (runLogButton) {
-                        runLogButton.classList.add('active');
-                      }
-                    }, 100);
+                      autoLoadFileFromUrl('${selectedFile}', '${category}', '${evalName}', ${selectedLine || "null"});
+                    }, 200);
+                  } else {
+                    // Auto-load run.log as default
+                    const runLogFile = data.files.find(f => f.name === 'run.log');
+                    if (runLogFile) {
+                      loadFile(runLogFile.path, 'run.log', '${category}', '${evalName}');
+                      
+                      // Mark run.log as active in the file tree
+                      setTimeout(() => {
+                        const runLogButton = document.querySelector(\`#file-tree-content-\${category}-\${evalName} .file-tree-item[title="run.log"]\`);
+                        if (runLogButton) {
+                          runLogButton.classList.add('active');
+                        }
+                      }, 100);
+                    }
                   }
                   
                   // Also try to load answer for the first file (usually index.ts or similar)
@@ -884,6 +903,9 @@ function generateHTML(
   runIndex: number = -1,
   category: string = "",
   evalName: string = "",
+  selectedTab: string = "log",
+  selectedFile: string = "",
+  selectedLine: number | null = null,
 ): string {
   const runsListHTML = generateRunsListHTML(results);
 
@@ -917,6 +939,9 @@ function generateHTML(
     runIndex,
     category,
     evalName,
+    selectedTab,
+    selectedFile,
+    selectedLine,
   );
 
   return `
@@ -1563,9 +1588,44 @@ function generateHTML(
             color: #7c2d12;
         }
         
-        .token.keyword {
-            color: #1d4ed8;
-        }
+                 .token.keyword {
+             color: #1d4ed8;
+         }
+         
+         /* Line numbers styling */
+         .line-numbers .line-number {
+             display: inline-block;
+             width: 45px;
+             padding-right: 8px;
+             color: #9ca3af;
+             text-align: right;
+             user-select: none;
+             border-right: 1px solid #e5e7eb;
+             margin-right: 12px;
+             font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+             font-size: 0.75rem;
+             line-height: 1.4;
+         }
+         
+         .line-numbers .line-content {
+             display: inline;
+             padding-left: 4px;
+         }
+         
+         /* Clickable log file paths */
+         .log-file-path {
+             color: #3b82f6;
+             text-decoration: underline;
+             cursor: pointer;
+             transition: all 0.2s ease;
+         }
+         
+         .log-file-path:hover {
+             color: #1d4ed8;
+             background-color: rgba(59, 130, 246, 0.1);
+             padding: 2px 4px;
+             border-radius: 3px;
+         }
         
         .file-viewer {
             flex: 1;
@@ -2198,6 +2258,72 @@ function generateHTML(
             return match ? parseInt(match[1]) : 0;
         }
         
+        // Auto-load file and line from URL fragment on page load (backup for non-output tabs)
+        document.addEventListener('DOMContentLoaded', function() {
+            const fragment = window.location.hash.slice(1);
+            if (fragment && '${selectedTab}' !== 'output' && '${selectedFile}') {
+                // Only auto-load if not already handled by output tab inline script
+                setTimeout(() => {
+                    autoLoadFileFromUrl('${selectedFile}', '${category}', '${evalName}', ${selectedLine || "null"});
+                }, 500);
+            }
+        });
+        
+        // Function to auto-load a file from URL
+        async function autoLoadFileFromUrl(filePath, category, evalName, lineNumber) {
+            console.log('Auto-loading file from URL:', filePath);
+            
+            // Wait for the file tree to be fully loaded
+            let attempts = 0;
+            const maxAttempts = 10;
+            
+            const tryToLoadFile = () => {
+                const fileButtons = document.querySelectorAll(\`#file-tree-content-\${category}-\${evalName} .file-tree-item\`);
+                console.log(\`Attempt \${attempts + 1}: Found \${fileButtons.length} file buttons\`);
+                
+                for (const button of fileButtons) {
+                    const buttonPath = button.getAttribute('onclick');
+                    const buttonTitle = button.getAttribute('title');
+                    
+                    // Check if this button matches our file path
+                    if ((buttonPath && buttonPath.includes(filePath)) || 
+                        (buttonTitle && filePath.endsWith(buttonTitle))) {
+                        console.log('Found matching file button, clicking:', buttonTitle);
+                        
+                        // Simulate the click
+                        button.click();
+                        
+                        // If we have a line number, scroll to it after the file loads
+                        if (lineNumber) {
+                            setTimeout(() => {
+                                console.log('Scrolling to line:', lineNumber);
+                                scrollToLineNumber(lineNumber, category, evalName);
+                            }, 1000);
+                        }
+                        return true;
+                    }
+                }
+                return false;
+            };
+            
+            // Try to load the file, with retries
+            const loadWithRetry = () => {
+                if (tryToLoadFile()) {
+                    return; // Success
+                }
+                
+                attempts++;
+                if (attempts < maxAttempts) {
+                    console.log(\`File not found yet, retrying in 200ms... (attempt \${attempts}/\${maxAttempts})\`);
+                    setTimeout(loadWithRetry, 200);
+                } else {
+                    console.log(\`File not found after \${maxAttempts} attempts: \${filePath}\`);
+                }
+            };
+            
+            loadWithRetry();
+        }
+        
         function showEvalDetails(evalName, runIndex, category) {
             window.location.href = \`/run-\${runIndex}/\${category}/\${evalName}\`;
         }
@@ -2207,29 +2333,32 @@ function generateHTML(
             window.location.href = \`/run-\${runIndex}\`;
         }
         
-        function switchTab(tabName, category, evalName) {
-            // Hide all tab panes for this eval
-            const tabPanes = document.querySelectorAll(\`[id$="-tab-\${category}-\${evalName}"]\`);
-            tabPanes.forEach(pane => pane.classList.remove('active'));
-            
-            // Remove active class from all tab buttons
-            const tabButtons = document.querySelectorAll(\`[onclick*="switchTab"][onclick*="'\${category}'"][onclick*="'\${evalName}'"]\`);
-            tabButtons.forEach(button => button.classList.remove('active'));
-            
-            // Show the selected tab pane
-            const selectedPane = document.getElementById(\`\${tabName}-tab-\${category}-\${evalName}\`);
-            if (selectedPane) {
-                selectedPane.classList.add('active');
-            }
-            
-            // Add active class to the clicked button
-            event.target.classList.add('active');
-            
-            // Load answer directory if answer tab is selected
-            if (tabName === 'answer') {
-                loadAnswerDirectory(category, evalName);
-            }
-        }
+                 function switchTab(tabName, category, evalName) {
+             // Hide all tab panes for this eval
+             const tabPanes = document.querySelectorAll(\`[id$="-tab-\${category}-\${evalName}"]\`);
+             tabPanes.forEach(pane => pane.classList.remove('active'));
+             
+             // Remove active class from all tab buttons
+             const tabButtons = document.querySelectorAll(\`[onclick*="switchTab"][onclick*="'\${category}'"][onclick*="'\${evalName}'"]\`);
+             tabButtons.forEach(button => button.classList.remove('active'));
+             
+             // Show the selected tab pane
+             const selectedPane = document.getElementById(\`\${tabName}-tab-\${category}-\${evalName}\`);
+             if (selectedPane) {
+                 selectedPane.classList.add('active');
+             }
+             
+             // Add active class to the clicked button
+             event.target.classList.add('active');
+             
+             // Update URL to include tab
+             updateURL(category, evalName, tabName);
+             
+             // Load answer directory if answer tab is selected
+             if (tabName === 'answer') {
+                 loadAnswerDirectory(category, evalName);
+             }
+         }
 
         function toggleCollapse(sectionId) {
             const content = document.getElementById(\`\${sectionId}-content\`);
@@ -2366,11 +2495,14 @@ function generateHTML(
                     event.target.classList.add('active');
                 }
                 
-                // Update file name in header
-                const fileNameElement = document.getElementById(\`current-file-name-\${category}-\${evalName}\`);
-                if (fileNameElement) {
-                    fileNameElement.textContent = fileName;
-                }
+                                 // Update file name in header
+                 const fileNameElement = document.getElementById(\`current-file-name-\${category}-\${evalName}\`);
+                 if (fileNameElement) {
+                     fileNameElement.textContent = fileName;
+                 }
+                 
+                 // Update URL to include the selected file
+                 updateURL(category, evalName, 'output', fileName);
                 
                 // Load file content
                 const response = await fetch(\`/file/\${encodeURIComponent(filePath)}\`);
@@ -2382,29 +2514,34 @@ function generateHTML(
                         const language = getLanguageFromFileName(fileName);
                         const isLogFile = fileName.endsWith('.log') || fileName.endsWith('.txt');
                         
-                        if (isLogFile || language === 'text' || language === 'log') {
-                            // For log files and plain text, use simple styling
-                            const style = isLogFile 
-                                ? 'white-space: pre-wrap; background: #1f2937; color: #f3f4f6; padding: 1rem; margin: 0; font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace; font-size: 0.875rem; line-height: 1.4; height: 100%; overflow-y: auto;'
-                                : 'white-space: pre-wrap; background: #f8fafc; color: #374151; padding: 1rem; margin: 0; font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace; font-size: 0.875rem; line-height: 1.4; height: 100%; overflow-y: auto; border: 1px solid #e5e7eb;';
-                            
-                            contentElement.innerHTML = \`<pre style="\${style}">\${data.content}</pre>\`;
-                        } else {
-                            // For code files, use Prism.js syntax highlighting
-                            const escapedContent = data.content
-                                .replace(/&/g, '&amp;')
-                                .replace(/</g, '&lt;')
-                                .replace(/>/g, '&gt;');
-                            
-                            contentElement.innerHTML = \`
-                                <pre class="language-\${language}" style="margin: 0; height: 100%; overflow-y: auto; font-size: 0.875rem; line-height: 1.4;"><code class="language-\${language}">\${escapedContent}</code></pre>
-                            \`;
-                            
-                            // Apply syntax highlighting
-                            if (window.Prism) {
-                                Prism.highlightAllUnder(contentElement);
-                            }
-                        }
+                                                 if (isLogFile || language === 'text' || language === 'log') {
+                             // For log files and plain text, use simple styling
+                             const style = isLogFile 
+                                 ? 'white-space: pre-wrap; background: #1f2937; color: #f3f4f6; padding: 1rem; margin: 0; font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace; font-size: 0.875rem; line-height: 1.4; height: 100%; overflow-y: auto;'
+                                 : 'white-space: pre-wrap; background: #f8fafc; color: #374151; padding: 1rem; margin: 0; font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace; font-size: 0.875rem; line-height: 1.4; height: 100%; overflow-y: auto; border: 1px solid #e5e7eb;';
+                             
+                             contentElement.innerHTML = \`<pre style="\${style}">\${data.content}</pre>\`;
+                         } else {
+                             // For code files, add line numbers and use Prism.js syntax highlighting
+                             const lines = data.content.split('\\n');
+                             const numberedContent = lines.map((line, index) => {
+                                 const lineNumber = (index + 1).toString().padStart(4, ' ');
+                                 const escapedLine = line
+                                     .replace(/&/g, '&amp;')
+                                     .replace(/</g, '&lt;')
+                                     .replace(/>/g, '&gt;');
+                                 return \`<span class="line-number">\${lineNumber}</span><span class="line-content">\${escapedLine}</span>\`;
+                             }).join('\\n');
+                             
+                             contentElement.innerHTML = \`
+                                 <pre class="language-\${language} line-numbers" style="margin: 0; height: 100%; overflow-y: auto; font-size: 0.875rem; line-height: 1.4;"><code class="language-\${language}">\${numberedContent}</code></pre>
+                             \`;
+                             
+                             // Apply syntax highlighting
+                             if (window.Prism) {
+                                 Prism.highlightAllUnder(contentElement);
+                             }
+                         }
                         
                         // Try to load corresponding answer file for split view
                         await loadCorrespondingAnswerFile(filePath, fileName, category, evalName);
@@ -2464,26 +2601,32 @@ function generateHTML(
                     const language = getLanguageFromFileName(fileName);
                     const isLogFile = fileName.endsWith('.log') || fileName.endsWith('.txt');
                     
-                    if (isLogFile || language === 'text' || language === 'log') {
-                        const style = isLogFile 
-                            ? 'white-space: pre-wrap; background: #1f2937; color: #f3f4f6; padding: 1rem; margin: 0; font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace; font-size: 0.875rem; line-height: 1.4; height: 100%; overflow-y: auto;'
-                            : 'white-space: pre-wrap; background: #f8fafc; color: #374151; padding: 1rem; margin: 0; font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace; font-size: 0.875rem; line-height: 1.4; height: 100%; overflow-y: auto; border: 1px solid #e5e7eb;';
-                        
-                        answerContentElement.innerHTML = \`<pre style="\${style}">\${content}</pre>\`;
-                    } else {
-                        const escapedContent = content
-                            .replace(/&/g, '&amp;')
-                            .replace(/</g, '&lt;')
-                            .replace(/>/g, '&gt;');
-                        
-                        answerContentElement.innerHTML = \`
-                            <pre class="language-\${language}" style="margin: 0; height: 100%; overflow-y: auto; font-size: 0.875rem; line-height: 1.4;"><code class="language-\${language}">\${escapedContent}</code></pre>
-                        \`;
-                        
-                        if (window.Prism) {
-                            Prism.highlightAllUnder(answerContentElement);
-                        }
-                    }
+                                             if (isLogFile || language === 'text' || language === 'log') {
+                             const style = isLogFile 
+                                 ? 'white-space: pre-wrap; background: #1f2937; color: #f3f4f6; padding: 1rem; margin: 0; font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace; font-size: 0.875rem; line-height: 1.4; height: 100%; overflow-y: auto;'
+                                 : 'white-space: pre-wrap; background: #f8fafc; color: #374151; padding: 1rem; margin: 0; font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace; font-size: 0.875rem; line-height: 1.4; height: 100%; overflow-y: auto; border: 1px solid #e5e7eb;';
+                             
+                             answerContentElement.innerHTML = \`<pre style="\${style}">\${content}</pre>\`;
+                         } else {
+                             // For code files, add line numbers and use Prism.js syntax highlighting
+                             const lines = content.split('\\n');
+                             const numberedContent = lines.map((line, index) => {
+                                 const lineNumber = (index + 1).toString().padStart(4, ' ');
+                                 const escapedLine = line
+                                     .replace(/&/g, '&amp;')
+                                     .replace(/</g, '&lt;')
+                                     .replace(/>/g, '&gt;');
+                                 return \`<span class="line-number">\${lineNumber}</span><span class="line-content">\${escapedLine}</span>\`;
+                             }).join('\\n');
+                             
+                             answerContentElement.innerHTML = \`
+                                 <pre class="language-\${language} line-numbers" style="margin: 0; height: 100%; overflow-y: auto; font-size: 0.875rem; line-height: 1.4;"><code class="language-\${language}">\${numberedContent}</code></pre>
+                             \`;
+                             
+                             if (window.Prism) {
+                                 Prism.highlightAllUnder(answerContentElement);
+                             }
+                         }
                     
                     // Show the answer pane
                     if (answerPane) {
@@ -2626,6 +2769,80 @@ function generateHTML(
                  button.title = 'Expand sidebar';
              }
          }
+         
+         // Make file paths in log content clickable
+         function makeLogPathsClickable(logContent, category, evalName) {
+             // Escape HTML first
+             const escapedContent = logContent
+                 .replace(/&/g, '&amp;')
+                 .replace(/</g, '&lt;')
+                 .replace(/>/g, '&gt;');
+             
+             // Regex to match file paths - looking for patterns like:
+             // convex/file.ts, src/file.js, ./file.ts, /path/to/file.ts
+             // Also match paths with line numbers like: convex/file.ts(14,18) or convex/file.ts:14:18
+             const filePathRegex = /(?:^|\\s)((?:[a-zA-Z0-9_-]+\\/)*[a-zA-Z0-9_-]+\\.[a-zA-Z0-9]+)(?:\\((\\d+)(?:,\\d+)?\\)|:(\\d+)(?::\\d+)?)?/gm;
+             
+             return escapedContent.replace(filePathRegex, (match, filePath, lineNum1, lineNum2) => {
+                 const lineNumber = lineNum1 || lineNum2;
+                 const displayPath = match.trim();
+                 const cleanPath = filePath.replace(/\\\\/g, '/');
+                 
+                 // Create clickable link that switches to Output tab and opens the file
+                 return \` <span class="log-file-path" onclick="openFileFromLog('\${cleanPath}', '\${category}', '\${evalName}', \${lineNumber || 'null'})" title="Click to open \${cleanPath}">\${displayPath}</span>\`;
+             });
+         }
+         
+         // Function to open a file from log click
+         async function openFileFromLog(filePath, category, evalName, lineNumber) {
+             // Update URL to navigate to output tab with the specific file
+             const runIndex = getCurrentRunIndex();
+             let newUrl = \`/run-\${runIndex}/\${category}/\${evalName}/output#\${encodeURIComponent(filePath)}\`;
+             if (lineNumber) {
+                 newUrl += \`:\${lineNumber}\`;
+             }
+             
+             // Navigate to the new URL, which will trigger a page reload with the correct state
+             window.location.href = newUrl;
+         }
+         
+         // Function to scroll to a specific line number
+         function scrollToLineNumber(lineNumber, category, evalName) {
+             const contentElement = document.getElementById(\`file-content-\${category}-\${evalName}\`);
+             if (contentElement) {
+                 const lineElements = contentElement.querySelectorAll('.line-number');
+                 for (const lineEl of lineElements) {
+                     if (lineEl.textContent.trim() === lineNumber.toString().padStart(4, ' ')) {
+                         lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                         // Highlight the line briefly
+                         const lineContent = lineEl.nextElementSibling;
+                         if (lineContent) {
+                             lineContent.style.backgroundColor = '#fef3c7';
+                             setTimeout(() => {
+                                 lineContent.style.backgroundColor = '';
+                             }, 2000);
+                         }
+                         break;
+                     }
+                 }
+             }
+         }
+         
+         // Function to update URL with current tab and file
+         function updateURL(category, evalName, tab, fileName) {
+             const runIndex = getCurrentRunIndex();
+             let url = \`/run-\${runIndex}/\${category}/\${evalName}\`;
+             
+             if (tab) {
+                 url += \`/\${tab}\`;
+                 if (fileName && (tab === 'output' || tab === 'answer')) {
+                     url += \`#\${encodeURIComponent(fileName)}\`;
+                 }
+             }
+             
+             // Update URL without triggering page reload
+             window.history.replaceState({}, '', url);
+         }
         
         // Answer directory functions
         async function loadAnswerDirectory(category, evalName) {
@@ -2722,10 +2939,13 @@ function generateHTML(
                     event.target.classList.add('active');
                 }
                 
-                const fileNameElement = document.getElementById(\`answer-current-file-name-\${category}-\${evalName}\`);
-                if (fileNameElement) {
-                    fileNameElement.textContent = fileName;
-                }
+                                 const fileNameElement = document.getElementById(\`answer-current-file-name-\${category}-\${evalName}\`);
+                 if (fileNameElement) {
+                     fileNameElement.textContent = fileName;
+                 }
+                 
+                 // Update URL to include the selected answer file
+                 updateURL(category, evalName, 'answer', fileName);
                 
                 const response = await fetch(\`/file/\${encodeURIComponent(filePath)}\`);
                 const contentElement = document.getElementById(\`answer-file-content-\${category}-\${evalName}\`);
@@ -2736,26 +2956,32 @@ function generateHTML(
                         const language = getLanguageFromFileName(fileName);
                         const isLogFile = fileName.endsWith('.log') || fileName.endsWith('.txt');
                         
-                        if (isLogFile || language === 'text' || language === 'log') {
-                            const style = isLogFile 
-                                ? 'white-space: pre-wrap; background: #1f2937; color: #f3f4f6; padding: 1rem; margin: 0; font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace; font-size: 0.875rem; line-height: 1.4; height: 100%; overflow-y: auto;'
-                                : 'white-space: pre-wrap; background: #f8fafc; color: #374151; padding: 1rem; margin: 0; font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace; font-size: 0.875rem; line-height: 1.4; height: 100%; overflow-y: auto; border: 1px solid #e5e7eb;';
-                            
-                            contentElement.innerHTML = \`<pre style="\${style}">\${data.content}</pre>\`;
-                        } else {
-                            const escapedContent = data.content
-                                .replace(/&/g, '&amp;')
-                                .replace(/</g, '&lt;')
-                                .replace(/>/g, '&gt;');
-                            
-                            contentElement.innerHTML = \`
-                                <pre class="language-\${language}" style="margin: 0; height: 100%; overflow-y: auto; font-size: 0.875rem; line-height: 1.4;"><code class="language-\${language}">\${escapedContent}</code></pre>
-                            \`;
-                            
-                            if (window.Prism) {
-                                Prism.highlightAllUnder(contentElement);
-                            }
-                        }
+                                                 if (isLogFile || language === 'text' || language === 'log') {
+                             const style = isLogFile 
+                                 ? 'white-space: pre-wrap; background: #1f2937; color: #f3f4f6; padding: 1rem; margin: 0; font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace; font-size: 0.875rem; line-height: 1.4; height: 100%; overflow-y: auto;'
+                                 : 'white-space: pre-wrap; background: #f8fafc; color: #374151; padding: 1rem; margin: 0; font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace; font-size: 0.875rem; line-height: 1.4; height: 100%; overflow-y: auto; border: 1px solid #e5e7eb;';
+                             
+                             contentElement.innerHTML = \`<pre style="\${style}">\${data.content}</pre>\`;
+                         } else {
+                             // For code files, add line numbers and use Prism.js syntax highlighting
+                             const lines = data.content.split('\\n');
+                             const numberedContent = lines.map((line, index) => {
+                                 const lineNumber = (index + 1).toString().padStart(4, ' ');
+                                 const escapedLine = line
+                                     .replace(/&/g, '&amp;')
+                                     .replace(/</g, '&lt;')
+                                     .replace(/>/g, '&gt;');
+                                 return \`<span class="line-number">\${lineNumber}</span><span class="line-content">\${escapedLine}</span>\`;
+                             }).join('\\n');
+                             
+                             contentElement.innerHTML = \`
+                                 <pre class="language-\${language} line-numbers" style="margin: 0; height: 100%; overflow-y: auto; font-size: 0.875rem; line-height: 1.4;"><code class="language-\${language}">\${numberedContent}</code></pre>
+                             \`;
+                             
+                             if (window.Prism) {
+                                 Prism.highlightAllUnder(contentElement);
+                             }
+                         }
                     }
                 } else {
                     if (contentElement) {
@@ -2786,6 +3012,7 @@ async function startServer() {
     fetch(req) {
       const url = new URL(req.url);
       const pathParts = url.pathname.split("/").filter((p) => p.length > 0);
+      const fragment = url.hash.slice(1); // Remove the # character
 
       try {
         const results = readJsonlResults();
@@ -2883,6 +3110,22 @@ async function startServer() {
         let runIndex = -1;
         let category = "";
         let evalName = "";
+        let selectedTab = "log"; // Default tab
+        let selectedFile = "";
+        let selectedLine = null;
+
+        // Parse file and line from URL fragment (e.g., #convex/index.ts:42)
+        if (fragment) {
+          const colonIndex = fragment.lastIndexOf(":");
+          if (colonIndex > 0 && /^\d+$/.test(fragment.slice(colonIndex + 1))) {
+            // Fragment has line number
+            selectedFile = decodeURIComponent(fragment.slice(0, colonIndex));
+            selectedLine = parseInt(fragment.slice(colonIndex + 1));
+          } else {
+            // Fragment is just a file path
+            selectedFile = decodeURIComponent(fragment);
+          }
+        }
 
         if (pathParts.length >= 1) {
           // Parse run index from path
@@ -2897,6 +3140,12 @@ async function startServer() {
 
                 if (pathParts.length >= 3) {
                   evalName = pathParts[2];
+
+                  // Check if there's a tab specified
+                  if (pathParts.length >= 4) {
+                    selectedTab = pathParts[3];
+                  }
+
                   currentView = "eval-details";
                 } else {
                   // Auto-select first eval when clicking a category
@@ -2939,6 +3188,9 @@ async function startServer() {
           runIndex,
           category,
           evalName,
+          selectedTab,
+          selectedFile,
+          selectedLine,
         );
         return new Response(html, {
           headers: { "Content-Type": "text/html" },
