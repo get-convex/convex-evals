@@ -1,5 +1,5 @@
 // Run Convex codegen in every eval's answer project
-import { readdirSync, statSync, existsSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 function isDirectory(path: string): boolean {
@@ -76,14 +76,6 @@ async function main() {
       const answerDir = join(catDir, name, "answer");
       if (!isDirectory(answerDir)) continue;
       found++;
-
-      // Require a Convex project structure
-      const convexDir = join(answerDir, "convex");
-      const schemaTs = join(convexDir, "schema.ts");
-      if (!isDirectory(convexDir) || !existsSync(schemaTs)) {
-        console.log(`- Skipping ${category}/${name}: no convex/schema.ts`);
-        continue;
-      }
 
       console.log(`- Running codegen in ${category}/${name} ...`);
       attempted++;
