@@ -9,7 +9,7 @@ import {
 } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
 import { beforeEach } from "vitest";
-import { Doc } from "./answer/convex/_generated/dataModel";
+import { Doc, Id } from "./answer/convex/_generated/dataModel";
 
 beforeEach(async () => {
   await deleteAllDocuments(responseAdminClient, [
@@ -145,7 +145,7 @@ test("deleteUser throws for non-existent id", async () => {
 
   await expect(
     responseClient.mutation(api.index.deleteUser, {
-      userId: "nonexistent" as unknown as string,
+      userId: "nonexistent" as unknown as Id<"users">,
     }),
   ).rejects.toThrow(/User not found/i);
 

@@ -37,6 +37,7 @@
     "run:evals": "pdm run python -m runner.eval_convex_coding",
     "answers:run:fundamentals": "cross-env TEST_FILTER=000-fundamentals bun run answers:run",
     "answers:run:one": "cross-env TEST_FILTER=000-fundamentals/000 bun run answers:run",
-    "answers:run": "cross-env VERBOSE_INFO_LOGS=1 bun run scripts/gradeAnswers.ts"
+    "answers:run": "cross-env VERBOSE_INFO_LOGS=1 bun run scripts/gradeAnswers.ts",
+    "answers:codegen": "bun run scripts/codegenAllAnswers.ts"
   }
 }
