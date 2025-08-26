@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import { responseClient } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
+import { Id } from "./answer/convex/_generated/dataModel";
 
 test("writes and reads text content", async () => {
   const testText = "Hello, world!";
@@ -98,7 +99,7 @@ test("returns valid URL", async () => {
 test("readTextFromStorage throws for invalid storageId", async () => {
   await expect(
     responseClient.action(api.index.readTextFromStorage, {
-      storageId: "invalid",
+      storageId: "invalid" as unknown as Id<"_storage">,
     }),
   ).rejects.toThrow();
 });
