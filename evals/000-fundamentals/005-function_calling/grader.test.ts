@@ -2,8 +2,6 @@ import { expect, test } from "vitest";
 import { responseAdminClient, responseClient } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
 
-// Removed broad schema/spec comparisons; assert behavior directly
-
 test("callerMutation chains calls correctly", async () => {
   const result = await responseAdminClient.mutation(
     api.index.callerMutation,

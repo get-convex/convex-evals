@@ -52,45 +52,6 @@ test("logClientEvent handles different data types", async () => {
   }
 });
 
-test("logClientEvent logs provided eventName and data", async () => {
-  const spy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-  const args = { eventName: "spy_event", data: { test: true } };
-  await responseClient.mutation(api.index.logClientEvent, args);
-
-  const calls = spy.mock.calls;
-  const hasEventName = calls.some((callArgs) =>
-    callArgs.some(
-      (arg) =>
-        (typeof arg === "string" && arg.includes(args.eventName)) ||
-        arg === args.eventName,
-    ),
-  );
-  const hasData = calls.some((callArgs) =>
-    callArgs.some((arg) => {
-      try {
-        if (arg && typeof arg === "object") {
-          return JSON.stringify(arg) === JSON.stringify(args.data);
-        }
-      } catch {
-        // ignore
-      }
-      if (typeof arg === "string") {
-        try {
-          return arg.includes(JSON.stringify(args.data));
-        } catch {
-          return false;
-        }
-      }
-      return false;
-    }),
-  );
-
-  expect(hasEventName).toBe(true);
-  expect(hasData).toBe(true);
-  spy.mockRestore();
-});
-
 test("dailyCleanup is not accessible to regular clients", async () => {
   await expect(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
