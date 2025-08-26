@@ -197,12 +197,11 @@ def _write_local_results(result: EvalResultWithSummary):
             else:
                 category_summaries[category]["failed"] += 1
 
-        # Calculate overall statistics using the same method as console summary
+        # Calculate overall statistics using binary pass/fail
         total_tests = len(individual_results)
         total_passed = sum(1 for r in individual_results if r["passed"])
-        # Use average of test scores (same as console summary) instead of binary pass/fail
-        total_test_score = sum(r["tests_pass_score"] for r in individual_results)
-        overall_score = (total_test_score / total_tests) if total_tests > 0 else 0.0
+        # With binary scoring, average of test scores equals pass/fail ratio
+        overall_score = (total_passed / total_tests) if total_tests > 0 else 0.0
 
         entry = {
             "summary": result.summary.as_dict(),

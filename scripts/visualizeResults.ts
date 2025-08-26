@@ -205,7 +205,7 @@ function generateRunDetailsHTML(result: EvalResult, runIndex: number): string {
       <div class="stats-grid">
         <div class="stat-card overall-score">
           <div class="stat-number">${((result.run_stats?.overall_score || 0) * 100).toFixed(1)}%</div>
-          <div class="stat-label">Overall Score (Avg)</div>
+          <div class="stat-label">Overall Score</div>
         </div>
         <div class="stat-card pass-rate">
           <div class="stat-number">${result.run_stats?.total_passed || 0}</div>
@@ -266,20 +266,20 @@ function generateCategoryDetailsHTML(
         : "";
 
       return `
-        <tr class="${statusClass}">
-          <td>
-            <span class="status-icon">${statusIcon}</span>
-            ${individualResult.name}
-          </td>
-          <td class="status-text">
-            ${individualResult.passed ? "Pass" : failureReason}
-          </td>
-          <td class="numeric">${(individualResult.tests_pass_score * 100).toFixed(1)}%</td>
-          <td class="directory-cell">
-            ${directoryPath ? `<a href="${fileUrl}" class="directory-link" title="Open in file explorer">📁 Open</a>` : "N/A"}
-          </td>
-        </tr>
-      `;
+         <tr class="${statusClass}">
+           <td>
+             <span class="status-icon">${statusIcon}</span>
+             ${individualResult.name}
+           </td>
+           <td class="status-text">
+             ${individualResult.passed ? "Pass" : failureReason}
+           </td>
+           <td class="directory-cell">
+             ${directoryPath ? `<button onclick="openDirectory('${directoryPath.replace(/\\/g, "\\\\")}')" class="directory-link" title="Open directory">📁 Open</button>` : "N/A"}
+             ${directoryPath ? `<button onclick="viewLog('${directoryPath.replace(/\\/g, "\\\\")}/run.log')" class="log-link" title="View run.log">📄 Log</button>` : ""}
+           </td>
+         </tr>
+       `;
     })
     .join("");
 
@@ -324,7 +324,6 @@ function generateCategoryDetailsHTML(
                 <tr>
                   <th>Evaluation</th>
                   <th>Status</th>
-                  <th>Test Score</th>
                   <th>Directory</th>
                 </tr>
               </thead>
@@ -339,7 +338,13 @@ function generateCategoryDetailsHTML(
   `;
 }
 
-function generateHTML(results: EvalResult[]): string {
+function generateHTML(
+  results: EvalResult[],
+  currentView: string = "runs-list",
+  runIndex: number = -1,
+  category: string = "",
+  evalName: string = "",
+): string {
   const runsListHTML = generateRunsListHTML(results);
 
   // Generate details for each run (but hidden initially)
@@ -501,6 +506,29 @@ function generateHTML(results: EvalResult[]): string {
             background: #fef2f2;
         }
         
+        /* Hover effects for clickable table rows */
+        tr[onclick] {
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        tr[onclick]:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        tr.pass[onclick]:hover {
+            background: #ecfdf5 !important;
+        }
+        
+        tr.warning[onclick]:hover {
+            background: #fefce8 !important;
+        }
+        
+        tr.fail[onclick]:hover {
+            background: #fef7f7 !important;
+        }
+        
         tr.excellent {
             background: #f0fdf4;
         }
@@ -525,6 +553,7 @@ function generateHTML(results: EvalResult[]): string {
         .run-row:hover {
             background: #f3f4f6 !important;
             transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
         
         .status-icon {
@@ -609,6 +638,8 @@ function generateHTML(results: EvalResult[]): string {
         
         .breadcrumb-btn:hover {
             background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
         }
         
         .breadcrumb-separator {
@@ -629,18 +660,36 @@ function generateHTML(results: EvalResult[]): string {
             font-size: 0.875rem;
         }
         
-        .directory-link {
+        .directory-link, .log-link {
             color: #4f46e5;
             text-decoration: none;
             padding: 0.25rem 0.5rem;
             border-radius: 4px;
             background: #f3f4f6;
+            border: none;
+            cursor: pointer;
             transition: all 0.2s ease;
+            margin-right: 0.5rem;
+            font-size: 0.75rem;
         }
         
-        .directory-link:hover {
+        .directory-link:hover, .log-link:hover {
             background: #e5e7eb;
             color: #3730a3;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .log-link {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        
+        .log-link:hover {
+            background: #fde68a;
+            color: #78350f;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(146,64,14,0.2);
         }
         
         .view {
@@ -678,6 +727,7 @@ function generateHTML(results: EvalResult[]): string {
         .refresh-btn:hover {
             background: #4338ca;
             transform: scale(1.1);
+            box-shadow: 0 6px 20px rgba(79, 70, 229, 0.4);
         }
     </style>
 </head>
@@ -688,14 +738,14 @@ function generateHTML(results: EvalResult[]): string {
             <p>Interactive evaluation results with detailed drill-down</p>
         </div>
         
-        <div id="runs-list-view" class="view active">
+        <div id="runs-list-view" class="view ${currentView === "runs-list" ? "active" : ""}">
             ${runsListHTML}
         </div>
         
         ${results
           .map(
             (_, index) => `
-          <div id="run-details-view-${index}" class="view">
+          <div id="run-details-view-${index}" class="view ${currentView === "run-details" && runIndex === index ? "active" : ""}">
             ${generateRunDetailsHTML(results[index], index)}
           </div>
         `,
@@ -703,12 +753,12 @@ function generateHTML(results: EvalResult[]): string {
           .join("")}
         
         ${results
-          .map((result, runIndex) =>
+          .map((result, rIndex) =>
             Object.keys(result.category_summaries || {})
               .map(
-                (category) => `
-            <div id="category-details-view-${runIndex}-${category}" class="view">
-              ${generateCategoryDetailsHTML(category, result, runIndex)}
+                (cat) => `
+            <div id="category-details-view-${rIndex}-${cat}" class="view ${currentView === "category-details" && runIndex === rIndex && category === cat ? "active" : ""}">
+              ${generateCategoryDetailsHTML(cat, result, rIndex)}
             </div>
           `,
               )
@@ -737,21 +787,41 @@ function generateHTML(results: EvalResult[]): string {
         }
         
         function showRunsList() {
-            hideAllViews();
-            document.getElementById('runs-list-view').classList.add('active');
+            window.location.href = '/';
         }
         
         function showRunDetails(runIndex) {
-            hideAllViews();
-            document.getElementById(\`run-details-view-\${runIndex}\`).classList.add('active');
+            window.location.href = \`/run-\${runIndex}\`;
         }
         
         function showCategoryDetails(category, runIndex) {
-            hideAllViews();
-            document.getElementById(\`category-details-view-\${runIndex}-\${category}\`).classList.add('active');
+            window.location.href = \`/run-\${runIndex}/\${category}\`;
         }
         
-        // Auto-refresh every 30 seconds
+        // Directory and log functions
+        function openDirectory(path) {
+            // Try different methods to open directory
+            if (window.electronAPI) {
+                // If running in Electron
+                window.electronAPI.openPath(path);
+            } else {
+                // Fallback: copy path to clipboard and show message
+                navigator.clipboard.writeText(path).then(() => {
+                    alert(\`Directory path copied to clipboard:\\n\${path}\\n\\nPaste this into your file explorer.\`);
+                }).catch(() => {
+                    prompt('Copy this directory path:', path);
+                });
+            }
+        }
+        
+        function viewLog(logPath) {
+            // Open log in a new window/tab
+            const encodedPath = encodeURIComponent(logPath);
+            const logUrl = \`/logs/\${encodedPath}\`;
+            window.open(logUrl, '_blank', 'width=1000,height=600,scrollbars=yes,resizable=yes');
+        }
+        
+        // Auto-refresh every 30 seconds, preserving current URL
         setTimeout(() => {
             window.location.reload();
         }, 30000);
@@ -771,52 +841,101 @@ async function startServer() {
     port: PORT,
     fetch(req) {
       const url = new URL(req.url);
+      const pathParts = url.pathname.split("/").filter((p) => p.length > 0);
 
-      if (url.pathname === "/") {
-        try {
-          const results = readJsonlResults();
-          const html = generateHTML(results);
+      try {
+        const results = readJsonlResults();
 
-          return new Response(html, {
-            headers: { "Content-Type": "text/html" },
-          });
-        } catch (err) {
-          const errorMessage = err instanceof Error ? err.message : String(err);
-          console.error("Error reading results:", errorMessage);
+        // Serve log files
+        if (pathParts[0] === "logs") {
+          try {
+            const logPath = decodeURIComponent(pathParts.slice(1).join("/"));
+            const fs = require("fs");
 
-          const errorHtml = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Error - Convex Evaluation Visualizer</title>
-                <style>
-                    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 2rem; background: #f3f4f6; }
-                    .error { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-                    .error h1 { color: #dc2626; margin-bottom: 1rem; }
-                    .error p { color: #6b7280; line-height: 1.6; }
-                    .error code { background: #f3f4f6; padding: 0.25rem 0.5rem; border-radius: 4px; }
-                </style>
-            </head>
-            <body>
-                <div class="error">
-                    <h1>❌ Error Loading Results</h1>
-                    <p><strong>Error:</strong> ${errorMessage}</p>
-                    <p>Make sure you have run some evaluations and that <code>local_results.jsonl</code> exists in the project root.</p>
-                    <p>Try running: <code>npm run local:run:one</code></p>
-                    <p>Note: You may need to run evaluations again to generate the enhanced result format with individual evaluation details.</p>
-                </div>
-            </body>
-            </html>
-          `;
-
-          return new Response(errorHtml, {
-            status: 500,
-            headers: { "Content-Type": "text/html" },
-          });
+            if (fs.existsSync(logPath)) {
+              const logContent = fs.readFileSync(logPath, "utf-8");
+              return new Response(logContent, {
+                headers: { "Content-Type": "text/plain" },
+              });
+            } else {
+              return new Response("Log file not found", { status: 404 });
+            }
+          } catch (err) {
+            return new Response("Error reading log file", { status: 500 });
+          }
         }
-      }
 
-      return new Response("Not Found", { status: 404 });
+        // Route handling
+        let currentView = "runs-list";
+        let runIndex = -1;
+        let category = "";
+        let evalName = "";
+
+        if (pathParts.length >= 1) {
+          // Parse run index from path
+          const runPart = pathParts[0];
+          if (runPart.startsWith("run-")) {
+            runIndex = parseInt(runPart.replace("run-", ""));
+            if (runIndex >= 0 && runIndex < results.length) {
+              currentView = "run-details";
+
+              if (pathParts.length >= 2) {
+                category = pathParts[1];
+                currentView = "category-details";
+
+                if (pathParts.length >= 3) {
+                  evalName = pathParts[2];
+                  // Individual eval view - for future expansion
+                }
+              }
+            }
+          }
+        }
+
+        const html = generateHTML(
+          results,
+          currentView,
+          runIndex,
+          category,
+          evalName,
+        );
+        return new Response(html, {
+          headers: { "Content-Type": "text/html" },
+        });
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.error("Error reading results:", errorMessage);
+
+        const errorHtml = `
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>Error - Convex Evaluation Visualizer</title>
+              <style>
+                  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 2rem; background: #f3f4f6; }
+                  .error { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+                  .error h1 { color: #dc2626; margin-bottom: 1rem; }
+                  .error p { color: #6b7280; line-height: 1.6; }
+                  .error code { background: #f3f4f6; padding: 0.25rem 0.5rem; border-radius: 4px; }
+              </style>
+          </head>
+          <body>
+              <div class="error">
+                  <h1>❌ Error Loading Results</h1>
+                  <p><strong>Error:</strong> ${errorMessage}</p>
+                  <p>Make sure you have run some evaluations and that <code>local_results.jsonl</code> exists in the project root.</p>
+                  <p>Try running: <code>npm run local:run:one</code></p>
+                  <p>Note: You may need to run evaluations again to generate the enhanced result format with individual evaluation details.</p>
+              </div>
+          </body>
+          </html>
+        `;
+
+        return new Response(errorHtml, {
+          status: 500,
+          headers: { "Content-Type": "text/html" },
+        });
+      }
     },
   });
 
