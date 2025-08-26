@@ -28,8 +28,9 @@ Implement these functions in `convex/index.ts`:
 2. Create an internal action `performHttpbinFetch` that:
    - Takes arguments:  `{ url: string, requestId: Id<"requests"> }`
    - Makes a POST request to the URL
-   - Updates the requests record with an internal function `updateRequest`
-     - Pass the completed status and timestamp as parameters
+   - Updates the requests record with an exported mutation `updateRequest`
+     - Define `updateRequest` to take arguments: `{ requestId: Id<"requests">, status: "completed", completedAt: number }`
+     - It should set the status to "completed" and set `completedAt` to the provided timestamp
    - Returns nothing
 
 The implementation should demonstrate:
