@@ -715,7 +715,7 @@ function generateMainContent(
               if (response.ok) {
                 const logContent = await response.text();
                 if (logElement) {
-                  logElement.innerHTML = \`<pre style="white-space: pre-wrap; background: #1f2937; color: #f3f4f6; padding: 1rem; border-radius: 4px; margin: 0; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 0.875rem; line-height: 1.4; max-height: 400px; overflow-y: auto;">\${logContent}</pre>\`;
+                  logElement.innerHTML = \`<pre style="white-space: pre-wrap; background: #1f2937; color: #f3f4f6; padding: 1rem; border-radius: 4px; margin: 0; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 0.875rem; line-height: 1.4; max-height: 800px; overflow-y: auto;">\${logContent}</pre>\`;
                 }
               } else {
                 if (logElement) {
@@ -1097,8 +1097,8 @@ function generateHTML(
         }
         
         .task-content pre {
-            max-height: 500px;
-            overflow-y: auto;
+            max-height: none;
+            overflow-y: visible;
         }
         
         .directory-info {
@@ -1634,10 +1634,10 @@ function generateHTML(
             window.open(logUrl, '_blank', 'width=1000,height=600,scrollbars=yes,resizable=yes');
         }
         
-        // Auto-refresh every 30 seconds, preserving current URL
-        setTimeout(() => {
-            window.location.reload();
-        }, 30000);
+        // Auto-refresh disabled for better user experience
+        // setTimeout(() => {
+        //     window.location.reload();
+        // }, 30000);
     </script>
 </body>
 </html>
@@ -1805,7 +1805,6 @@ async function startServer() {
   });
 
   console.log(`✅ Server running at http://localhost:${server.port}`);
-  console.log(`🔄 Auto-refresh enabled (30s intervals)`);
   console.log(`📝 Press Ctrl+C to stop`);
 }
 
