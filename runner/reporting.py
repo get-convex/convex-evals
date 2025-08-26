@@ -110,17 +110,112 @@ def _write_local_results(result: EvalResultWithSummary):
     try:
         # Try to capture the tempdir from the first result's metadata (eval-level metadata is propagated)
         tempdir_value = None
+        model_name = "unknown"
         try:
             if result and getattr(result, "results", None):
                 first = result.results[0]
                 if first and getattr(first, "metadata", None) and isinstance(first.metadata, dict):
                     tempdir_value = first.metadata.get("tempdir")
+                    model_name = first.metadata.get("model_name", "unknown")
         except Exception:
             tempdir_value = None
+
+        # Extract individual evaluation results with detailed information
+        individual_results = []
+        category_summaries = {}
+        
+        for r in result.results:
+            if r.error:
+                continue  # Skip failed results for now
+                
+            category = r.metadata.get("category", "unknown") if r.metadata else "unknown"
+            name = r.metadata.get("name", "unknown") if r.metadata else "unknown"
+            
+            # Determine pass/fail based on "Tests pass" score
+            tests_pass_score = 0.0
+            if r.scores and "Tests pass" in r.scores:
+                try:
+                    tests_pass_score = float(r.scores["Tests pass"])
+                except:
+                    tests_pass_score = 0.0
+            
+            passed = tests_pass_score >= 0.999
+            
+            # Determine failure reason from scores
+            failure_reason = None
+            if not passed:
+                if r.scores:
+                    for score_name, score_value in r.scores.items():
+                        if isinstance(score_value, (int, float)) and score_value < 0.999:
+                            if score_name == "Valid filesystem output":
+                                failure_reason = "filesystem fail"
+                                break
+                            elif score_name == "`bun install` succeeds":
+                                failure_reason = "install fail"
+                                break
+                            elif score_name == "`convex codegen` succeeds":
+                                failure_reason = "codegen fail"
+                                break
+                            elif score_name == "Passes tsc":
+                                failure_reason = "tsc fail"
+                                break
+                            elif score_name == "Passes eslint":
+                                failure_reason = "eslint fail"
+                                break
+                            elif score_name == "`convex dev` succeeds":
+                                failure_reason = "convex dev fail"
+                                break
+                            elif score_name == "Tests pass":
+                                failure_reason = "tests fail"
+                                break
+                if not failure_reason:
+                    failure_reason = "unknown fail"
+            
+            # Build directory path
+            directory_path = None
+            if tempdir_value:
+                model = r.metadata.get("model", "unknown") if r.metadata else "unknown"
+                directory_path = f"{tempdir_value}/output/{model}/{category}/{name}"
+            
+            individual_result = {
+                "category": category,
+                "name": name,
+                "passed": passed,
+                "tests_pass_score": tests_pass_score,
+                "failure_reason": failure_reason,
+                "directory_path": directory_path,
+                "scores": r.scores if r.scores else {}
+            }
+            individual_results.append(individual_result)
+            
+            # Build category summaries
+            if category not in category_summaries:
+                category_summaries[category] = {"total": 0, "passed": 0, "failed": 0}
+            category_summaries[category]["total"] += 1
+            if passed:
+                category_summaries[category]["passed"] += 1
+            else:
+                category_summaries[category]["failed"] += 1
+
+        # Calculate overall statistics using the same method as console summary
+        total_tests = len(individual_results)
+        total_passed = sum(1 for r in individual_results if r["passed"])
+        # Use average of test scores (same as console summary) instead of binary pass/fail
+        total_test_score = sum(r["tests_pass_score"] for r in individual_results)
+        overall_score = (total_test_score / total_tests) if total_tests > 0 else 0.0
 
         entry = {
             "summary": result.summary.as_dict(),
             "tempdir": tempdir_value,
+            "model_name": model_name,
+            "individual_results": individual_results,
+            "category_summaries": category_summaries,
+            "run_stats": {
+                "total_tests": total_tests,
+                "total_passed": total_passed,
+                "total_failed": total_tests - total_passed,
+                "overall_score": overall_score
+            }
         }
         with open(OUTPUT_RESULTS_FILE, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
