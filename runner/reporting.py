@@ -147,8 +147,10 @@ def file_report_eval(evaluator, result: EvalResultWithSummary, verbose, jsonl):
 
     num_tests: dict[str, int] = {}
     tests_pass_scores: dict[str, float] = {}
+    passed_counts: dict[str, int] = {}
     total_score = 0.0
     total_num_tests = 0
+    total_passed = 0
     for r in results:
         category = r.metadata.get("category") if r.metadata else "unknown"
         num_tests[category] = num_tests.get(category, 0) + 1
@@ -156,6 +158,9 @@ def file_report_eval(evaluator, result: EvalResultWithSummary, verbose, jsonl):
         if r.scores and "Tests pass" in r.scores and isinstance(r.scores["Tests pass"], (int, float)):
             score_val = float(r.scores["Tests pass"])  # already normalized ratio per our scorer
         tests_pass_scores[category] = tests_pass_scores.get(category, 0.0) + score_val
+        if score_val >= 0.999:
+            passed_counts[category] = passed_counts.get(category, 0) + 1
+            total_passed += 1
         total_num_tests += 1
         total_score += score_val
 
@@ -167,10 +172,11 @@ def file_report_eval(evaluator, result: EvalResultWithSummary, verbose, jsonl):
     log_info("")
     log_info("=== Eval Summary ===")
     log_info(f"Model: {model_name if model_name else 'unknown'}")
-    log_info(f"Overall: {overall_rate:.2%} ({total_num_tests} tests)")
+    log_info(f"Overall: {overall_rate:.2%} ({total_passed} pass, {total_num_tests - total_passed} fail)")
     for category in sorted(num_tests.keys()):
         rate = (tests_pass_scores.get(category, 0.0) / num_tests[category]) if num_tests[category] > 0 else 0.0
-        log_info(f"- {category}: {rate:.2%} ({num_tests[category]} tests)")
+        cat_pass = passed_counts.get(category, 0)
+        log_info(f"- {category}: {rate:.2%} ({cat_pass} pass, {num_tests[category] - cat_pass} fail)")
     if failing_results:
         log_info(f"Failures: {len(failing_results)} case(s)")
     log_info(f"Results written to: {OUTPUT_RESULTS_FILE}")
