@@ -79,6 +79,14 @@ ALL_MODELS = [
         uses_system_prompt=False,
         provider=ModelProvider.OPENAI,
     ),
+      ModelTemplate(
+        name="gpt-5-nano",
+        formatted_name="GPT-5 nano",
+        max_concurrency=int(os.getenv("OPENAI_CONCURRENCY", "4")),
+        requires_chain_of_thought=False,
+        uses_system_prompt=False,
+        provider=ModelProvider.OPENAI,
+    ),
     ModelTemplate(
         name="deepseek-ai/DeepSeek-V3",
         formatted_name="DeepSeek V3",
