@@ -2,8 +2,6 @@ import { expect, test } from "vitest";
 import { responseClient } from "../../../grader";
 import { anyApi } from "convex/server";
 
-// Removed broad schema/spec comparisons; assert behavior directly
-
 type Brand<T, B extends string> = T & { __brand: B };
 type FilesId = Brand<string, "files">;
 type StorageId = Brand<string, "_storage">;

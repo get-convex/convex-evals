@@ -8,8 +8,6 @@ import {
 import { api } from "./answer/convex/_generated/api";
 import { Doc, Id } from "./answer/convex/_generated/dataModel";
 
-// Removed broad schema/spec comparisons; assert behavior directly
-
 test("getItem and updateItem handle non-existent items", async () => {
   // Try to get a non-existent item
   let error = null;

@@ -2,8 +2,6 @@ import { expect, test } from "vitest";
 import { responseClient } from "../../../grader";
 import { anyApi } from "convex/server";
 
-// Removed broad schema/spec comparisons; assert behavior directly
-
 test("create and read location", async () => {
   // Test successful creation
   const locationId = await responseClient.mutation(

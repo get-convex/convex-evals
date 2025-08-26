@@ -15,8 +15,6 @@ beforeEach(async () => {
   await deleteAllDocuments(responseAdminClient, ["users", "posts"]);
 });
 
-// Removed broad schema/spec comparisons; assert behavior directly
-
 async function createTestUser(): Promise<Id<"users">> {
   await addDocuments(responseAdminClient, "users", [
     {
