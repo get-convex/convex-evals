@@ -8,6 +8,7 @@ Implement these functions in `convex/http.ts`:
    - Returns a JSON response containing:
      - storageId: The storage ID string
      - url: The public URL of the stored file
+   - Only accept POST requests; other methods should return 404
 
 2. Create a query `getSiteURL` that takes no arguments (empty object `{}`) and returns `process.env.CONVEX_SITE_URL!` (string)
 

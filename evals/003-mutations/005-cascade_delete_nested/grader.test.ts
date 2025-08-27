@@ -10,11 +10,11 @@ import {
 import { api } from "./answer/convex/_generated/api";
 import { beforeEach } from "vitest";
 import { aiGradeGeneratedOutput } from "../../../grader/aiGrader";
+import { Doc } from "./answer/convex/_generated/dataModel";
 
 test("AI grader assessment", { timeout: 60000 }, async () => {
   await expect(aiGradeGeneratedOutput(import.meta.url)).resolves.toBe("pass");
 });
-import { Doc } from "./answer/convex/_generated/dataModel";
 
 beforeEach(async () => {
   await deleteAllDocuments(responseAdminClient, [
@@ -130,7 +130,7 @@ test("deletes user and all associated content", async () => {
   expect(remainingLikes[0].userId).toBe(user2Id);
 });
 
-test("deleteUser no-op for non-existent id", async () => {
+test("deleteUser throws for non-existent id", async () => {
   const beforeUsers = (await listTable(
     responseAdminClient,
     "users",
@@ -150,9 +150,9 @@ test("deleteUser no-op for non-existent id", async () => {
 
   await expect(
     responseClient.mutation(api.index.deleteUser, {
-      userId: "nonexistent" as unknown as string,
+      userId: "nonexistent" as unknown as Id<"users">,
     }),
-  ).resolves.toBeUndefined();
+  ).rejects.toThrow(/User not found/i);
 
   const afterUsers = (await listTable(
     responseAdminClient,

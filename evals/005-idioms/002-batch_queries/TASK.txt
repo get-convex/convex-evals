@@ -28,11 +28,12 @@ Implement these functions:
 2. In convex/posts.ts:
    - Create an internal query `getPostsByUserId` that:
      - Takes arguments:  `{ userId: Id<"users"> }`
-     - Returns array of post documents
+     - Returns array of post documents (empty array if none)
    - Create a query `getUserAndPosts` that:
      - Takes arguments:  `{ email: string }`
      - Fetches the user and their posts
      - Returns an object with the user and their posts
+     - If the user does not exist for the given email, return `{ user: null, posts: [] }`
 
 Don't specify returns validators for query/mutations.
 Create any helper functions you need to avoid duplicating code.

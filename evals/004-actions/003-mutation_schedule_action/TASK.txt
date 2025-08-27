@@ -33,6 +33,10 @@ Implement these functions in `convex/index.ts`:
      - It should set the status to "completed" and set `completedAt` to the provided timestamp
    - Returns nothing
 
+Behavioral expectations:
+- Multiple concurrent `initiateRequest` calls for the same URL must return the same existing request ID and not create duplicates.
+- Requests that fail the POST should not transition to completed; the request should remain `pending` and `completedAt` should be unset.
+
 The implementation should demonstrate:
 - Proper scheduling of async work using actions
 - Proper state management in the database

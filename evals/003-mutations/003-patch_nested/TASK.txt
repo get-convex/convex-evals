@@ -34,7 +34,7 @@ Implement the following functions in `convex/index.ts`:
    - Takes an argument object `{ documentId: Id<"documents">, metadata: { title: string, author: { name: string, contact: { email: string, phone?: string | undefined } }, tags: string[] } }`
    - Replaces the entire metadata object while preserving content
    - Throws an error if document doesn't exist
-   - Returns nothin
+   - Returns nothing
 
 3. Create a mutation `patchAuthorInfo` that:
    - Takes an argument object `{ documentId: Id<"documents">, author: { name: string, contact: { email: string, phone?: string | undefined } } }`

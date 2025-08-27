@@ -32,38 +32,42 @@ test("callerAction chains calls correctly", async () => {
 
 test("internal functions work correctly", async () => {
   // Test calleeQuery
-  const queryResult = await responseAdminClient.query(api.index.calleeQuery, {
-    x: 5,
-    y: 3,
-  });
+  const queryResult = await responseAdminClient.query(
+    // @ts-ignore
+    api.index.calleeQuery,
+    {
+      x: 5,
+      y: 3,
+    },
+  );
   expect(queryResult).toBe(8);
 
   // Test calleeMutation
+
   const mutationResult = await responseAdminClient.mutation(
+    // @ts-ignore
     api.index.calleeMutation,
     { x: 5, y: 3 },
   );
   expect(mutationResult).toBe(2);
 
   // Test calleeAction
+  // @ts-ignore
   const actionResult = await responseAdminClient.action(
+    // @ts-ignore
     api.index.calleeAction,
     { x: 5, y: 3 },
   );
   expect(actionResult).toBe(15);
 
   // Test argument validation
-  let error: unknown = undefined;
-  try {
-    await responseAdminClient.query(api.index.calleeQuery, {
+  await expect(
+    // @ts-ignore
+    responseAdminClient.query(api.index.calleeQuery, {
       x: "not a number",
       y: 3,
-    });
-  } catch (e) {
-    error = e;
-  }
-  expect(error).toBeDefined();
-  expect(error.toString()).toContain("ArgumentValidationError");
+    })
+  ).rejects.toThrow(/ArgumentValidationError/);
 });
 
 test("functions are not accessible from wrong client type", async () => {
@@ -71,6 +75,7 @@ test("functions are not accessible from wrong client type", async () => {
 
   // Query should not be callable as mutation
   try {
+    // @ts-ignore
     await responseAdminClient.mutation(api.index.calleeQuery, {
       x: 1,
       y: 2,
@@ -83,6 +88,7 @@ test("functions are not accessible from wrong client type", async () => {
   // Mutation should not be callable as action
   error = undefined;
   try {
+    // @ts-ignore
     await responseAdminClient.action(api.index.calleeMutation, {
       x: 1,
       y: 2,
@@ -95,6 +101,7 @@ test("functions are not accessible from wrong client type", async () => {
   // Action should not be callable as query
   error = undefined;
   try {
+    // @ts-ignore
     await responseAdminClient.query(api.index.calleeAction, { x: 1, y: 2 });
   } catch (e) {
     error = e;

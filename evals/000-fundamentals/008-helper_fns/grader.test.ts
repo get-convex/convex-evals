@@ -7,7 +7,6 @@ import {
 } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
 import { Doc, Id } from "./answer/convex/_generated/dataModel";
-
 import { aiGradeGeneratedOutput } from "../../../grader/aiGrader";
 
 test("AI grader assessment", { timeout: 60000 }, async () => {

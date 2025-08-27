@@ -121,6 +121,7 @@ test("handles invalid URLs appropriately", async () => {
 });
 
 test("getFetchResult returns null when URL not cached", async () => {
+  // @ts-ignore
   const missing = await responseClient.query(api.index.getFetchResult, {
     url: "https://not-cached.example.com",
   });
@@ -132,6 +133,7 @@ test("saveFetchResult updates existing record for same URL", async () => {
   const firstData = { v: 1 } as const;
   const secondData = { v: 2 } as const;
 
+  // @ts-ignore
   const id1 = await responseClient.mutation(api.index.saveFetchResult, {
     url: testUrl,
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -139,6 +141,7 @@ test("saveFetchResult updates existing record for same URL", async () => {
   });
   expect(id1).toBeDefined();
 
+  // @ts-ignore
   const id2 = await responseClient.mutation(api.index.saveFetchResult, {
     url: testUrl,
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -166,6 +169,7 @@ test("getFetchResult returns ID when URL is cached", async () => {
   expect(createdId).toBeDefined();
 
   // Query should return same ID
+  // @ts-ignore
   const queriedId = await responseClient.query(api.index.getFetchResult, {
     url: testUrl,
   });

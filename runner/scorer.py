@@ -387,7 +387,8 @@ def run_tests(backend, answer_backend, test_file):
 
         total = results["numTotalTests"]
         passed = results["numPassedTests"]
-        ratio = (passed / total) if total > 0 else 0
+        # Binary pass/fail: 1.0 if ALL tests pass, 0.0 otherwise
+        ratio = 1.0 if (total > 0 and passed == total) else 0.0
     except Exception as e:
         if done.returncode != 0:
             raise Exception(f"Failed to run tests:\n{done.stdout}")

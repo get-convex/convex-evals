@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import { responseClient } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
 import { aiGradeGeneratedOutput } from "../../../grader/aiGrader";
+import { Id } from "./answer/convex/_generated/dataModel";
 
 test("AI grader assessment", { timeout: 60000 }, async () => {
   await expect(aiGradeGeneratedOutput(import.meta.url)).resolves.toBe("pass");
@@ -103,7 +104,7 @@ test("returns valid URL", async () => {
 test("readTextFromStorage throws for invalid storageId", async () => {
   await expect(
     responseClient.action(api.index.readTextFromStorage, {
-      storageId: "invalid",
+      storageId: "invalid" as unknown as Id<"_storage">,
     }),
   ).rejects.toThrow();
 });
