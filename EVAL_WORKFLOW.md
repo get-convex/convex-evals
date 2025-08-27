@@ -227,3 +227,26 @@ Your solution should:
    - Group related functionality together
    - Include type imports from generated files
    - Add helpful comments for complex logic
+
+## AI grading
+
+The evals include a lightweight AI grader that reviews the generated project for each eval and provides concise reasoning on pass/fail.
+
+- The grader builds a prompt from `TASK.txt` plus a manifest of files from the generated output directory and asks a model to decide pass/fail with reasoning.
+- The helper logs reasoning on every run and, on failure, throws an error with that reasoning so it appears directly in the test output and in `run.log`.
+
+### How to use in a grader test
+
+Add a single standardized test using the helper:
+
+```ts
+import { createAIGraderTest } from "../../../grader/aiGrader";
+
+// Basic usage (default name and 60s timeout)
+createAIGraderTest(import.meta.url);
+
+// Optional: custom name/timeout
+createAIGraderTest(import.meta.url, "AI grader assessment", 60000);
+```
+
+That’s it. On failure, the thrown error message will include the AI reasoning. The same reasoning is logged to the console and captured in the eval’s `run.log` by the default Vitest reporter.

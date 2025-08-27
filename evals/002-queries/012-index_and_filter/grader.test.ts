@@ -7,11 +7,9 @@ import {
   deleteAllDocuments,
 } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
-import { aiGradeGeneratedOutput } from "../../../grader/aiGrader";
+import { createAIGraderTest } from "../../../grader/aiGrader";
 
-test("AI grader assessment", { timeout: 60000 }, async () => {
-  await expect(aiGradeGeneratedOutput(import.meta.url)).resolves.toBe("pass");
-});
+createAIGraderTest(import.meta.url);
 
 afterEach(async () => {
   await deleteAllDocuments(responseAdminClient, ["users"]);

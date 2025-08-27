@@ -8,11 +8,9 @@ import {
 import { resultValidator } from "./answer/convex/schema";
 import { VLiteral, VObject, VString } from "convex/values";
 
-import { aiGradeGeneratedOutput } from "../../../grader/aiGrader";
+import { createAIGraderTest } from "../../../grader/aiGrader";
 
-test("AI grader assessment", { timeout: 60000 }, async () => {
-  await expect(aiGradeGeneratedOutput(import.meta.url)).resolves.toBe("pass");
-});
+createAIGraderTest(import.meta.url);
 
 afterAll(async () => {
   await deleteAllDocuments(responseAdminClient, ["llm_calls", "api_calls"]);

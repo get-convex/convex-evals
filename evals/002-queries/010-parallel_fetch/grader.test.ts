@@ -7,11 +7,9 @@ import {
   listTable,
 } from "../../../grader";
 import { anyApi } from "convex/server";
-import { aiGradeGeneratedOutput } from "../../../grader/aiGrader";
+import { createAIGraderTest } from "../../../grader/aiGrader";
 
-test("AI grader assessment", { timeout: 60000 }, async () => {
-  await expect(aiGradeGeneratedOutput(import.meta.url)).resolves.toBe("pass");
-});
+createAIGraderTest(import.meta.url);
 
 test("compare schema", async ({ skip }) => {
   await compareSchema(skip);

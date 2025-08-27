@@ -1,10 +1,8 @@
 import { expect, test } from "vitest";
 import { responseAdminClient, addDocuments } from "../../../grader";
-import { aiGradeGeneratedOutput } from "../../../grader/aiGrader";
+import { createAIGraderTest } from "../../../grader/aiGrader";
 
-test("AI grader assessment", { timeout: 60000 }, async () => {
-  await expect(aiGradeGeneratedOutput(import.meta.url)).resolves.toBe("pass");
-});
+createAIGraderTest(import.meta.url);
 
 test("schema validates different notification types correctly", async () => {
   // Valid notifications

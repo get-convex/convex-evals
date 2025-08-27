@@ -8,11 +8,9 @@ import {
 import { api, internal } from "./answer/convex/_generated/api";
 import { Doc } from "./answer/convex/_generated/dataModel";
 
-import { aiGradeGeneratedOutput } from "../../../grader/aiGrader";
+import { createAIGraderTest } from "../../../grader/aiGrader";
 
-test("AI grader assessment", { timeout: 60000 }, async () => {
-  await expect(aiGradeGeneratedOutput(import.meta.url)).resolves.toBe("pass");
-});
+createAIGraderTest(import.meta.url);
 
 test("migration helper transforms data correctly", async () => {
   // Insert a product with old schema format

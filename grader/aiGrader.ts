@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { generateObject } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
+import { test } from "vitest";
 
 type EvalInfo = {
   category: string;
@@ -267,25 +268,31 @@ Decide if the output fully satisfies the task requirements. Provide a short reas
 }
 
 /**
- * Grade the generated output for the current eval using an AI model.
- *
- * Usage from a grader test file:
- *   const passed = await aiGradeGeneratedOutput(import.meta.url)
- *
- * Returns true for pass, false for fail. Logs model reasoning to console.
+ * Helper for tests: throws with AI reasoning when grading fails, so the failure
+ * message includes the specific cause. Logs reasoning either way.
  */
-export async function aiGradeGeneratedOutput(
-  testFileUrl: string,
-): Promise<"pass" | "fail"> {
+export async function expectAIGraderPass(testFileUrl: string): Promise<void> {
   const { evalInfo, taskContent } = getTask(testFileUrl);
   const { filePaths, outputProjectDir } = gatherAnswerFiles(evalInfo);
   const concatenated = concatenateAnswerFiles(filePaths, outputProjectDir);
   const { result, reasoning } = await generateGrade(taskContent, concatenated);
 
-  // Log concise reasoning for visibility
   console.log(
     `[AI Grader ${evalInfo.category}/${evalInfo.name}] ${result == "pass" ? "PASS" : "FAIL"}: ${reasoning}`,
   );
 
-  return result;
+  if (result !== "pass") throw new Error(`AI grading failed: ${reasoning}`);
+}
+
+/**
+ * Create a standardized Vitest for AI grading with optional name and timeout.
+ */
+export function createAIGraderTest(
+  testFileUrl: string,
+  name: string = "AI grader assessment",
+  timeoutMs: number = 60000,
+): void {
+  test(name, { timeout: timeoutMs }, async () => {
+    await expectAIGraderPass(testFileUrl);
+  });
 }
