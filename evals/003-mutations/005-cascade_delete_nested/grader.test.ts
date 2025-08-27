@@ -10,7 +10,7 @@ import {
 import { api } from "./answer/convex/_generated/api";
 import { beforeEach } from "vitest";
 import { aiGradeGeneratedOutput } from "../../../grader/aiGrader";
-import { Doc } from "./answer/convex/_generated/dataModel";
+import { Doc, Id } from "./answer/convex/_generated/dataModel";
 
 test("AI grader assessment", { timeout: 60000 }, async () => {
   await expect(aiGradeGeneratedOutput(import.meta.url)).resolves.toBe("pass");
