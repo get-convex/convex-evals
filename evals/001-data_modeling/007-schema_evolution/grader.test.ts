@@ -8,6 +8,10 @@ import {
 import { api, internal } from "./answer/convex/_generated/api";
 import { Doc } from "./answer/convex/_generated/dataModel";
 
+import { createAIGraderTest } from "../../../grader/aiGrader";
+
+createAIGraderTest(import.meta.url);
+
 test("migration helper transforms data correctly", async () => {
   // Insert a product with old schema format
   await addDocuments(responseAdminClient, "products", [

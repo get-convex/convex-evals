@@ -1,5 +1,6 @@
 import { ConvexClient } from "convex/browser";
 import { expect } from "vitest";
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
@@ -193,7 +194,7 @@ export function hasIndexForPrefix(
     fieldNames?: string[];
   }[];
   return indexes.some((idx) => {
-    const idxFields = (idx.fields ?? idx.fieldNames ?? []) as string[];
+    const idxFields = idx.fields ?? idx.fieldNames ?? [];
     if (!Array.isArray(idxFields)) return false;
     if (idxFields.length < fieldsPrefix.length) return false;
     for (let i = 0; i < fieldsPrefix.length; i++) {

@@ -74,7 +74,7 @@ def run_grader(category: str, name: str, project_dir: str):
         except Exception as e:
             message.append(f"  - Tests fail: {e}")
 
-    log_info("\n".join(message))
+    print("\n".join(message), flush=True)
     return success
 
 
