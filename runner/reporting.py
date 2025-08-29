@@ -13,6 +13,9 @@ CONVEX_AUTH_TOKEN = os.getenv("CONVEX_AUTH_TOKEN")
 
 
 def post_scores_to_convex(model_name: str, category_scores: dict, total_score: float) -> None:
+    # When Braintrust is disabled, also disable reporting to the Convex endpoint
+    if os.getenv("DISABLE_BRAINTRUST") == "1":
+        return
     payload = {"model": model_name, "scores": category_scores, "totalScore": total_score}
     if CONVEX_EVAL_ENDPOINT is not None and CONVEX_AUTH_TOKEN is not None:
         try:
@@ -77,20 +80,20 @@ def report_eval(evaluator, result: EvalResultWithSummary, verbose, jsonl):
 
         # Pretty console summary
         overall_rate = (total_score / total_num_tests) if total_num_tests > 0 else 0
-        log_info("")
-        log_info("=== Eval Summary ===")
-        log_info(f"Model: {results[0].metadata.get('model_name', 'unknown') if results and results[0].metadata else 'unknown'}")
-        log_info(f"Overall: {overall_rate:.2%} ({total_passed} pass, {total_num_tests - total_passed} fail)")
+        print("", flush=True)
+        print("=== Eval Summary ===", flush=True)
+        print(f"Model: {results[0].metadata.get('model_name', 'unknown') if results and results[0].metadata else 'unknown'}", flush=True)
+        print(f"Overall: {overall_rate:.2%} ({total_passed} pass, {total_num_tests - total_passed} fail)", flush=True)
         for category in sorted(num_tests.keys()):
             rate = scores[category] / num_tests[category]
             cat_pass = passed_counts.get(category, 0)
-            log_info(f"- {category}: {rate:.2%} ({cat_pass} pass, {num_tests[category] - cat_pass} fail)")
+            print(f"- {category}: {rate:.2%} ({cat_pass} pass, {num_tests[category] - cat_pass} fail)", flush=True)
 
         # Always write local results; print the path
-        log_info(f"Results written to: {OUTPUT_RESULTS_FILE}")
+        print(f"Results written to: {OUTPUT_RESULTS_FILE}", flush=True)
 
         if jsonl:
-            log_info(json.dumps(summary.as_dict()))
+            print(json.dumps(summary.as_dict()), flush=True)
 
     return len(failing_results) == 0
 
