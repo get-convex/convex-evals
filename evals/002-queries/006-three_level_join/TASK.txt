@@ -30,7 +30,7 @@ export default defineSchema({
 ```
 
 Write a query named `getProAdminsByOrg` in `convex/public.ts` that:
-- Takes an organizationId as an argument
+- Takes arguments:  `{ organizationId: Id<"organizations"> }`
 - Returns the unique set of all admins within that organization as a record
   mapping `Id<"users">` to their profileUrl.
 - This query should be efficient, assuming that there are many organizations,

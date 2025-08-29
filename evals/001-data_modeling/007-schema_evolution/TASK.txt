@@ -46,8 +46,6 @@ Additionally, create a helper function `migrateProductHelper(product: Doc<"produ
 Use this helper function in two API functions:
 
 1. A public mutation `migrateProduct` that takes a productId and patches the product to match the new schema and has no return value
-2. A public query `getProduct` that takes a productId and returns the product with the new schema that doesn't include deprecated fields.
-
-Both should use the helper function to migrate the product.
-
-All schema changes must maintain backwards compatibility, allowing existing code to continue working during the migration process.
+  - Takes arguments: `{ productId: Id<"products"> }`
+  - Returns null
+2. A public query `getProduct` that takes arguments: `{ productId: Id<"products"> }` and returns the product with the new schema that doesn't include deprecated fields.

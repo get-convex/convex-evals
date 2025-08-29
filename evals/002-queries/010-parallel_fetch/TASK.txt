@@ -32,7 +32,7 @@ export default defineSchema({
 Dont forget to write out the above schema.
 
 Write a query named `getAuthorDashboard` in `convex/public.ts` that:
-- Takes a user's email as an argument, returning null if the user doesn't exist
+- Takes arguments:  `{ email: string }`, returning null if the user doesn't exist
 - Throws an error if the user exists but its preferences are missing
 - Returns an object containing:
   * user: the user's name, email, theme, and notifications

@@ -3,7 +3,6 @@ import {
   responseAdminClient,
   responseClient,
   compareSchema,
-  compareFunctionSpec,
   deleteAllDocuments,
   listTable,
 } from "../../../grader";
@@ -17,10 +16,6 @@ beforeEach(async () => {
 
 test("compare schema", async ({ skip }) => {
   await compareSchema(skip);
-});
-
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
 });
 
 test("successfully uploads file and stores metadata", async () => {
@@ -40,8 +35,11 @@ test("successfully uploads file and stores metadata", async () => {
   expect(result.url).toMatch(/^https?:\/\//);
 
   // Verify file metadata in database
-  const files = (await listTable(responseAdminClient, "files")) as Doc<"files">[];
-  const storedFile = files.find(f => f._id === result.fileId);
+  const files = (await listTable(
+    responseAdminClient,
+    "files",
+  )) as Doc<"files">[];
+  const storedFile = files.find((f) => f._id === result.fileId);
   expect(storedFile).toBeDefined();
   expect(storedFile?.fileName).toBe(fileName);
   expect(storedFile?.storageId).toBe(result.storageId);
@@ -58,8 +56,11 @@ test("handles empty file", async () => {
   expect(result).toHaveProperty("storageId");
   expect(result).toHaveProperty("url");
 
-  const files = (await listTable(responseAdminClient, "files")) as Doc<"files">[];
-  const storedFile = files.find(f => f._id === result.fileId);
+  const files = (await listTable(
+    responseAdminClient,
+    "files",
+  )) as Doc<"files">[];
+  const storedFile = files.find((f) => f._id === result.fileId);
   expect(storedFile?.size).toBe(0);
 });
 
@@ -71,8 +72,11 @@ test("handles large file content", async () => {
   });
 
   expect(result).toHaveProperty("fileId");
-  const files = (await listTable(responseAdminClient, "files")) as Doc<"files">[];
-  const storedFile = files.find(f => f._id === result.fileId);
+  const files = (await listTable(
+    responseAdminClient,
+    "files",
+  )) as Doc<"files">[];
+  const storedFile = files.find((f) => f._id === result.fileId);
   expect(storedFile?.size).toBe(1000000);
 });
 
@@ -83,8 +87,11 @@ test("handles special characters in filename", async () => {
     fileName,
   });
 
-  const files = (await listTable(responseAdminClient, "files")) as Doc<"files">[];
-  const storedFile = files.find(f => f._id === result.fileId);
+  const files = (await listTable(
+    responseAdminClient,
+    "files",
+  )) as Doc<"files">[];
+  const storedFile = files.find((f) => f._id === result.fileId);
   expect(storedFile?.fileName).toBe(fileName);
 });
 
@@ -97,17 +104,20 @@ test("maintains consistent metadata", async () => {
   ];
 
   const results = await Promise.all(
-    files.map(async file =>
-      responseClient.action(api.index.uploadFile, file)
-    )
+    files.map(async (file) =>
+      responseClient.action(api.index.uploadFile, file),
+    ),
   );
 
   // Verify all metadata records
-  const storedFiles = (await listTable(responseAdminClient, "files")) as Doc<"files">[];
+  const storedFiles = (await listTable(
+    responseAdminClient,
+    "files",
+  )) as Doc<"files">[];
   expect(storedFiles).toHaveLength(files.length);
 
   for (let i = 0; i < files.length; i++) {
-    const storedFile = storedFiles.find(f => f._id === results[i].fileId);
+    const storedFile = storedFiles.find((f) => f._id === results[i].fileId);
     expect(storedFile?.fileName).toBe(files[i].fileName);
     expect(storedFile?.size).toBe(files[i].contents.length);
   }

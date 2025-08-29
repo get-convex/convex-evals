@@ -3,15 +3,16 @@ Create a backend that interacts with Convex file storage to write and read text 
 Implement these functions in `convex/index.ts`:
 
 1. Create an action `writeTextToStorage` that:
-   - Takes text (string) as argument
+   - Takes arguments:  `{ text: string }`
    - Uploads the data to Convex storage
    - Returns an object containing:
      - storageId: The storage ID
      - url: The public URL of the stored file
 
 2. Create an action `readTextFromStorage` that:
-   - Takes storageId (string) as argument
+   - Takes arguments:  `{ storageId: string }`
    - Retrieves the data from storage and returns it as a string
+   - If the storageId is invalid or the file doesn't exist, throw an error
 
 The implementation should demonstrate:
 - Proper use of Convex storage APIs

@@ -17,7 +17,7 @@ export default defineSchema({
 Implement the following function in `convex/index.ts`:
 
 1. Create a query `getActiveAdults` that:
-   - Takes an age (number) as an argument
+   - Takes arguments:  `{ minAge: number }`
    - Uses the "by_age" index to efficiently query all users >= the given age
    - Filters out users where isDeleted is true
    - Returns an array of user names

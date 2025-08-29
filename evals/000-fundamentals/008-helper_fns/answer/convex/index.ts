@@ -10,7 +10,10 @@ type FormattedItemData = {
 };
 
 // Shared helper function to get and format item data
-async function getItemData(ctx: QueryCtx, itemId: Id<"items">): Promise<FormattedItemData | null> {
+async function getItemData(
+  ctx: QueryCtx,
+  itemId: Id<"items">,
+): Promise<FormattedItemData | null> {
   const item = await ctx.db.get(itemId);
   if (!item) {
     return null;
@@ -25,17 +28,17 @@ async function getItemData(ctx: QueryCtx, itemId: Id<"items">): Promise<Formatte
 
 // Query to get an item by ID
 export const getItem = query({
-  args: { id: v.id("items") },
+  args: { itemId: v.id("items") },
   returns: v.object({
     name: v.string(),
     quantity: v.number(),
     lastModified: v.string(),
   }),
   handler: async (ctx, args) => {
-    const formattedItem = await getItemData(ctx, args.id);
+    const formattedItem = await getItemData(ctx, args.itemId);
 
     if (!formattedItem) {
-      throw new Error(`Item with ID ${args.id} not found`);
+      throw new Error(`Item with ID ${args.itemId} not found`);
     }
 
     return formattedItem;
@@ -45,7 +48,7 @@ export const getItem = query({
 // Mutation to update an item's quantity
 export const updateItem = mutation({
   args: {
-    id: v.id("items"),
+    itemId: v.id("items"),
     quantity: v.number(),
   },
   returns: v.object({
@@ -54,15 +57,15 @@ export const updateItem = mutation({
     lastModified: v.string(),
   }),
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.id, {
+    await ctx.db.patch(args.itemId, {
       quantity: args.quantity,
       lastModified: Date.now(),
     });
 
-    const formattedItem = await getItemData(ctx, args.id);
+    const formattedItem = await getItemData(ctx, args.itemId);
 
     if (!formattedItem) {
-      throw new Error(`Item with ID ${args.id} not found`);
+      throw new Error(`Item with ID ${args.itemId} not found`);
     }
 
     return formattedItem;

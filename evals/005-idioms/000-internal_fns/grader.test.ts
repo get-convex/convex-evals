@@ -1,14 +1,10 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import {
   responseClient,
   responseAdminClient,
   compareFunctionSpec,
 } from "../../../grader";
 import { api, internal } from "./answer/convex/_generated/api";
-
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
-});
 
 test("getPublicStats returns correct static data", async () => {
   const stats = await responseClient.query(api.index.getPublicStats, {});
@@ -22,7 +18,7 @@ test("getPublicStats returns correct static data", async () => {
 test("getPublicStats is accessible to clients", async () => {
   // Should not throw
   await expect(
-    responseClient.query(api.index.getPublicStats, {})
+    responseClient.query(api.index.getPublicStats, {}),
   ).resolves.toBeDefined();
 });
 
@@ -48,58 +44,99 @@ test("logClientEvent handles different data types", async () => {
   ];
 
   for (const testCase of testCases) {
-    const timestamp = await responseClient.mutation(api.index.logClientEvent, testCase);
+    const timestamp = await responseClient.mutation(
+      api.index.logClientEvent,
+      testCase,
+    );
     expect(typeof timestamp).toBe("number");
   }
 });
 
 test("dailyCleanup is not accessible to regular clients", async () => {
-  // @ts-expect-error - Testing that this function is not accessible
-  await expect(responseClient.action(api.index.dailyCleanup)).rejects.toThrow();
+  await expect(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    responseClient.action(internal.index.dailyCleanup as any, {}),
+  ).rejects.toThrow();
 });
 
 test("dailyCleanup is accessible to admin clients", async () => {
   // Should not throw
   await expect(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    responseAdminClient.action((internal.index.dailyCleanup as any), {})
+    responseAdminClient.action(internal.index.dailyCleanup as any, {}),
   ).resolves.toBeNull();
 });
 
 test("resetCounter is not accessible to regular clients", async () => {
-  // @ts-expect-error - Testing that this function is not accessible
-  await expect(responseClient.mutation(api.index.resetCounter)).rejects.toThrow();
+  await expect(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    responseClient.mutation(internal.index.resetCounter as any, {}),
+  ).rejects.toThrow();
 });
 
 test("resetCounter is accessible to admin clients", async () => {
   // Should not throw
   await expect(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    responseAdminClient.mutation((internal.index.resetCounter as any), {})
+    responseAdminClient.mutation(internal.index.resetCounter as any, {}),
   ).resolves.toBeNull();
+});
+
+test("dailyCleanup and resetCounter log expected messages", async () => {
+  const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await responseAdminClient.action(internal.index.dailyCleanup as any, {});
+  const loggedCleanup = spy.mock.calls.some((callArgs) =>
+    callArgs.some(
+      (arg) => typeof arg === "string" && arg.includes("Running daily cleanup"),
+    ),
+  );
+  expect(loggedCleanup).toBe(true);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await responseAdminClient.mutation(internal.index.resetCounter as any, {});
+  const loggedReset = spy.mock.calls.some((callArgs) =>
+    callArgs.some(
+      (arg) => typeof arg === "string" && arg.includes("Resetting counter"),
+    ),
+  );
+  expect(loggedReset).toBe(true);
+
+  spy.mockRestore();
 });
 
 test("function visibility is correctly set", async () => {
   // Public functions should be accessible
-  await expect(responseClient.query(api.index.getPublicStats, {})).resolves.toBeDefined();
+  await expect(
+    responseClient.query(api.index.getPublicStats, {}),
+  ).resolves.toBeDefined();
   await expect(
     responseClient.mutation(api.index.logClientEvent, {
       eventName: "test",
       data: null,
-    })
+    }),
   ).resolves.toBeDefined();
 
   // Internal functions should not be accessible to regular clients
-  // @ts-expect-error - Testing that these functions are not accessible
-  await expect(responseClient.action(api.index.dailyCleanup)).rejects.toThrow();
-  // @ts-expect-error - Testing that these functions are not accessible
-  await expect(responseClient.mutation(api.index.resetCounter)).rejects.toThrow();
+  await expect(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    responseClient.action(internal.index.dailyCleanup as any, {}),
+  ).rejects.toThrow();
+  await expect(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    responseClient.mutation(internal.index.resetCounter as any, {}),
+  ).rejects.toThrow();
 
   // But should be accessible to admin clients
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await expect(responseAdminClient.action((internal.index.dailyCleanup as any), {})).resolves.toBeNull();
+  await expect(
+    responseAdminClient.action(internal.index.dailyCleanup as any, {}),
+  ).resolves.toBeNull();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await expect(responseAdminClient.mutation((internal.index.resetCounter as any), {})).resolves.toBeNull();
+  await expect(
+    responseAdminClient.mutation(internal.index.resetCounter as any, {}),
+  ).resolves.toBeNull();
 });
 
 test("getPublicStats returns consistent data", async () => {

@@ -82,6 +82,7 @@ def convex_coding_evals(model: ModelTemplate):
                     "name": name,
                     "model": model.name,
                     "model_name": model.formatted_name,
+                    "tempdir": tempdir,
                 },
             }
         )

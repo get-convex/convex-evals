@@ -1,3 +1,13 @@
-Create a backend with only two HTTP routes. Serve the text "there" concatenated
-onto the request body for GETs at `/api/hello`. Serve an empty response for POSTs 
-at `/api/messages/*`.
+Create a backend with only two HTTP routes.
+
+1) GET `/api/hello`
+   - Read the request body as text (treat missing/empty body as empty string)
+   - Respond with the body text concatenated with the literal string "there"
+   - Examples:
+     - body: "" -> response: "there"
+     - body: "hello" -> response: "hellothere"
+   - Set `Content-Type: text/plain`
+
+2) POST `/api/messages/*`
+   - Return HTTP 200 with an empty response body
+   - This route should match any path under `/api/messages/` (e.g. `/api/messages/123`). In Convex, use a wildcard route (e.g. `pathPrefix: "/api/messages/"`).

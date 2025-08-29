@@ -5,7 +5,7 @@ import { v } from "convex/values";
  * Get a post by ID, returning the raw document.
  */
 export const getPost = query({
-  args: { id: v.id("posts") },
+  args: { postId: v.id("posts") },
   // Return type validator matches the document type exactly
   returns: v.object({
     _id: v.id("posts"),
@@ -15,7 +15,7 @@ export const getPost = query({
     authorId: v.id("users"),
   }),
   handler: async (ctx, args) => {
-    const post = await ctx.db.get(args.id);
+    const post = await ctx.db.get(args.postId);
     if (!post) {
       throw new Error("Post not found");
     }
@@ -27,7 +27,7 @@ export const getPost = query({
  * Get a post with a status indicator, demonstrating discriminated union returns.
  */
 export const getPostWithStatus = query({
-  args: { id: v.id("posts") },
+  args: { postId: v.id("posts") },
   // Union type validator for success/error states
   returns: v.union(
     v.object({
@@ -43,10 +43,10 @@ export const getPostWithStatus = query({
     v.object({
       success: v.literal(false),
       error: v.string(),
-    })
+    }),
   ),
   handler: async (ctx, args) => {
-    const post = await ctx.db.get(args.id);
+    const post = await ctx.db.get(args.postId);
 
     if (!post) {
       return {
@@ -73,7 +73,7 @@ export const getPostWithStatus = query({
  * Get a post with its author, demonstrating tuple returns.
  */
 export const getPostWithAuthor = query({
-  args: { id: v.id("posts") },
+  args: { postId: v.id("posts") },
   // Tuple type validator for post and author
   returns: v.array(
     v.union(
@@ -89,11 +89,11 @@ export const getPostWithAuthor = query({
         title: v.string(),
         content: v.string(),
         authorId: v.id("users"),
-      })
+      }),
     ),
   ),
   handler: async (ctx, args) => {
-    const post = await ctx.db.get(args.id);
+    const post = await ctx.db.get(args.postId);
     if (!post) {
       throw new Error("Post not found");
     }

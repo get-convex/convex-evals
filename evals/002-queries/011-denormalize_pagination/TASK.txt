@@ -25,7 +25,7 @@ export default defineSchema({
 ```
 
 Create a query `paginateDogsByOwnerAge` in `convex/index.ts` that:
-- Takes `cursor` (string | null) and `numItems` (number) arguments
+- Takes arguments:  `{ cursor: string | null, numItems: number }`
 - Paginates over the dogs table by the owner's age
 - Returns `{ continueCursor, dogs }` where `continueCursor` is a string and `dogs` is an array of dog records { name, breed }
 

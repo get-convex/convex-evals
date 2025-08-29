@@ -22,6 +22,7 @@ export default defineSchema({
 ```
 
 Create a query function `getActiveUsersWithPosts` in `convex/index.ts` that:
+- Takes no arguments (empty object `{}`)
 - Returns an array of users with their published posts included
 
 Files to create:

@@ -19,13 +19,14 @@ export default defineSchema({
 });
 ```
 
-Create a mutation `deleteUserAndDocuments` in `convex/index.ts` that deletes a user and all their documents, returning nothing.
+Create a mutation `deleteUserAndDocuments` in `convex/index.ts` that takes `{ userId: Id<"users"> }`, deletes that user and all their documents, and returns nothing.
 
 The implementation should demonstrate:
 - Proper use of database indexes
 - Parallel operations for better performance
 - Proper error handling
 - Transaction handling to ensure data consistency
+ - Should handle concurrent deletions correctly without leaving orphaned data
 
 Type all arguments and return values appropriately using TypeScript.
 

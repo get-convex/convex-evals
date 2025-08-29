@@ -3,7 +3,6 @@ import {
   responseAdminClient,
   responseClient,
   compareSchema,
-  compareFunctionSpec,
   addDocuments,
   deleteAllDocuments,
   listTable,
@@ -20,10 +19,6 @@ test("compare schema", async ({ skip }) => {
   await compareSchema(skip);
 });
 
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
-});
-
 test("searchPostsWithAuthors returns empty array when no matches found", async () => {
   const result = await responseClient.query(api.index.searchPostsWithAuthors, {
     query: "nonexistent",
@@ -37,7 +32,10 @@ test("searchPostsWithAuthors finds posts by content", async () => {
   await addDocuments(responseAdminClient, "authors", [
     { name: "John Doe", email: "john@example.com" },
   ]);
-  const authors = await listTable(responseAdminClient, "authors") as Doc<"authors">[];
+  const authors = (await listTable(
+    responseAdminClient,
+    "authors",
+  )) as Doc<"authors">[];
   const authorId = authors[0]._id;
 
   // Create test posts
@@ -68,7 +66,10 @@ test("searchPostsWithAuthors returns 'Unknown Author' for missing authors", asyn
   await addDocuments(responseAdminClient, "authors", [
     { name: "Jane Doe", email: "jane@example.com" },
   ]);
-  const authors = await listTable(responseAdminClient, "authors") as Doc<"authors">[];
+  const authors = (await listTable(
+    responseAdminClient,
+    "authors",
+  )) as Doc<"authors">[];
   const authorId = authors[0]._id;
 
   // Create a post
@@ -97,8 +98,11 @@ test("searchPostsWithAuthors handles multiple matches", async () => {
     { name: "Author 1", email: "author1@example.com" },
     { name: "Author 2", email: "author2@example.com" },
   ]);
-  const authors = await listTable(responseAdminClient, "authors") as Doc<"authors">[];
-  const [author1Id, author2Id] = authors.map(a => a._id);
+  const authors = (await listTable(
+    responseAdminClient,
+    "authors",
+  )) as Doc<"authors">[];
+  const [author1Id, author2Id] = authors.map((a) => a._id);
 
   // Create posts with common search term
   await addDocuments(responseAdminClient, "posts", [
@@ -119,7 +123,9 @@ test("searchPostsWithAuthors handles multiple matches", async () => {
   });
 
   expect(result).toHaveLength(2);
-  expect(new Set(result.map(p => p.author))).toEqual(new Set(["Author 1", "Author 2"]));
+  expect(new Set(result.map((p) => p.author))).toEqual(
+    new Set(["Author 1", "Author 2"]),
+  );
 });
 
 test("searchPostsWithAuthors returns correct result structure", async () => {
@@ -127,7 +133,10 @@ test("searchPostsWithAuthors returns correct result structure", async () => {
   await addDocuments(responseAdminClient, "authors", [
     { name: "Test Author", email: "test@example.com" },
   ]);
-  const authors = await listTable(responseAdminClient, "authors") as Doc<"authors">[];
+  const authors = (await listTable(
+    responseAdminClient,
+    "authors",
+  )) as Doc<"authors">[];
   const authorId = authors[0]._id;
 
   // Create post

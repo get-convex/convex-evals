@@ -23,20 +23,23 @@ export default defineSchema({
 2. Create three query functions in `convex/index.ts`:
 
 a. Create a query `getPost` that:
-   - Takes a post ID as an argument
+   - Takes a post ID argument named `postId`
    - Returns the raw document from the "posts" table
+   - If the post does not exist, throw an error with the message: "Post not found"
 
 b. Create a query `getPostWithStatus` that:
-   - Takes a post ID as an argument
+   - Takes a post ID argument named `postId`
    - Returns a discriminated union type:
      ```ts
      { success: true, post: Doc<"posts"> } |
      { success: false, error: string }
      ```
-   - Return an error if the title is ""
+   - Return `{ success: false, error: "Post not found" }` if the post does not exist
+   - Return `{ success: false, error: "Post title cannot be empty" }` if the title is an empty string
 
 c. Create a query `getPostWithAuthor` that:
-   - Takes a post ID as an argument
-   - Returns an array that contains Doc<"users"> and Doc<"posts">
+   - Takes a post ID argument named `postId`
+   - Returns an array that contains Doc<"users"> and Doc<"posts">, in this order: `[user, post]`
+   - Throw an error with the message: "Post not found" if the post does not exist
 
 Define a return validator for each of them.

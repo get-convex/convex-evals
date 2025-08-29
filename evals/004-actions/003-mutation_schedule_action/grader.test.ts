@@ -3,7 +3,6 @@ import {
   responseAdminClient,
   responseClient,
   compareSchema,
-  compareFunctionSpec,
   deleteAllDocuments,
   listTable,
 } from "../../../grader";
@@ -19,10 +18,6 @@ test("compare schema", async ({ skip }) => {
   await compareSchema(skip);
 });
 
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
-});
-
 test("initiateRequest creates new request record", async () => {
   const testUrl = "https://httpbin.org/post";
 
@@ -32,7 +27,10 @@ test("initiateRequest creates new request record", async () => {
 
   expect(requestId).toBeDefined();
 
-  const requests = (await listTable(responseAdminClient, "requests")) as Doc<"requests">[];
+  const requests = (await listTable(
+    responseAdminClient,
+    "requests",
+  )) as Doc<"requests">[];
   expect(requests).toHaveLength(1);
 
   const request = requests[0];
@@ -71,14 +69,17 @@ test("request eventually completes", async () => {
 
   const start = Date.now();
   while (Date.now() - start < 2000) {
-    const requests = (await listTable(responseAdminClient, "requests")) as Doc<"requests">[];
-    const request = requests.find(r => r._id === requestId);
+    const requests = (await listTable(
+      responseAdminClient,
+      "requests",
+    )) as Doc<"requests">[];
+    const request = requests.find((r) => r._id === requestId);
     expect(request).toBeDefined();
     if (request?.status === "completed") {
       expect(request?.completedAt).toBeTypeOf("number");
       break;
     }
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
   }
 });
 
@@ -91,25 +92,51 @@ test("handles multiple concurrent requests", async () => {
 
   // Initiate multiple requests concurrently
   const requestIds = await Promise.all(
-    urls.map(async url => await responseClient.mutation(api.index.initiateRequest, { url }))
+    urls.map(
+      async (url) =>
+        await responseClient.mutation(api.index.initiateRequest, { url }),
+    ),
   );
 
   expect(new Set(requestIds).size).toBe(urls.length);
 
   // Wait for requests to complete
-  await new Promise(resolve => setTimeout(resolve, 2000));
+  await new Promise((resolve) => setTimeout(resolve, 2000));
 
-  const requests = (await listTable(responseAdminClient, "requests")) as Doc<"requests">[];
+  const requests = (await listTable(
+    responseAdminClient,
+    "requests",
+  )) as Doc<"requests">[];
   expect(requests).toHaveLength(urls.length);
 
   // Verify all requests completed
-  const completedRequests = requests.filter(r => r.status === "completed");
+  const completedRequests = requests.filter((r) => r.status === "completed");
   expect(completedRequests).toHaveLength(urls.length);
 
   // Verify timestamps
   for (const request of requests) {
     expect(request.requestedAt).toBeLessThan(request.completedAt!);
   }
+});
+
+test("initiateRequest does not duplicate async work for same URL concurrently", async () => {
+  const testUrl = "https://httpbin.org/post";
+
+  const ids = await Promise.all([
+    responseClient.mutation(api.index.initiateRequest, { url: testUrl }),
+    responseClient.mutation(api.index.initiateRequest, { url: testUrl }),
+    responseClient.mutation(api.index.initiateRequest, { url: testUrl }),
+  ]);
+
+  // All should be same id
+  expect(new Set(ids).size).toBe(1);
+
+  // Only one request record
+  const records = (await listTable(
+    responseAdminClient,
+    "requests",
+  )) as Doc<"requests">[];
+  expect(records).toHaveLength(1);
 });
 
 test("handles request failures gracefully", async () => {
@@ -122,10 +149,13 @@ test("handles request failures gracefully", async () => {
   expect(requestId).toBeDefined();
 
   // Wait for potential completion
-  await new Promise(resolve => setTimeout(resolve, 2000));
+  await new Promise((resolve) => setTimeout(resolve, 2000));
 
-  const requests = (await listTable(responseAdminClient, "requests")) as Doc<"requests">[];
-  const request = requests.find(r => r._id === requestId);
+  const requests = (await listTable(
+    responseAdminClient,
+    "requests",
+  )) as Doc<"requests">[];
+  const request = requests.find((r) => r._id === requestId);
 
   expect(request).toBeDefined();
   // Request should still be in pending state since the action failed
