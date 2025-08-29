@@ -134,10 +134,10 @@ def download_convex_binary():
         if os.path.exists(binary_path):
             return binary_path
 
-        log_info("Latest release:", version)
+        print(f"Latest release: {version}", flush=True)
 
         url = matching_asset["browser_download_url"]
-        log_info("Downloading:", url)
+        print(f"Downloading: {url}", flush=True)
         response = requests.get(url, stream=True)
         response.raise_for_status()
 
@@ -145,7 +145,7 @@ def download_convex_binary():
         with open(zip_path, "wb") as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
-        log_info("Downloaded:", matching_asset["name"])
+        print(f"Downloaded: {matching_asset['name']}", flush=True)
 
         # Unzip the file
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
@@ -163,6 +163,6 @@ def download_convex_binary():
 
         # Clean up zip file
         os.remove(zip_path)
-        log_info("Extracted binary to:", binary_path)
+        print(f"Extracted binary to: {binary_path}", flush=True)
 
     return binary_path
