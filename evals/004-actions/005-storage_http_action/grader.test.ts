@@ -1,6 +1,9 @@
 import { expect, test } from "vitest";
 import { responseAdminClient } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
+import { createAIGraderTest } from "../../../grader/aiGrader";
+
+createAIGraderTest(import.meta.url);
 import { getSiteURL } from "./answer/convex/http";
 
 async function getStoreURL(): Promise<string> {

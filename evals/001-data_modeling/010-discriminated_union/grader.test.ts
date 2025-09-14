@@ -1,5 +1,8 @@
 import { expect, test } from "vitest";
 import { responseAdminClient, addDocuments } from "../../../grader";
+import { createAIGraderTest } from "../../../grader/aiGrader";
+
+createAIGraderTest(import.meta.url);
 
 test("schema validates different notification types correctly", async () => {
   // Valid notifications

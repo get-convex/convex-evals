@@ -82,6 +82,10 @@ Output:
 
 Optional Convex summary posting (still local mode): set both `CONVEX_EVAL_ENDPOINT` and `CONVEX_AUTH_TOKEN`.
 
+## AI grading helper
+
+Grader tests can include an AI-based assessment that provides concise reasoning on failure. See the "AI grading" section in `EVAL_WORKFLOW.md` for details and usage with `createAIGraderTest(import.meta.url)`.
+
 ## Rerunning grading
 
 After running the evals, you may want to dig into a particular test failure. You can use the `run_grader.py` script to grade the evaluations again without regenerating them:
