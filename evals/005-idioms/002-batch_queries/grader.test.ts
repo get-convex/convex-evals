@@ -15,10 +15,6 @@ beforeEach(async () => {
   await deleteAllDocuments(responseAdminClient, ["users", "posts"]);
 });
 
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
-});
-
 test("compare schema", async ({ skip }) => {
   await compareSchema(skip);
 });

@@ -16,21 +16,21 @@ export default defineSchema({
 Implement these functions in `convex/index.ts`:
 
 1. Create a query `getFetchResult` that:
-   - Takes a url string as argument
+   - Takes arguments:  `{ url: string }`
    - Uses the "by_url" index to look up any existing fetch result
    - Returns the ID of the record if found, null if not found
 
 2. Create a mutation `saveFetchResult` that:
-   - Takes url (string) and data (any) as arguments
-   - Inserts a new record with the current timestamp, or updates an existing record if the URL already exists
-   - Has the handler return type of `Promise<Id<"fetchResults">>`
+   - Takes arguments:  `{ url: string, data: any }`
+   - Inserts a new record, or updates an existing record if the URL already exists (maintaining only one record per URL)
+   - Has the handler return type of `Promise<Id<"fetchRequests">>`
    - Returns the ID of the new record
 
 3. Create an action `fetchIfNeeded` that uses the query and mutation to:
-   - Takes a url string as argument
+   - Takes arguments:  `{ url: string }`
    - Makes a fetch request to the URL, if the result is not already cached in fetchResults.
    - If it isn't cached, write the JSON response to the fetchResults table
-   - Has the handler return type of `Promise<Id<"fetchResults">>`
+   - Has the handler return type of `Promise<Id<"fetchRequests">>`
    - Returns the newly created record ID
 
 Add appropriate ESLint directives for any type handling:

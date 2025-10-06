@@ -45,14 +45,22 @@ class Model(ConvexCodegenModel):
             system_message = {"role": "system", "content": SYSTEM_PROMPT}
         else:
             system_message = {"role": "user", "content": SYSTEM_PROMPT}
-        response = self.client.chat.completions.create(
-            model=self.model.name,
-            messages=[
+        # Build parameters, selecting the correct token limit key for newer models
+        max_token_limit = 8192 if self.model.name == "claude-3-5-sonnet-latest" else 16384
+        create_params = {
+            "model": self.model.name,
+            "messages": [
                 system_message,
                 {"role": "user", "content": user_prompt},
             ],
-            max_tokens=8192 if self.model.name == "claude-3-5-sonnet-latest" else 16384,
-        )
+        }
+        # Some newer models (e.g., GPT-5 family) expect `max_completion_tokens` instead of `max_tokens`.
+        if self.model.name.startswith("gpt-5"):
+            create_params["max_completion_tokens"] = max_token_limit
+        else:
+            create_params["max_tokens"] = max_token_limit
+
+        response = self.client.chat.completions.create(**create_params)
         return self._parse_response(response.choices[0].message.content)
 
     def _parse_response(self, response: str):

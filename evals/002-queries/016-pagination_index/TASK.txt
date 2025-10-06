@@ -18,7 +18,7 @@ export default defineSchema({
 ```
 
 Create a query function `paginateChannelMessages` in `convex/index.ts` that:
-- Takes a channelId argument along with regular pagination options
+- Takes arguments:  `{ channelId: Id<"channels">, paginationOpts: { numItems: number, cursor: string | null } }`
 - Uses the "by_channel" index to efficiently paginate messages in the given channel
 - Orders messages in descending order (newest first)
 - Returns the pagination result to be used with usePaginatedQuery, but don't provide a returns validator for it.

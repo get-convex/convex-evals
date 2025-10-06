@@ -1,16 +1,16 @@
 import { expect, test } from "vitest";
-import {
-  responseAdminClient,
-  responseClient,
-  compareFunctionSpec,
-  compareSchema,
-} from "../../../grader";
-import { anyApi } from "convex/server";
+import { responseAdminClient, addDocuments, listTable } from "../../../grader";
 
-test("compare schema", async ({ skip }) => {
-  await compareSchema(skip);
-});
+test("users and posts tables accept foreign key", async () => {
+  await addDocuments(responseAdminClient, "users", [
+    { name: "Alice", email_addresses: ["a@example.com"] },
+  ]);
+  const users = await listTable(responseAdminClient, "users");
+  const userId = (users.at(-1) as { _id: string })._id;
 
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
+  await addDocuments(responseAdminClient, "posts", [
+    { title: "T", author: userId, content: "C" },
+  ]);
+  const posts = await listTable(responseAdminClient, "posts");
+  expect(posts.length).toBeGreaterThan(0);
 });

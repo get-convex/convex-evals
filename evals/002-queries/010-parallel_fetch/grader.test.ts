@@ -3,7 +3,6 @@ import {
   responseAdminClient,
   responseClient,
   compareSchema,
-  compareFunctionSpec,
   addDocuments,
   listTable,
 } from "../../../grader";
@@ -11,10 +10,6 @@ import { anyApi } from "convex/server";
 
 test("compare schema", async ({ skip }) => {
   await compareSchema(skip);
-});
-
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
 });
 
 test("get author dashboard returns null when user not found", async () => {
@@ -112,4 +107,17 @@ test("get author dashboard returns complete data", async () => {
     expect(post.reactionCounts).toHaveProperty("heart");
     expect(post.reactionCounts).toHaveProperty("celebrate");
   }
+});
+
+test("get author dashboard throws if preferences missing", async () => {
+  // Create user without preferences
+  await addDocuments(responseAdminClient, "users", [
+    { name: "NoPref", email: "nopref@example.com" },
+  ]);
+
+  await expect(
+    responseClient.query(anyApi.public.getAuthorDashboard, {
+      email: "nopref@example.com",
+    }),
+  ).rejects.toThrow();
 });

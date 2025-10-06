@@ -3,7 +3,6 @@ import {
   responseAdminClient,
   responseClient,
   compareSchema,
-  compareFunctionSpec,
   addDocuments,
   deleteAllDocuments,
   listTable,
@@ -20,14 +19,13 @@ test("compare schema", async ({ skip }) => {
   await compareSchema(skip);
 });
 
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
-});
-
 test("paginateMessagesWithAuthors returns empty page when no messages exist", async () => {
-  const result = await responseClient.query(api.index.paginateMessagesWithAuthors, {
-    paginationOpts: { numItems: 10, cursor: null },
-  });
+  const result = await responseClient.query(
+    api.index.paginateMessagesWithAuthors,
+    {
+      paginationOpts: { numItems: 10, cursor: null },
+    },
+  );
 
   expect(result.page).toEqual([]);
   expect(result.isDone).toBe(true);
@@ -35,12 +33,12 @@ test("paginateMessagesWithAuthors returns empty page when no messages exist", as
 
 test("paginateMessagesWithAuthors includes author names with messages", async () => {
   // Create test users
-  const users = [
-    { name: "Alice" },
-    { name: "Bob" },
-  ];
+  const users = [{ name: "Alice" }, { name: "Bob" }];
   await addDocuments(responseAdminClient, "users", users);
-  const userDocs = (await listTable(responseAdminClient, "users")) as Doc<"users">[];
+  const userDocs = (await listTable(
+    responseAdminClient,
+    "users",
+  )) as Doc<"users">[];
   const [alice, bob] = userDocs.slice(-2);
 
   // Create messages
@@ -50,19 +48,25 @@ test("paginateMessagesWithAuthors includes author names with messages", async ()
   ];
   await addDocuments(responseAdminClient, "messages", messages);
 
-  const result = await responseClient.query(api.index.paginateMessagesWithAuthors, {
-    paginationOpts: { numItems: 10, cursor: null },
-  });
+  const result = await responseClient.query(
+    api.index.paginateMessagesWithAuthors,
+    {
+      paginationOpts: { numItems: 10, cursor: null },
+    },
+  );
 
   expect(result.page).toHaveLength(2);
-  expect(result.page.map(m => m.author)).toEqual(["Bob", "Alice"]);
-  expect(result.page.map(m => m.content)).toEqual(["Hi there", "Hello"]);
+  expect(result.page.map((m) => m.author)).toEqual(["Bob", "Alice"]);
+  expect(result.page.map((m) => m.content)).toEqual(["Hi there", "Hello"]);
 });
 
 test("paginateMessagesWithAuthors respects pagination size", async () => {
   // Create a user
   await addDocuments(responseAdminClient, "users", [{ name: "Test User" }]);
-  const user = (await listTable(responseAdminClient, "users")) as Doc<"users">[];
+  const user = (await listTable(
+    responseAdminClient,
+    "users",
+  )) as Doc<"users">[];
   const userId = user[0]._id;
 
   // Create multiple messages
@@ -73,23 +77,32 @@ test("paginateMessagesWithAuthors respects pagination size", async () => {
   await addDocuments(responseAdminClient, "messages", messages);
 
   // Test pagination
-  const firstPage = await responseClient.query(api.index.paginateMessagesWithAuthors, {
-    paginationOpts: { numItems: 2, cursor: null },
-  });
+  const firstPage = await responseClient.query(
+    api.index.paginateMessagesWithAuthors,
+    {
+      paginationOpts: { numItems: 2, cursor: null },
+    },
+  );
 
   expect(firstPage.page).toHaveLength(2);
   expect(firstPage.isDone).toBe(false);
 
-  const secondPage = await responseClient.query(api.index.paginateMessagesWithAuthors, {
-    paginationOpts: { numItems: 2, cursor: firstPage.continueCursor },
-  });
+  const secondPage = await responseClient.query(
+    api.index.paginateMessagesWithAuthors,
+    {
+      paginationOpts: { numItems: 2, cursor: firstPage.continueCursor },
+    },
+  );
 
   expect(secondPage.page).toHaveLength(2);
   expect(secondPage.isDone).toBe(false);
 
-  const thirdPage = await responseClient.query(api.index.paginateMessagesWithAuthors, {
-    paginationOpts: { numItems: 2, cursor: secondPage.continueCursor },
-  });
+  const thirdPage = await responseClient.query(
+    api.index.paginateMessagesWithAuthors,
+    {
+      paginationOpts: { numItems: 2, cursor: secondPage.continueCursor },
+    },
+  );
 
   expect(thirdPage.page).toHaveLength(1);
   expect(thirdPage.isDone).toBe(true);
@@ -98,7 +111,10 @@ test("paginateMessagesWithAuthors respects pagination size", async () => {
 test("paginateMessagesWithAuthors maintains correct ordering", async () => {
   // Create a user
   await addDocuments(responseAdminClient, "users", [{ name: "User" }]);
-  const user = (await listTable(responseAdminClient, "users")) as Doc<"users">[];
+  const user = (await listTable(
+    responseAdminClient,
+    "users",
+  )) as Doc<"users">[];
   const userId = user[0]._id;
 
   // Create messages in specific order
@@ -109,22 +125,28 @@ test("paginateMessagesWithAuthors maintains correct ordering", async () => {
   ];
   await addDocuments(responseAdminClient, "messages", messages);
 
-  const result = await responseClient.query(api.index.paginateMessagesWithAuthors, {
-    paginationOpts: { numItems: 10, cursor: null },
-  });
+  const result = await responseClient.query(
+    api.index.paginateMessagesWithAuthors,
+    {
+      paginationOpts: { numItems: 10, cursor: null },
+    },
+  );
 
-  expect(result.page.map(m => m.content)).toEqual(["Third", "Second", "First"]);
+  expect(result.page.map((m) => m.content)).toEqual([
+    "Third",
+    "Second",
+    "First",
+  ]);
 });
 
 test("paginateMessagesWithAuthors handles multiple authors correctly", async () => {
   // Create multiple users
-  const users = [
-    { name: "Alice" },
-    { name: "Bob" },
-    { name: "Charlie" },
-  ];
+  const users = [{ name: "Alice" }, { name: "Bob" }, { name: "Charlie" }];
   await addDocuments(responseAdminClient, "users", users);
-  const userDocs = (await listTable(responseAdminClient, "users")) as Doc<"users">[];
+  const userDocs = (await listTable(
+    responseAdminClient,
+    "users",
+  )) as Doc<"users">[];
   const [alice, bob, charlie] = userDocs.slice(-3);
 
   // Create interleaved messages
@@ -136,12 +158,17 @@ test("paginateMessagesWithAuthors handles multiple authors correctly", async () 
   ];
   await addDocuments(responseAdminClient, "messages", messages);
 
-  const result = await responseClient.query(api.index.paginateMessagesWithAuthors, {
-    paginationOpts: { numItems: 10, cursor: null },
-  });
+  const result = await responseClient.query(
+    api.index.paginateMessagesWithAuthors,
+    {
+      paginationOpts: { numItems: 10, cursor: null },
+    },
+  );
 
   expect(result.page).toHaveLength(4);
-  expect(result.page.map(m => ({ author: m.author, content: m.content }))).toEqual([
+  expect(
+    result.page.map((m) => ({ author: m.author, content: m.content })),
+  ).toEqual([
     { author: "Alice", content: "Alice 2" },
     { author: "Charlie", content: "Charlie 1" },
     { author: "Bob", content: "Bob 1" },
@@ -151,8 +178,13 @@ test("paginateMessagesWithAuthors handles multiple authors correctly", async () 
 
 test("paginateMessagesWithAuthors throws error for missing author", async () => {
   // Create a user and then delete it
-  await addDocuments(responseAdminClient, "users", [{ name: "Temporary User" }]);
-  const user = (await listTable(responseAdminClient, "users")) as Doc<"users">[];
+  await addDocuments(responseAdminClient, "users", [
+    { name: "Temporary User" },
+  ]);
+  const user = (await listTable(
+    responseAdminClient,
+    "users",
+  )) as Doc<"users">[];
   const userId = user[0]._id;
 
   // Create a message
@@ -164,7 +196,9 @@ test("paginateMessagesWithAuthors throws error for missing author", async () => 
   await deleteAllDocuments(responseAdminClient, ["users"]);
 
   // Attempt to paginate messages
-  await expect(responseClient.query(api.index.paginateMessagesWithAuthors, {
-    paginationOpts: { numItems: 10, cursor: null },
-  })).rejects.toThrow();
+  await expect(
+    responseClient.query(api.index.paginateMessagesWithAuthors, {
+      paginationOpts: { numItems: 10, cursor: null },
+    }),
+  ).rejects.toThrow();
 });

@@ -31,23 +31,31 @@ def run_grader(category: str, name: str, project_dir: str):
         message.append("  - `bun install` succeeds")
     except Exception as e:
         message.append(f"  - `bun install` fails: {e}")
+        print("\n".join(message))
+        return False
     try:
         generate_code(project_dir)
         message.append("  - `convex codegen` succeeds")
     except Exception as e:
         message.append(f"  - `convex codegen` fails: {e}")
+        print("\n".join(message))
+        return False
 
     try:
         typecheck_code(project_dir)
         message.append("  - Passes tsc")
     except Exception as e:
         message.append(f"  - Fails tsc: {e}")
+        print("\n".join(message))
+        return False
 
     try:
         lint_code(project_dir)
         message.append("  - Passes eslint")
     except Exception as e:
         message.append(f"  - Fails eslint: {e}")
+        print("\n".join(message))
+        return False
 
     with convex_backend(project_dir) as backend:
         try:
@@ -55,6 +63,8 @@ def run_grader(category: str, name: str, project_dir: str):
             message.append("  - `convex dev` succeeds")
         except Exception as e:
             message.append(f"  - `convex dev` fails: {e}")
+            print("\n".join(message))
+            return False
 
         test_file = f"evals/{category}/{name}/grader.test.ts"
         try:

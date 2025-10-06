@@ -16,7 +16,7 @@ export default defineSchema({
 ```
 
 Create a query function `paginatePosts` in `convex/index.ts` that:
-- Takes standard pagination parameters
+- Takes arguments:  `{ paginationOpts: { numItems: number, cursor: string | null } }`
 - Paginates posts in the default order
 - Must include a proper returns validator that accurately types the pagination result
 - Should be compatible with the usePaginatedQuery hook

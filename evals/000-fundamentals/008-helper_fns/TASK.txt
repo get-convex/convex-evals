@@ -16,7 +16,7 @@ export default defineSchema({
 });
 ```
 
-2. Create a helper function `getItemData` in `convex/index.ts` that takes in an item ID, fetches it from the database, and returns a document like:
+2. Create a helper function `getItemData` in `convex/index.ts` that takes an item ID and fetches it from the database, returning a document like:
 
 ```ts
 {
@@ -30,12 +30,12 @@ Return null if item not found, otherwise returns the formatted data
 3. Create more functions in `convex/index.ts`:
 
 a. Create a query `getItem` that:
-   - Takes an item ID as an argument
+   - Takes an item ID argument with the name "itemId"
    - Uses the shared helper function to retrieve and transform the item from the database
    - Throws an error if item not found
 
 b. Create a mutation `updateItem` that:
-   - Takes an item ID and new quantity as arguments
+   - Takes an item ID argument with the name "itemId" and a new quantity argument with the name "quantity"
    - Updates the item's quantity and lastModified timestamp
    - Retrieves the item via the shared helper function
    - Throws an error if item not found
