@@ -57,6 +57,15 @@ ALL_MODELS = [
         override_proxy="https://api.anthropic.com/v1",
     ),
     ModelTemplate(
+        name="claude-haiku-4-5",
+        formatted_name="Claude 4.5 Haiku",
+        max_concurrency=int(os.getenv("ANTHROPIC_CONCURRENCY", "2")),
+        requires_chain_of_thought=True,
+        uses_system_prompt=True,
+        provider=ModelProvider.ANTHROPIC,
+        override_proxy="https://api.anthropic.com/v1",
+    ),
+    ModelTemplate(
         name="o4-mini",
         formatted_name="o4-mini",
         max_concurrency=int(os.getenv("OPENAI_CONCURRENCY", "4")),
