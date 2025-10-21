@@ -7,6 +7,9 @@ import {
   listTable,
 } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
+import { createAIGraderTest } from "../../../grader/aiGrader";
+
+createAIGraderTest(import.meta.url);
 import { beforeEach } from "vitest";
 import { Doc } from "./answer/convex/_generated/dataModel";
 

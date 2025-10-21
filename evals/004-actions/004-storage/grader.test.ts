@@ -1,7 +1,10 @@
 import { expect, test } from "vitest";
 import { responseClient } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
+import { createAIGraderTest } from "../../../grader/aiGrader";
 import { Id } from "./answer/convex/_generated/dataModel";
+
+createAIGraderTest(import.meta.url);
 
 test("writes and reads text content", async () => {
   const testText = "Hello, world!";

@@ -7,6 +7,9 @@ import {
   listTable,
 } from "../../../grader";
 import { anyApi } from "convex/server";
+import { createAIGraderTest } from "../../../grader/aiGrader";
+
+createAIGraderTest(import.meta.url);
 
 test("compare schema", async ({ skip }) => {
   await compareSchema(skip);

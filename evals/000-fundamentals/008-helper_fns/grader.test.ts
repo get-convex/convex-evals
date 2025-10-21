@@ -7,6 +7,9 @@ import {
 } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
 import { Doc, Id } from "./answer/convex/_generated/dataModel";
+import { createAIGraderTest } from "../../../grader/aiGrader";
+
+createAIGraderTest(import.meta.url);
 
 test("getItem and updateItem handle non-existent items", async () => {
   // Try to get a non-existent item

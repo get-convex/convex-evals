@@ -9,7 +9,10 @@ import {
 } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
 import { beforeEach } from "vitest";
+import { createAIGraderTest } from "../../../grader/aiGrader";
 import { Doc, Id } from "./answer/convex/_generated/dataModel";
+
+createAIGraderTest(import.meta.url);
 
 beforeEach(async () => {
   await deleteAllDocuments(responseAdminClient, [
