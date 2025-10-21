@@ -59,7 +59,27 @@ def log_info(message: str) -> None:
     verbose = os.getenv("VERBOSE_INFO_LOGS", "").lower() in {"1", "true", "yes"}
     if not verbose:
         return
-    print(message, flush=True)
+    try:
+        print(message, flush=True)
+    except UnicodeEncodeError:
+        # Windows console may not support Unicode emojis, replace with ASCII alternatives
+        ascii_message = message.replace("✅", "[PASS]").replace("❌", "[FAIL]")
+        try:
+            print(ascii_message, flush=True)
+        except Exception:
+            # If all else fails, encode as ASCII with replacement
+            print(message.encode("ascii", errors="replace").decode("ascii"), flush=True)
+
+
+def log_vitest_results(log_path: str, cmd, stdout: str) -> None:
+    """Log vitest results with verbose output."""
+    try:
+        cmd_str = " ".join(cmd)
+    except Exception:
+        cmd_str = str(cmd)
+    
+    append_log(log_path, f"[cmd] {cmd_str}")
+    append_log_block(log_path, "vitest", stdout)
 
 
 def run_command_step(log_path: str, handler, prefix: str, error_label: str, *, cmd_prefix: str = "") -> bool:
