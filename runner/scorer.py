@@ -60,14 +60,14 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
 
     with convex_backend(output_backend_dir) as output_backend:
         log_info(f"[{category}/{name}] Deploying generated backend on port {output_backend['port']}")
-        if run_command_step(run_log_path, lambda: deploy(output_backend, output_project_dir_abs), "convex-deploy", "convex deploy"):
-            scores.append(Score("`convex deploy` succeeds", 1))
+        if run_command_step(run_log_path, lambda: deploy(output_backend, output_project_dir_abs), "convex-dev", "convex dev"):
+            scores.append(Score("`convex dev` succeeds", 1))
             passed_deploy = True
-            passed_codegen = True  # convex deploy also generates code
+            passed_codegen = True  # convex dev also generates code
         else:
-            scores.append(Score("`convex deploy` succeeds", 0))
+            scores.append(Score("`convex dev` succeeds", 0))
             print(
-                f"Result ❌ – convex deploy fail – dir: {output_project_dir_abs}",
+                f"Result ❌ – convex dev fail – dir: {output_project_dir_abs}",
                 flush=True,
             )
             return scores
@@ -96,7 +96,7 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
 
         with convex_backend(answer_backend_dir) as answer_backend:
             log_info(f"[{category}/{name}] Deploying answer backend on port {answer_backend['port']}")
-            run_command_step(run_log_path, lambda: deploy(answer_backend, answer_project_dir), "answer-convex-deploy", "(answer) convex deploy", cmd_prefix="(answer) ")
+            run_command_step(run_log_path, lambda: deploy(answer_backend, answer_project_dir), "answer-convex-dev", "(answer) convex dev", cmd_prefix="(answer) ")
             test_file = os.path.abspath(os.path.join(eval_path, "grader.test.ts"))
             tests_ratio = 0.0
             try:
@@ -134,7 +134,7 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
             if not passed_eslint:
                 failures.append("eslint fail")
             if not passed_deploy:
-                failures.append("convex deploy fail")
+                failures.append("convex dev fail")
             if tests_ratio != 1:
                 failures.append(f"tests fail ({tests_ratio:.0%})")
 
@@ -262,21 +262,9 @@ def lint_code(project_dir):
 @traced
 def deploy(backend, project_dir):
     results = []
-    convex_url = f"http://localhost:{backend['port']}"
-    
-    # Set up .env.local with CONVEX_URL
-    env_local_path = os.path.join(project_dir, ".env.local")
-    with open(env_local_path, "w") as f:
-        f.write(f"CONVEX_URL={convex_url}\n")
-    
-    # Set up .convex/config.json
-    convex_dir = os.path.join(project_dir, ".convex")
-    os.makedirs(convex_dir, exist_ok=True)
-    config_path = os.path.join(convex_dir, "config.json")
-    with open(config_path, "w") as f:
-        f.write('{"url": "' + convex_url + '"}\n')
-    
-    # Run codegen --init to ensure tsconfig.json and other files are created
+    convex_url = f"http://localhost:{backend['port']}"    
+      
+    # Run codegen --init to create convex/tsconfig.json and other boilerplate files
     init_cmd = ["bunx", "convex", "codegen", "--typecheck", "disable", "--init"]
     init_done = subprocess.run(
         init_cmd,
@@ -285,14 +273,14 @@ def deploy(backend, project_dir):
         stderr=subprocess.STDOUT,
         encoding="utf-8",
     )
-    # Collect the output but don't fail if it errors
     results.append((init_cmd, init_done.stdout))
     
-    # Full command with admin key for execution
+    # Run convex dev --once to generate code and push functions
     exec_cmd = [
         "bunx",
         "convex",
-        "deploy",
+        "dev",
+        "--once",
         "--admin-key",
         admin_key,
         "--url",
@@ -304,15 +292,15 @@ def deploy(backend, project_dir):
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         encoding="utf-8",
-        timeout=60,
     )
     if done.returncode != 0:
         raise Exception(f"Failed to deploy:\n{done.stdout}")
-    # Safe command string for logging (omit admin key)
+    
     safe_cmd = [
         "bunx",
         "convex",
-        "deploy",
+        "dev",
+        "--once",
         "--url",
         convex_url,
     ]
