@@ -3,7 +3,7 @@ import tsparser from "@typescript-eslint/parser";
 
 export default tseslint.config(
   {
-    ignores: ["**/convex/_generated/", "scripts/**", "evals/**/grader.test.ts"],
+    ignores: ["**/convex/_generated/", "evals/**/grader.test.ts"],
   },
   tseslint.configs.recommendedTypeChecked,
   {
