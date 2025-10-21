@@ -15,7 +15,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "18"
+          node-version: "20"
 
       - name: Install Bun
         run: npm install -g bun@1.2.1
@@ -46,7 +46,7 @@ jobs:
 
       - name: Set Google models
         run: |
-          echo "MODELS=gemini-2.5,gemini-2.5-pro" >> $GITHUB_ENV
+          echo "MODELS=gemini-2.5-pro,gemini-2.5-flash" >> $GITHUB_ENV
 
       - name: Run evaluations
         env:
