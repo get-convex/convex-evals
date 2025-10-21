@@ -25,7 +25,7 @@ export default defineSchema({
 ```
 
 Create a query function `searchPostsWithAuthors` in `convex/index.ts` that:
-- Takes a search query string parameter
+- Takes arguments:  `{ query: string }`
 - Performs a text search on the posts table using the "search" index
 - Joins each result with the corresponding author information
 - Returns an array of posts with author details included

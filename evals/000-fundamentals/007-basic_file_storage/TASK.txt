@@ -17,24 +17,24 @@ export default defineSchema({
    - Returns a string URL for file upload
 
 2. Create a mutation `finishUpload`:
-   - Takes a storage ID as an argument
+   - Takes a storage ID argument named `storageId`
    - Inserts a new record in the "files" table with the storage ID
    - Returns null
 
 3. Create a query `getFileUrl`:
-   - Takes a file ID as an argument
+   - Takes a file ID argument named `fileId`
    - Retrieves the file record from the database, throwing an error if not found
    - Gets the download URL for the storage ID associated with the file.
    - Throws an error if the storage entry is not found
    - Returns the URL as a string
 
 4. Create a query `getFileMetadata`:
-   - Takes a file ID as an argument
+   - Takes a file ID argument named `fileId`
    - Retrieves the file record and returns all of its system metadata
    - Throws an error if the file is not found
 
 5. Create a mutation `deleteFile`:
-   - Takes a file ID as an argument
+   - Takes a file ID argument named `fileId`
    - Deletes both the storage object and database record
    - Throws an error if the file is not found
 

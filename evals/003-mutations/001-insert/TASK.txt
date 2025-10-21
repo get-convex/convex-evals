@@ -13,6 +13,6 @@ export default defineSchema({
 ```
 
 Write a mutation named `insertUser` in `convex/index.ts` that:
-- Takes a user object as an argument
+- Takes arguments:  `{ email: string, name: string, age: number }`
 - Inserts the user into the "users" table
 - Returns the _id field of the inserted document

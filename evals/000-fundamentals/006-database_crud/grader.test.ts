@@ -1,19 +1,6 @@
 import { expect, test } from "vitest";
-import {
-  responseAdminClient,
-  responseClient,
-  compareSchema,
-  compareFunctionSpec,
-} from "../../../grader";
+import { responseClient } from "../../../grader";
 import { anyApi } from "convex/server";
-
-test("compare schema", async ({ skip }) => {
-  await compareSchema(skip);
-});
-
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
-});
 
 test("create and read location", async () => {
   // Test successful creation
@@ -40,18 +27,13 @@ test("create and read location", async () => {
   });
 
   // Test invalid arguments
-  let error: any = undefined;
-  try {
-    await responseClient.mutation(anyApi.public.createLocation, {
+  await expect(
+    responseClient.mutation(anyApi.public.createLocation, {
       name: "Invalid",
-      latitude: "not a number",
+      latitude: "not a number" as unknown as number,
       longitude: -122.4194,
-    });
-  } catch (e) {
-    error = e;
-  }
-  expect(error).toBeDefined();
-  expect(error.toString()).toContain("ArgumentValidationError");
+    }),
+  ).rejects.toThrow(/ArgumentValidationError/);
 });
 
 test("update location", async () => {

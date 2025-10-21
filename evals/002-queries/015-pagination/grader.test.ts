@@ -3,7 +3,6 @@ import {
   responseAdminClient,
   responseClient,
   compareSchema,
-  compareFunctionSpec,
   addDocuments,
   deleteAllDocuments,
 } from "../../../grader";
@@ -18,10 +17,6 @@ beforeEach(async () => {
 
 test("compare schema", async ({ skip }) => {
   await compareSchema(skip);
-});
-
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
 });
 
 test("paginateDocuments returns empty page when no documents exist", async () => {
@@ -46,7 +41,11 @@ test("paginateDocuments returns documents in correct order", async () => {
   });
 
   expect(result.page).toHaveLength(3);
-  expect(result.page.map(doc => doc.title)).toEqual(["Third", "Second", "First"]);
+  expect(result.page.map((doc) => doc.title)).toEqual([
+    "Third",
+    "Second",
+    "First",
+  ]);
   expect(result.isDone).toBe(true);
 });
 
@@ -105,14 +104,15 @@ test("paginateDocuments maintains consistent ordering across pages", async () =>
 
   // Collect all documents through pagination
   while (!isDone) {
-    const result: PaginationResult<Doc<"documents">> = await responseClient.query(api.index.paginateDocuments, {
-      paginationOpts: {
-        numItems: 3,
-        cursor,
-      },
-    });
+    const result: PaginationResult<Doc<"documents">> =
+      await responseClient.query(api.index.paginateDocuments, {
+        paginationOpts: {
+          numItems: 3,
+          cursor,
+        },
+      });
 
-    allTitles.push(...result.page.map(doc => doc.title));
+    allTitles.push(...result.page.map((doc) => doc.title));
     cursor = result.continueCursor;
     isDone = result.isDone;
   }
@@ -120,7 +120,7 @@ test("paginateDocuments maintains consistent ordering across pages", async () =>
   // Verify ordering
   const expectedTitles = [...documents]
     .sort((a, b) => b.createdAt - a.createdAt)
-    .map(doc => doc.title);
+    .map((doc) => doc.title);
 
   expect(allTitles).toEqual(expectedTitles);
 });

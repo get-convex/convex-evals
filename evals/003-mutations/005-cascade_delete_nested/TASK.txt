@@ -36,7 +36,7 @@ export default defineSchema({
 
 Implement the following functions in `convex/index.ts`:
 
-2. Create a mutation `deleteUser` that takes a user ID and deletes all dependent records.
+2. Create a mutation `deleteUser` that takes `{ userId: Id<"users"> }` and deletes all dependent records.
    Both records that directly depend on the user, records that depend on those records, etc.
    Return nothing.
 
