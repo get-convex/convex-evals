@@ -3,12 +3,14 @@ Create a backend that receives HTTP requests and stores the request body content
 Implement these functions in `convex/http.ts`:
 
 1. Create an HTTP action `/store` that:
+   - Takes the raw request body
    - Stores the request body in Convex storage
    - Returns a JSON response containing:
      - storageId: The storage ID string
      - url: The public URL of the stored file
+   - Only accept POST requests; other methods should return 404
 
-2. Create a query `getSiteURL` that takes no arguments and returns `process.env.CONVEX_SITE_URL!` (string)
+2. Create a query `getSiteURL` that takes no arguments (empty object `{}`) and returns `process.env.CONVEX_SITE_URL!` (string)
 
 No schema is required since this demo only uses file storage.
 
