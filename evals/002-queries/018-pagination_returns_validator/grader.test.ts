@@ -10,6 +10,9 @@ import { api } from "./answer/convex/_generated/api";
 import { beforeEach } from "vitest";
 import { PaginationResult } from "convex/server";
 import { Doc } from "./answer/convex/_generated/dataModel";
+import { createAIGraderTest } from "../../../grader/aiGrader";
+
+createAIGraderTest(import.meta.url);
 
 beforeEach(async () => {
   await deleteAllDocuments(responseAdminClient, ["posts"]);

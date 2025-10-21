@@ -8,6 +8,9 @@ import {
   listTable,
 } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
+import { createAIGraderTest } from "../../../grader/aiGrader";
+
+createAIGraderTest(import.meta.url);
 import { Doc } from "./answer/convex/_generated/dataModel";
 import { beforeEach } from "vitest";
 

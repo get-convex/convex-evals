@@ -7,6 +7,9 @@ import {
   hasIndexWithPrefix,
   getSchema,
 } from "../../../grader";
+import { createAIGraderTest } from "../../../grader/aiGrader";
+
+createAIGraderTest(import.meta.url);
 
 test("organization data model works correctly", async () => {
   const schema = (await getSchema(
