@@ -172,12 +172,10 @@ export function hasIndexForFields(
 }
 
 export async function hasIndexOn(
-  adminClient: any,
+  schema: any,
   tableName: string,
   fields: string[],
 ): Promise<boolean> {
-  const schema = await getSchema(adminClient);
-  if (!schema) return false;
   return hasIndexForFields(schema, tableName, fields);
 }
 
@@ -193,7 +191,7 @@ export function hasIndexForPrefix(
     fieldNames?: string[];
   }[];
   return indexes.some((idx) => {
-    const idxFields = (idx.fields ?? idx.fieldNames ?? []) as string[];
+    const idxFields = (idx.fields ?? idx.fieldNames ?? []);
     if (!Array.isArray(idxFields)) return false;
     if (idxFields.length < fieldsPrefix.length) return false;
     for (let i = 0; i < fieldsPrefix.length; i++) {
@@ -204,11 +202,9 @@ export function hasIndexForPrefix(
 }
 
 export async function hasIndexWithPrefix(
-  adminClient: any,
+  schema: any,
   tableName: string,
   fieldsPrefix: string[],
 ): Promise<boolean> {
-  const schema = await getSchema(adminClient);
-  if (!schema) return false;
   return hasIndexForPrefix(schema, tableName, fieldsPrefix);
 }
