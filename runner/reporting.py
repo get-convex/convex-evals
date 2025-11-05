@@ -63,7 +63,7 @@ def report_eval(evaluator, result: EvalResultWithSummary, verbose, jsonl):
             except Exception:
                 tests_pass = 0
             scores[category] += tests_pass
-            if tests_pass >= 0.999:
+            if tests_pass >= 1:
                 passed_counts[category] += 1
                 total_passed += 1
             total_num_tests += 1
@@ -142,14 +142,14 @@ def _write_local_results(result: EvalResultWithSummary):
                 except:
                     tests_pass_score = 0.0
             
-            passed = tests_pass_score >= 0.999
+            passed = tests_pass_score >= 1
             
             # Determine failure reason from scores
             failure_reason = None
             if not passed:
                 if r.scores:
                     for score_name, score_value in r.scores.items():
-                        if isinstance(score_value, (int, float)) and score_value < 0.999:
+                        if isinstance(score_value, (int, float)) and score_value < 1:
                             if score_name == "Valid filesystem output":
                                 failure_reason = "filesystem fail"
                                 break
@@ -255,7 +255,7 @@ def file_report_eval(evaluator, result: EvalResultWithSummary, verbose, jsonl):
         if r.scores and "Tests pass" in r.scores and isinstance(r.scores["Tests pass"], (int, float)):
             score_val = float(r.scores["Tests pass"])  # already normalized ratio per our scorer
         tests_pass_scores[category] = tests_pass_scores.get(category, 0.0) + score_val
-        if score_val >= 0.999:
+        if score_val >= 1:
             passed_counts[category] = passed_counts.get(category, 0) + 1
             total_passed += 1
         total_num_tests += 1
