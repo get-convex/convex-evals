@@ -1,18 +1,20 @@
 Create a demo that demonstrates all of the ways to interact with the scheduler in Convex.
 
 Start by implementing two internal logging functions in `index.ts`:
-- An internal mutation `logMutation` that takes a message string and logs it
-- An internal action `logAction` that takes a message string and logs it
+- An internal mutation `logMutation` that takes a message string argument named "message" and logs it
+- An internal action `logAction` that takes a message string argument named "message" and logs it
 
 Then create two public caller functions in `index.ts` to demonstrate scheduler functionality:
 
 1. Create a mutation called `callerMutation` that demonstrates:
+   - Takes no arguments
    - Scheduling the logging mutation to run immediately (with runAfter and 0 delay)
    - Canceling a scheduled task using the returned scheduler ID
    - Scheduling the logging action to run 10 seconds in the future using runAt
    - Returning null.
 
 2. Create an action called `callerAction` that demonstrates:
+   - Takes no arguments
    - Scheduling the logging action to run after a random delay between 0-10 seconds
    - Scheduling the logging mutation to run immediately and then canceling it
    - Returning null.

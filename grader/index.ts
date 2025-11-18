@@ -8,10 +8,11 @@ import { expect } from "vitest";
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 
-const responsePort = process.env.CONVEX_PORT;
-if (!responsePort) {
+const responsePortStr = process.env.CONVEX_PORT;
+if (!responsePortStr) {
   throw new Error("CONVEX_PORT is not set");
 }
+const responsePort = Number(responsePortStr);
 
 export const cloudUrl = `http://0.0.0.0:${responsePort}`;
 export const siteUrl = `http://0.0.0.0:${responsePort + 1}`;
@@ -133,4 +134,77 @@ export async function compareFunctionSpec(skip: (note?: string) => void) {
   const responseFunctionSpec = await getFunctionSpec(responseAdminClient);
   const answerFunctionSpec = await getFunctionSpec(answerAdminClient);
   expect(responseFunctionSpec).toEqual(answerFunctionSpec);
+}
+
+/**
+ * Helpers for inspecting schema indexes in graders
+ */
+export function findTable(
+  schema: any,
+  tableName: string,
+): {
+  tableName: string;
+  indexes?: { fields?: string[]; fieldNames?: string[] }[];
+} | null {
+  if (!schema || !Array.isArray(schema.tables)) return null;
+  return schema.tables.find((t: any) => t.tableName === tableName) ?? null;
+}
+
+export function hasIndexForFields(
+  schema: any,
+  tableName: string,
+  fields: string[],
+): boolean {
+  const table = findTable(schema, tableName);
+  if (!table) return false;
+  const indexes = (table.indexes ?? []) as {
+    fields?: string[];
+    fieldNames?: string[];
+  }[];
+  return indexes.some((idx) => {
+    const idxFields = idx.fields ?? idx.fieldNames ?? [];
+    return (
+      Array.isArray(idxFields) &&
+      idxFields.length === fields.length &&
+      idxFields.every((f, i) => f === fields[i])
+    );
+  });
+}
+
+export async function hasIndexOn(
+  schema: any,
+  tableName: string,
+  fields: string[],
+): Promise<boolean> {
+  return hasIndexForFields(schema, tableName, fields);
+}
+
+export function hasIndexForPrefix(
+  schema: any,
+  tableName: string,
+  fieldsPrefix: string[],
+): boolean {
+  const table = findTable(schema, tableName);
+  if (!table) return false;
+  const indexes = (table.indexes ?? []) as {
+    fields?: string[];
+    fieldNames?: string[];
+  }[];
+  return indexes.some((idx) => {
+    const idxFields = (idx.fields ?? idx.fieldNames ?? []);
+    if (!Array.isArray(idxFields)) return false;
+    if (idxFields.length < fieldsPrefix.length) return false;
+    for (let i = 0; i < fieldsPrefix.length; i++) {
+      if (idxFields[i] !== fieldsPrefix[i]) return false;
+    }
+    return true;
+  });
+}
+
+export async function hasIndexWithPrefix(
+  schema: any,
+  tableName: string,
+  fieldsPrefix: string[],
+): Promise<boolean> {
+  return hasIndexForPrefix(schema, tableName, fieldsPrefix);
 }
