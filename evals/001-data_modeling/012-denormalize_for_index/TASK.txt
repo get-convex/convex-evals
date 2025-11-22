@@ -23,19 +23,19 @@ export default defineSchema({
 2. Create these functions in `convex/index.ts`:
 
 a. Create a mutation `createDog` that:
-   - Takes dogName (string), breed (string), and ownerId (Id<"owners">) as arguments
+   - Takes arguments: `{ dogName: string, breed: string, ownerId: Id<"owners"> }`
    - Creates a new dog record
    - Returns the new dog's ID
    - Throws if owner not found
 
 b. Create a mutation `updateOwnerAge` that:
-   - Takes ownerId and newAge as arguments
+   - Takes arguments: `{ ownerId: Id<"owners">, newAge: number }`
    - Updates the owner's age in the owners table and any associated dog records.
    - Returns null
    - Throws if owner not found
 
 c. Create a query `getDogsByOwnerAge` that:
-   - Takes `age` (number) as an argument
+   - Takes arguments: `{ age: number }`
    - Returns an array of dog records { name, breed } that have an owner with the given age
 
 The goal is to demonstrate how denormalization can be used to create efficient lookups on fields from related tables, while maintaining data consistency through update functions.

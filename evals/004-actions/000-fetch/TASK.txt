@@ -1,6 +1,6 @@
 Create a backend function that makes HTTP requests to httpbin.org to demonstrate external API calls from Convex.
 
-Export a single public API function `fetchFromHttpBin` in `convex/index.ts` that:
+Export a single public API action `fetchFromHttpBin` in `convex/index.ts` that:
    - Takes no arguments
    - Makes a GET request to https://httpbin.org/get using the global `fetch` API
    - Parses the JSON response

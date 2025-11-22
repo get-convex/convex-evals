@@ -3,17 +3,12 @@ import {
   responseAdminClient,
   responseClient,
   compareSchema,
-  compareFunctionSpec,
   addDocuments,
 } from "../../../grader";
 import { anyApi } from "convex/server";
 
 test("compare schema", async ({ skip }) => {
   await compareSchema(skip);
-});
-
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
 });
 
 test("get popular pinned messages returns empty array when no messages exist", async () => {

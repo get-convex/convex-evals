@@ -49,27 +49,11 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
         passed_install = True
     else:
         scores.append(Score("`bun install` succeeds", 0))
-
-    log_info(f"[{category}/{name}] Running convex codegen")
-    if run_command_step(run_log_path, lambda: generate_code(output_project_dir_abs), "codegen", "convex codegen"):
-        scores.append(Score("`convex codegen` succeeds", 1))
-        passed_codegen = True
-    else:
-        scores.append(Score("`convex codegen` succeeds", 0))
-
-    log_info(f"[{category}/{name}] Typechecking (tsc)")
-    if run_command_step(run_log_path, lambda: typecheck_code(output_project_dir_abs), "tsc", "tsc"):
-        scores.append(Score("Passes tsc", 1))
-        passed_tsc = True
-    else:
-        scores.append(Score("Passes tsc", 0))
-
-    log_info(f"[{category}/{name}] Linting (eslint)")
-    if run_command_step(run_log_path, lambda: lint_code(output_project_dir_abs), "eslint", "eslint"):
-        scores.append(Score("Passes eslint", 1))
-        passed_eslint = True
-    else:
-        scores.append(Score("Passes eslint", 0))
+        print(
+            f"Result ❌ – bun install fail – dir: {output_project_dir_abs}",
+            flush=True,
+        )
+        return scores
 
     output_backend_dir = f"{tempdir}/backends/output/{model}/{category}/{name}"
     os.makedirs(output_backend_dir, exist_ok=True)
@@ -79,8 +63,28 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
         if run_command_step(run_log_path, lambda: deploy(output_backend, output_project_dir_abs), "convex-dev", "convex dev"):
             scores.append(Score("`convex dev` succeeds", 1))
             passed_deploy = True
+            passed_codegen = True  # convex dev also generates code
         else:
             scores.append(Score("`convex dev` succeeds", 0))
+            print(
+                f"Result ❌ – convex dev fail – dir: {output_project_dir_abs}",
+                flush=True,
+            )
+            return scores
+
+        log_info(f"[{category}/{name}] Typechecking (tsc)")
+        if run_command_step(run_log_path, lambda: typecheck_code(output_project_dir_abs), "tsc", "tsc"):
+            scores.append(Score("Passes tsc", 1))
+            passed_tsc = True
+        else:
+            scores.append(Score("Passes tsc", 0))
+
+        log_info(f"[{category}/{name}] Linting (eslint)")
+        if run_command_step(run_log_path, lambda: lint_code(output_project_dir_abs), "eslint", "eslint"):
+            scores.append(Score("Passes eslint", 1))
+            passed_eslint = True
+        else:
+            scores.append(Score("Passes eslint", 0))
 
         eval_path = f"evals/{category}/{name}"
         answer_project_dir, answer_backend_dir = setup_answer_backend(
@@ -89,8 +93,6 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
         log_info(f"[{category}/{name}] Setting up answer backend")
         log_info(f"[{category}/{name}] Installing answer dependencies")
         run_command_step(run_log_path, lambda: install_dependencies(answer_project_dir), "answer-bun", "(answer) bun install", cmd_prefix="(answer) ")
-        log_info(f"[{category}/{name}] Generating answer code")
-        run_command_step(run_log_path, lambda: generate_code(answer_project_dir), "answer-codegen", "(answer) convex codegen", cmd_prefix="(answer) ")
 
         with convex_backend(answer_backend_dir) as answer_backend:
             log_info(f"[{category}/{name}] Deploying answer backend on port {answer_backend['port']}")
@@ -259,7 +261,21 @@ def lint_code(project_dir):
 
 @traced
 def deploy(backend, project_dir):
-    # Full command with admin key for execution
+    results = []
+    convex_url = f"http://localhost:{backend['port']}"    
+      
+    # Run codegen --init to create convex/tsconfig.json and other boilerplate files
+    init_cmd = ["bunx", "convex", "codegen", "--typecheck", "disable", "--init"]
+    init_done = subprocess.run(
+        init_cmd,
+        cwd=project_dir,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        encoding="utf-8",
+    )
+    results.append((init_cmd, init_done.stdout))
+    
+    # Run convex dev --once to generate code and push functions
     exec_cmd = [
         "bunx",
         "convex",
@@ -268,7 +284,7 @@ def deploy(backend, project_dir):
         "--admin-key",
         admin_key,
         "--url",
-        f"http://localhost:{backend['port']}",
+        convex_url,
     ]
     done = subprocess.run(
         exec_cmd,
@@ -279,16 +295,17 @@ def deploy(backend, project_dir):
     )
     if done.returncode != 0:
         raise Exception(f"Failed to deploy:\n{done.stdout}")
-    # Safe command string for logging (omit admin key)
+    
     safe_cmd = [
         "bunx",
         "convex",
         "dev",
         "--once",
         "--url",
-        f"http://localhost:{backend['port']}",
+        convex_url,
     ]
-    return [(safe_cmd, done.stdout)]
+    results.append((safe_cmd, done.stdout))
+    return results
 
 
 @traced
@@ -297,7 +314,6 @@ def setup_answer_backend(tempdir, eval_path, model, category, name):
     os.makedirs(answer_project_dir, exist_ok=True)
 
     answer_dir = f"{eval_path}/answer"
-    generate_code(answer_dir)
 
     for source_path in walk_answer(answer_dir):
         relative_path = os.path.relpath(source_path, answer_dir)
@@ -343,6 +359,8 @@ def run_tests(backend, answer_backend, test_file):
         total = results["numTotalTests"]
         passed = results["numPassedTests"]
         ratio = (passed / total) if total > 0 else 0
+        # Binary pass/fail: 1.0 if ALL tests pass, 0.0 otherwise
+        #ratio = 1.0 if (total > 0 and passed == total) else 0.0
     except Exception as e:
         if done.returncode != 0:
             raise Exception(f"Failed to run tests:\n{done.stdout}")

@@ -15,7 +15,8 @@ export default defineSchema({
 ```
 
 Implement function `uploadFile` and `storeFileMetadata` in `convex/index.ts` that together:
-- Takes text contents and a filename as arguments
+- `uploadFile` takes `{ contents: string, fileName: string }`
+- `storeFileMetadata` takes `{ storageId: Id<"_storage">, fileName: string, size: number }`
 - Stores the file in Convex Storage
 - Creates a database record with the file metadata including:
   - The storage ID from the upload

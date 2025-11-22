@@ -15,6 +15,7 @@ export default defineSchema({
 ```
 
 Create a query function `paginateDocuments` in `convex/index.ts` that:
+- Takes arguments:  `{ paginationOpts: { numItems: number, cursor: string | null } }`
 - Returns paginated documents by creation time in descending order (newest first)
 - Don't specify a `returns` validator for this example.
 

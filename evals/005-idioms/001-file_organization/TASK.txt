@@ -17,3 +17,20 @@ Each set of operations should be organized into a separate file.
 For each table, export a public function called `get`, `create`, and `destroy`.
 Only the `get` and `create` functions return anything (the full document, or the id of the created document).
 You don't need to specify a returns validator for any function.
+
+Error behavior for missing documents:
+- For `users.get`, if the user does not exist, throw an error with the message "User not found".
+- For `posts.get`, if the post does not exist, throw an error with the message "Post not found".
+- `destroy` should not return a value.
+
+Function argument specifications:
+
+- `convex/users.ts`:
+  - `get`: Takes arguments:  `{ id: Id<"users"> }`
+  - `create`: Takes arguments:  `{ name: string, email: string }`
+  - `destroy`: Takes arguments:  `{ id: Id<"users"> }`
+
+- `convex/posts.ts`:
+  - `get`: Takes arguments:  `{ id: Id<"posts"> }`
+  - `create`: Takes arguments:  `{ userId: Id<"users">, title: string, content: string }`
+  - `destroy`: Takes arguments:  `{ id: Id<"posts"> }`

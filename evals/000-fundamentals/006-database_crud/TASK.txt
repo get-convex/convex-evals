@@ -17,27 +17,27 @@ export default defineSchema({
 Implement the following functions in `convex/public.ts`:
 
 1. Create a mutation `createLocation` that:
-   - Takes name (string), latitude (number), and longitude (number) as arguments
+   - Takes arguments named `name` (string), `latitude` (number), and `longitude` (number)
    - Inserts a new location into the "locations" table
    - Returns the new location's ID
 
 2. Create a query `readLocation` that:
-   - Takes a location ID as an argument
+   - Takes a location ID argument named `id`
    - Returns either null or the object containing the location's name, latitude, longitude, and its system fields
    - Use proper union typing for the return value
 
 3. Create a mutation `updateLocation` that:
-   - Takes an ID and full location data (name, latitude, longitude)
+   - Takes arguments named `id`, `name`, `latitude`, and `longitude`
    - Replaces the existing location with new data
    - Throws an error if the location doesn't exist
    - Returns null
 
 4. Create a mutation `patchLocation` that:
-   - Takes an ID and a new name
+   - Takes arguments named `id` and `name`
    - Updates only the name field
    - Returns null
 
 5. Create a mutation `deleteLocation` that:
-   - Takes a location ID
+   - Takes a location ID argument named `id`
    - Deletes the location from the database, throwing an error if it doesn't exist
    - Returns null

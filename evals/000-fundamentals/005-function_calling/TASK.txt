@@ -1,18 +1,20 @@
 Create a demo that demonstrates all the ways to call functions from other functions in Convex.
 
 Start by implementing three internal callee functions in `convex/index.ts`:
-- An internal query `calleeQuery` that takes x and y numbers and returns their sum
-- An internal mutation `calleeMutation` that takes x and y numbers and returns their difference
-- An internal action `calleeAction` that takes x and y numbers and returns their product
+- An internal query `calleeQuery` that takes numbers named "x" and "y" and returns their sum
+- An internal mutation `calleeMutation` that takes numbers named "x" and "y" and returns their difference
+- An internal action `calleeAction` that takes numbers named "x" and "y" and returns their product
 
 Then create two caller functions in `convex/index.ts`:
 
 1. Create a mutation called `callerMutation` that demonstrates:
+   - Takes no arguments
    - Calling the internal query with x=1 and y=2
-   - Using the result to call the internal mutation with y=2
+   - Using the result to call the internal mutation with y=2 (keep the parameter names "x" and "y")
    - Return the final result
 
 2. Create an action called `callerAction` that demonstrates:
+   - Takes no arguments
    - Calling the internal query with x=1 and y=2
    - Using the result to call the internal mutation with y=2
    - Using that result to call the internal action with y=2

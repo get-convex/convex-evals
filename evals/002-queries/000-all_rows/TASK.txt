@@ -12,4 +12,6 @@ export default defineSchema({
 });
 ```
 
-Write a query named `getAllProducts` in `convex/public.ts` that returns all products in the table, including their system fields.
+Write a query named `getAllProducts` in `convex/public.ts` that:
+- Takes no arguments
+- Returns all products in the table, including their system fields.
