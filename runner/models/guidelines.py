@@ -299,7 +299,7 @@ Convex Type  | TS/JS type  |  Example Usage         | Validator for argument val
             "schema_guidelines",
             [
                 Guideline("Always define your schema in `convex/schema.ts`."),
-                Guideline("Always import the schema definition functions from `convex/server`:"),
+                Guideline("Always import the schema definition functions from `convex/server`."),
                 Guideline(
                     "System fields are automatically added to all documents and are prefixed with an underscore. The two system fields that are automatically added to all documents are `_creationTime` which has the validator `v.number()` and `_id` which has the validator `v.id(tableName)`."
                 ),
