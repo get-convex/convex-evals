@@ -1,6 +1,9 @@
 import { expect, test } from "vitest";
 import { responseAdminClient } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
+import { createAIGraderTest } from "../../../grader/aiGrader";
+
+createAIGraderTest(import.meta.url);
 
 async function getBaseURL(): Promise<string> {
   return await responseAdminClient.query(api.http.getSiteURL, {});

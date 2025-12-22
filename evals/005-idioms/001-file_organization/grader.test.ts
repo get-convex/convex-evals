@@ -1,6 +1,9 @@
 import { expect, test } from "vitest";
 import { responseClient } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
+import { createAIGraderTest } from "../../../grader/aiGrader";
+
+createAIGraderTest(import.meta.url);
 
 test("can create and get user", async () => {
   const userData = {
