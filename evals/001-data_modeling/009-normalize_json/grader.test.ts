@@ -117,16 +117,14 @@ test("schema has indexes for departments by organization and employees by email,
       ? "employee"
       : "employees";
 
-  const deptByOrg = await hasIndexWithPrefix(responseAdminClient, deptTable, [
+  const deptByOrg = await hasIndexWithPrefix(schema, deptTable, [
     "organizationId",
   ]);
-  const empByEmail = await hasIndexWithPrefix(responseAdminClient, empTable, [
-    "email",
-  ]);
-  const empByDept = await hasIndexWithPrefix(responseAdminClient, empTable, [
+  const empByEmail = await hasIndexWithPrefix(schema, empTable, ["email"]);
+  const empByDept = await hasIndexWithPrefix(schema, empTable, [
     "departmentId",
   ]);
-  const empByOrg = await hasIndexWithPrefix(responseAdminClient, empTable, [
+  const empByOrg = await hasIndexWithPrefix(schema, empTable, [
     "organizationId",
   ]);
   expect(deptByOrg).toBe(true);

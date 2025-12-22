@@ -3,7 +3,7 @@ import {
   responseAdminClient,
   addDocuments,
   listTable,
-  hasIndexOn,
+  getSchema,
   hasIndexWithPrefix,
 } from "../../../grader";
 
@@ -16,7 +16,8 @@ test("messages table with author_email and sent_at inserts", async () => {
 });
 
 test("schema has a composite index on (author_email, sent_at)", async () => {
-  const ok = await hasIndexWithPrefix(responseAdminClient, "messages", [
+  const schema = await getSchema(responseAdminClient);
+  const ok = await hasIndexWithPrefix(schema, "messages", [
     "author_email",
     "sent_at",
   ]);
