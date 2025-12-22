@@ -296,7 +296,15 @@ def deploy(backend, project_dir):
         stderr=subprocess.STDOUT,
         encoding="utf-8",
     )
-    if done.returncode != 0:
+    
+    # Check for success: either zero exit code OR output contains success message.
+    # On Windows, bun can crash with a libuv assertion failure after successful deploy,
+    # causing non-zero exit even though "Convex functions ready!" appeared.
+    deploy_succeeded = (
+        done.returncode == 0
+        or "Convex functions ready!" in done.stdout
+    )
+    if not deploy_succeeded:
         raise Exception(f"Failed to deploy:\n{done.stdout}")
     
     safe_cmd = [
