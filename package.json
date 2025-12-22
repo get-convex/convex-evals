@@ -37,6 +37,7 @@
     "braintrust:run:one": "cross-env MODELS=gpt-5 TEST_FILTER=000-fundamentals/000 npm run braintrust:run",
     "braintrust:run": "cross-env LOCAL_RESULTS=local_results.jsonl VERBOSE_INFO_LOGS=1 npm run run:evals",
     "run:evals": "pdm run python -m runner.eval_convex_coding",
-    "visualizeResults": "bun run ./scripts/visualizeResults.ts"
+    "visualizer": "cd visualizer && bun run dev",
+    "visualizer:build": "cd visualizer && bun run build"
   }
 }

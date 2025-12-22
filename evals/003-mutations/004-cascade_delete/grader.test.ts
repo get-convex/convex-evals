@@ -156,6 +156,21 @@ test("maintains data consistency with concurrent operations", async () => {
 });
 
 test("throws when deleting non-existent user id", async () => {
+  // Create a user, then delete it to get a valid ID that no longer exists
+  await addDocuments(responseAdminClient, "users", [
+    { name: "Temp User", email: "temp@example.com" },
+  ]);
+  const users = (await listTable(
+    responseAdminClient,
+    "users",
+  )) as Doc<"users">[];
+  const deletedUserId = users.at(-1)!._id;
+
+  // Delete the user first
+  await responseClient.mutation(api.index.deleteUserAndDocuments, {
+    userId: deletedUserId,
+  });
+
   const beforeUsers = (await listTable(
     responseAdminClient,
     "users",
@@ -165,10 +180,10 @@ test("throws when deleting non-existent user id", async () => {
     "documents",
   )) as Doc<"documents">[];
 
+  // Try to delete the already-deleted user - should throw "not found"
   await expect(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    responseClient.mutation(api.index.deleteUserAndDocuments as any, {
-      userId: "nonexistent" as unknown as string,
+    responseClient.mutation(api.index.deleteUserAndDocuments, {
+      userId: deletedUserId,
     }),
   ).rejects.toThrow(/not found/i);
 
