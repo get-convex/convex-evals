@@ -299,7 +299,7 @@ Convex Type  | TS/JS type  |  Example Usage         | Validator for argument val
             "schema_guidelines",
             [
                 Guideline("Always define your schema in `convex/schema.ts`."),
-                Guideline("Always import the schema definition functions from `convex/server`:"),
+                Guideline("Always import the schema definition functions from `convex/server`."),
                 Guideline(
                     "System fields are automatically added to all documents and are prefixed with an underscore. The two system fields that are automatically added to all documents are `_creationTime` which has the validator `v.number()` and `_id` which has the validator `v.id(tableName)`."
                 ),
@@ -329,7 +329,7 @@ export const exampleQuery = query({
     handler: async (ctx, args) => {
         const idToUsername: Record<Id<"users">, string> = {};
         for (const userId of args.userIds) {
-            const user = await ctx.db.get(userId);
+            const user = await ctx.db.get("users", userId);
             if (user) {
                 idToUsername[user._id] = user.username;
             }
@@ -401,10 +401,10 @@ export const exampleQuery = query({
             "mutation_guidelines",
             [
                 Guideline(
-                    "Use `ctx.db.replace` to fully replace an existing document. This method will throw an error if the document does not exist."
+                    "Use `ctx.db.replace` to fully replace an existing document. This method will throw an error if the document does not exist. Syntax: `await ctx.db.replace('tasks', taskId, { name: 'Buy milk', completed: false })`"
                 ),
                 Guideline(
-                    "Use `ctx.db.patch` to shallow merge updates into an existing document. This method will throw an error if the document does not exist."
+                    "Use `ctx.db.patch` to shallow merge updates into an existing document. This method will throw an error if the document does not exist. Syntax: `await ctx.db.patch('tasks', taskId, { completed: true })`"
                 ),
             ],
         ),
@@ -511,7 +511,7 @@ export const exampleQuery = query({
     args: { fileId: v.id("_storage") },
     returns: v.null(),
     handler: async (ctx, args) => {
-        const metadata: FileMetadata | null = await ctx.db.system.get(args.fileId);
+        const metadata: FileMetadata | null = await ctx.db.system.get("_storage", args.fileId);
         console.log(metadata);
         return null;
     },

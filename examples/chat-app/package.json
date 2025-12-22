@@ -3,7 +3,7 @@
   "description": "This example shows how to build a chat app without authentication.",
   "version": "1.0.0",
   "dependencies": {
-    "convex": "^1.17.4",
+    "convex": "^1.31.2",
     "openai": "^4.79.0"
   },
   "devDependencies": {
