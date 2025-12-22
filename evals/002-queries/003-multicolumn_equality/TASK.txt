@@ -15,7 +15,7 @@ export default defineSchema({
 ```
 
 Write a query named `getProjectTasksByStatus` in `convex/public.ts` that:
-- Takes projectId and status as arguments
+- Takes arguments:  `{ projectId: string, status: string }`
 - Efficiently finds all tasks with the given projectId and status
 - Efficiently sorts the results in ascending priority order
 - Efficiently takes at most five results
