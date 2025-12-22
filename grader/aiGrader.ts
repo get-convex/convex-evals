@@ -292,7 +292,9 @@ export function createAIGraderTest(
   name: string = "AI grader assessment",
   timeoutMs: number = 60000,
 ): void {
-  test(name, { timeout: timeoutMs }, async () => {
-    await expectAIGraderPass(testFileUrl);
-  });
+  // For now not doing AI grading until I have better numbers on its success rate
+  
+  // test(name, { timeout: timeoutMs }, async () => {
+  //   await expectAIGraderPass(testFileUrl);
+  // });
 }
