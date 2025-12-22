@@ -3,12 +3,14 @@ import {
   responseAdminClient,
   responseClient,
   compareSchema,
-  compareFunctionSpec,
   addDocuments,
   deleteAllDocuments,
 } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
 import { beforeEach } from "vitest";
+import { createAIGraderTest } from "../../../grader/aiGrader";
+
+createAIGraderTest(import.meta.url);
 
 beforeEach(async () => {
   await deleteAllDocuments(responseAdminClient, ["users"]);
@@ -16,10 +18,6 @@ beforeEach(async () => {
 
 test("compare schema", async ({ skip }) => {
   await compareSchema(skip);
-});
-
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
 });
 
 test("getDistinctAges returns empty array when no users exist", async () => {

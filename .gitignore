@@ -189,3 +189,9 @@ dist/
 CLAUDE.md
 
 local_results.jsonl
+
+# Visualizer (TanStack Start / Nitro)
+visualizer/.output
+visualizer/.nitro
+visualizer/.vinxi
+visualizer/.tanstack

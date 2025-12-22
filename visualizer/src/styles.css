@@ -1,0 +1,310 @@
+@import "tailwindcss";
+
+:root {
+  --color-excellent: #22c55e;
+  --color-good: #eab308;
+  --color-fair: #f97316;
+  --color-poor: #ef4444;
+  --color-pass: #22c55e;
+  --color-fail: #ef4444;
+}
+
+/* Score bar container */
+.score-bar-container {
+  @apply relative h-6 bg-slate-700 rounded-full overflow-hidden;
+}
+
+.score-bar {
+  @apply absolute inset-y-0 left-0 bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-300;
+}
+
+.score-text {
+  @apply absolute inset-0 flex items-center justify-center text-sm font-medium text-white;
+}
+
+/* Status colors */
+.status-excellent { --status-color: var(--color-excellent); }
+.status-good { --status-color: var(--color-good); }
+.status-fair { --status-color: var(--color-fair); }
+.status-poor { --status-color: var(--color-poor); }
+
+/* Sidebar styles */
+.sidebar-item {
+  @apply w-full text-left px-3 py-2 rounded-lg transition-colors hover:bg-slate-700/50;
+}
+
+.sidebar-item.active {
+  @apply bg-cyan-500/20 border-l-2 border-cyan-500;
+}
+
+/* Card styles */
+.card {
+  @apply bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl overflow-hidden;
+}
+
+.card-header {
+  @apply px-4 py-3 bg-slate-700/50 border-b border-slate-600 font-semibold text-white;
+}
+
+.card-content {
+  @apply p-4;
+}
+
+/* Table styles */
+.data-table {
+  @apply w-full text-left;
+}
+
+.data-table th {
+  @apply px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-wider bg-slate-700/30;
+}
+
+.data-table td {
+  @apply px-4 py-3 border-t border-slate-700/50;
+}
+
+.data-table tr:hover {
+  @apply bg-slate-700/30;
+}
+
+.data-table tr.pass {
+  @apply border-l-2 border-l-green-500;
+}
+
+.data-table tr.fail {
+  @apply border-l-2 border-l-red-500;
+}
+
+/* Stat cards */
+.stat-card {
+  @apply bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6 text-center;
+}
+
+.stat-number {
+  @apply text-3xl font-bold text-white;
+}
+
+.stat-label {
+  @apply text-sm text-slate-400 mt-1;
+}
+
+.stat-card.overall-score .stat-number {
+  @apply text-cyan-400;
+}
+
+.stat-card.pass-rate .stat-number {
+  @apply text-green-400;
+}
+
+.stat-card.total-tests .stat-number {
+  @apply text-red-400;
+}
+
+/* Failure reason badges */
+.failure-reason {
+  @apply inline-block px-2 py-0.5 text-xs font-medium bg-red-500/20 text-red-400 rounded mr-1 mb-1;
+}
+
+/* File tree */
+.file-tree {
+  @apply w-64 border-r border-slate-700 overflow-auto;
+}
+
+.file-tree-header {
+  @apply px-4 py-3 bg-slate-700/50 border-b border-slate-600 font-semibold text-white text-sm flex items-center justify-between;
+}
+
+.file-tree-item {
+  @apply w-full text-left px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-700/50 flex items-center gap-2 cursor-pointer;
+}
+
+.file-tree-item.active {
+  @apply bg-cyan-500/20 text-cyan-400;
+}
+
+.file-tree-item.directory {
+  @apply font-medium;
+}
+
+.file-tree-children {
+  @apply pl-4;
+}
+
+.file-tree-children.collapsed {
+  @apply hidden;
+}
+
+.expand-arrow {
+  @apply ml-auto text-xs text-slate-500 transition-transform;
+}
+
+.expand-arrow.expanded {
+  @apply rotate-90;
+}
+
+/* File viewer */
+.file-viewer {
+  @apply flex-1 flex flex-col overflow-hidden;
+}
+
+.file-viewer-header {
+  @apply px-4 py-2 bg-slate-700/50 border-b border-slate-600 text-sm font-medium text-slate-300;
+}
+
+.file-content {
+  @apply flex-1 overflow-auto p-4 font-mono text-sm text-slate-300 bg-slate-900/50;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Tab styles */
+.tab-nav {
+  @apply flex border-b border-slate-700;
+}
+
+.tab-button {
+  @apply px-4 py-2 text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors border-b-2 border-transparent -mb-px;
+}
+
+.tab-button.active {
+  @apply text-cyan-400 border-cyan-400;
+}
+
+.tab-content {
+  @apply flex-1 overflow-hidden;
+}
+
+.tab-pane {
+  @apply hidden h-full;
+}
+
+.tab-pane.active {
+  @apply block;
+}
+
+/* Breadcrumb */
+.breadcrumb {
+  @apply flex items-center gap-2 text-sm text-slate-400 mb-4;
+}
+
+.breadcrumb-btn {
+  @apply px-2 py-1 rounded hover:bg-slate-700/50 hover:text-white transition-colors;
+}
+
+.breadcrumb-separator {
+  @apply text-slate-600;
+}
+
+.breadcrumb-current {
+  @apply text-white font-medium;
+}
+
+/* Accordion */
+.run-accordion {
+  @apply border-b border-slate-700/50;
+}
+
+.accordion-arrow {
+  @apply text-xs text-slate-500 transition-transform;
+}
+
+.accordion-arrow.expanded {
+  @apply rotate-180;
+}
+
+.categories-accordion {
+  @apply pl-4 overflow-hidden max-h-0 transition-all duration-300;
+}
+
+.categories-accordion.expanded {
+  @apply max-h-[500px];
+}
+
+.category-accordion-item {
+  @apply w-full text-left px-3 py-1.5 text-sm text-slate-400 hover:bg-slate-700/30 flex items-center justify-between;
+}
+
+.category-accordion-item.active {
+  @apply text-cyan-400 bg-cyan-500/10;
+}
+
+/* Scores breakdown */
+.scores-list {
+  @apply space-y-2;
+}
+
+.score-item {
+  @apply flex items-center gap-3 px-4 py-2 rounded-lg;
+}
+
+.score-item.pass {
+  @apply bg-green-500/10;
+}
+
+.score-item.fail {
+  @apply bg-red-500/10;
+}
+
+.score-icon {
+  @apply text-lg;
+}
+
+.score-name {
+  @apply flex-1 text-slate-300;
+}
+
+.score-value {
+  @apply text-sm font-medium;
+}
+
+.score-item.pass .score-value {
+  @apply text-green-400;
+}
+
+.score-item.fail .score-value {
+  @apply text-red-400;
+}
+
+/* Log file path links */
+.log-file-path {
+  @apply text-cyan-400 hover:underline cursor-pointer;
+}
+
+/* Split pane */
+.file-content-split {
+  @apply flex flex-1 overflow-hidden;
+}
+
+.file-content-pane {
+  @apply flex-1 flex flex-col overflow-hidden min-w-0;
+}
+
+.file-content-header {
+  @apply px-4 py-2 bg-slate-700/30 text-xs font-medium text-slate-400 uppercase tracking-wider;
+}
+
+.file-content-header.answer {
+  @apply bg-cyan-500/10 text-cyan-400;
+}
+
+.split-handle {
+  @apply w-1 bg-slate-700 hover:bg-cyan-500 cursor-col-resize transition-colors;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  @apply w-2 h-2;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-slate-800;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-600 rounded hover:bg-slate-500;
+}
+
+/* Monaco editor container */
+.monaco-editor-container {
+  @apply h-full min-h-[400px];
+}

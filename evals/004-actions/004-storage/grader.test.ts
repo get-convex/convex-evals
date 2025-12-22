@@ -1,26 +1,29 @@
 import { expect, test } from "vitest";
-import {
-  responseClient,
-  compareFunctionSpec,
-} from "../../../grader";
+import { responseClient } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
+import { createAIGraderTest } from "../../../grader/aiGrader";
+import { Id } from "./answer/convex/_generated/dataModel";
 
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
-});
+createAIGraderTest(import.meta.url);
 
 test("writes and reads text content", async () => {
   const testText = "Hello, world!";
 
   // Write the text to storage
-  const { storageId } = await responseClient.action(api.index.writeTextToStorage, {
-    text: testText,
-  });
+  const { storageId } = await responseClient.action(
+    api.index.writeTextToStorage,
+    {
+      text: testText,
+    },
+  );
 
   // Read the text back
-  const retrievedText = await responseClient.action(api.index.readTextFromStorage, {
-    storageId,
-  });
+  const retrievedText = await responseClient.action(
+    api.index.readTextFromStorage,
+    {
+      storageId,
+    },
+  );
 
   expect(retrievedText).toBe(testText);
 });
@@ -28,13 +31,19 @@ test("writes and reads text content", async () => {
 test("handles empty text", async () => {
   const emptyText = "";
 
-  const { storageId } = await responseClient.action(api.index.writeTextToStorage, {
-    text: emptyText,
-  });
+  const { storageId } = await responseClient.action(
+    api.index.writeTextToStorage,
+    {
+      text: emptyText,
+    },
+  );
 
-  const retrievedText = await responseClient.action(api.index.readTextFromStorage, {
-    storageId,
-  });
+  const retrievedText = await responseClient.action(
+    api.index.readTextFromStorage,
+    {
+      storageId,
+    },
+  );
 
   expect(retrievedText).toBe(emptyText);
 });
@@ -42,13 +51,19 @@ test("handles empty text", async () => {
 test("handles long text content", async () => {
   const longText = "a".repeat(1000) + "b".repeat(1000) + "c".repeat(1000);
 
-  const { storageId } = await responseClient.action(api.index.writeTextToStorage, {
-    text: longText,
-  });
+  const { storageId } = await responseClient.action(
+    api.index.writeTextToStorage,
+    {
+      text: longText,
+    },
+  );
 
-  const retrievedText = await responseClient.action(api.index.readTextFromStorage, {
-    storageId,
-  });
+  const retrievedText = await responseClient.action(
+    api.index.readTextFromStorage,
+    {
+      storageId,
+    },
+  );
 
   expect(retrievedText).toBe(longText);
   expect(retrievedText.length).toBe(3000);
@@ -57,13 +72,19 @@ test("handles long text content", async () => {
 test("handles special characters", async () => {
   const specialChars = "!@#$%^&*()_+-=[]{}|;:'\",.<>/?\n\t";
 
-  const { storageId } = await responseClient.action(api.index.writeTextToStorage, {
-    text: specialChars,
-  });
+  const { storageId } = await responseClient.action(
+    api.index.writeTextToStorage,
+    {
+      text: specialChars,
+    },
+  );
 
-  const retrievedText = await responseClient.action(api.index.readTextFromStorage, {
-    storageId,
-  });
+  const retrievedText = await responseClient.action(
+    api.index.readTextFromStorage,
+    {
+      storageId,
+    },
+  );
 
   expect(retrievedText).toBe(specialChars);
 });
@@ -78,16 +99,30 @@ test("returns valid URL", async () => {
   expect(url).toMatch(/^https?:\/\//);
 });
 
+test("readTextFromStorage throws for invalid storageId", async () => {
+  await expect(
+    responseClient.action(api.index.readTextFromStorage, {
+      storageId: "invalid" as unknown as Id<"_storage">,
+    }),
+  ).rejects.toThrow();
+});
+
 test("handles Unicode characters", async () => {
   const unicodeText = "Hello, 世界! 👋 🌍";
 
-  const { storageId } = await responseClient.action(api.index.writeTextToStorage, {
-    text: unicodeText,
-  });
+  const { storageId } = await responseClient.action(
+    api.index.writeTextToStorage,
+    {
+      text: unicodeText,
+    },
+  );
 
-  const retrievedText = await responseClient.action(api.index.readTextFromStorage, {
-    storageId,
-  });
+  const retrievedText = await responseClient.action(
+    api.index.readTextFromStorage,
+    {
+      storageId,
+    },
+  );
 
   expect(retrievedText).toBe(unicodeText);
 });

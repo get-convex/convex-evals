@@ -1,6 +1,6 @@
 Create a backend that defines a normalized database schema for representing organizational data.
-Only create "convex/schema.ts" and nothing else.
-Normalizes this JSON object into an "organization", "employees", "department" tables, with v.id relationships instead of inlined data:
+Only create "convex/schema.ts" (you may also include a minimal package.json so dependencies can install).
+Normalize this JSON into three tables named exactly: "organizations", "employees", and "departments", using v.id relationships instead of inlined data:
 ```json
 {
   "organizations": [
@@ -39,8 +39,8 @@ Normalizes this JSON object into an "organization", "employees", "department" ta
 For employees, the name and email are required, but phone and address are optional.
 For departments, the name is required, but manager is optional.
 
-The departments should be searchable by organization.
-The employees should be searchable by email, department, or organization
+The "departments" table should be searchable by organization (index on organizationId).
+The "employees" table should be searchable by email, department, and organization (indexes on email, departmentId, organizationId).
 Do not make multi-column or any other additional indexes for now.
 
 Indexes should be named like `by_<field_name>`, e.g. `by_department` for `departmentId` and multiple fields should be combined with an underscore, e.g. `by_department_organization`.

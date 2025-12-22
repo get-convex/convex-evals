@@ -1,19 +1,9 @@
 import { expect, test } from "vitest";
-import {
-  responseClient,
-  compareFunctionSpec,
-  compareSchema,
-} from "../../../grader";
+import { responseClient } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
-import { Id } from "./answer/convex/_generated/dataModel";
+import { createAIGraderTest } from "../../../grader/aiGrader";
 
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
-});
-
-test("compare schema", async ({ skip }) => {
-  await compareSchema(skip);
-});
+createAIGraderTest(import.meta.url);
 
 test("can create and get user", async () => {
   const userData = {
@@ -57,7 +47,7 @@ test("can delete user", async () => {
   await responseClient.mutation(api.users.destroy, { id: userId });
 
   await expect(
-    responseClient.query(api.users.get, { id: userId })
+    responseClient.query(api.users.get, { id: userId }),
   ).rejects.toThrow("User not found");
 });
 
@@ -76,7 +66,7 @@ test("can delete post", async () => {
   await responseClient.mutation(api.posts.destroy, { id: postId });
 
   await expect(
-    responseClient.query(api.posts.get, { id: postId })
+    responseClient.query(api.posts.get, { id: postId }),
   ).rejects.toThrow("Post not found");
 });
 
@@ -114,7 +104,7 @@ test("schema validations work", async () => {
     responseClient.mutation(api.users.create, {
       name: 123, // Should be string
       email: "test@example.com",
-    } as any)
+    } as any),
   ).rejects.toThrow();
   /* eslint-enable */
 
@@ -130,7 +120,7 @@ test("schema validations work", async () => {
       userId,
       title: 123, // Should be string
       content: "Valid content",
-    } as any)
+    } as any),
   ).rejects.toThrow();
   /* eslint-enable */
 });

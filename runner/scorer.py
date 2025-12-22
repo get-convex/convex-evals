@@ -1,11 +1,12 @@
 import os
 import shutil
 import subprocess
-import json
 import re
+import json
+import tempfile
 from braintrust import traced, Score
 from runner.convex_backend import convex_backend, admin_key
-from runner.logging import append_log, append_log_block, log_cmd_results, log_info, run_command_step
+from runner.logging import append_log, append_log_block, log_cmd_results, log_info, log_vitest_results, run_command_step
 
 
 def convex_scorer(model, tempdir, *, input, expected, metadata, output):
@@ -49,27 +50,8 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
         passed_install = True
     else:
         scores.append(Score("`bun install` succeeds", 0))
-
-    log_info(f"[{category}/{name}] Running convex codegen")
-    if run_command_step(run_log_path, lambda: generate_code(output_project_dir_abs), "codegen", "convex codegen"):
-        scores.append(Score("`convex codegen` succeeds", 1))
-        passed_codegen = True
-    else:
-        scores.append(Score("`convex codegen` succeeds", 0))
-
-    log_info(f"[{category}/{name}] Typechecking (tsc)")
-    if run_command_step(run_log_path, lambda: typecheck_code(output_project_dir_abs), "tsc", "tsc"):
-        scores.append(Score("Passes tsc", 1))
-        passed_tsc = True
-    else:
-        scores.append(Score("Passes tsc", 0))
-
-    log_info(f"[{category}/{name}] Linting (eslint)")
-    if run_command_step(run_log_path, lambda: lint_code(output_project_dir_abs), "eslint", "eslint"):
-        scores.append(Score("Passes eslint", 1))
-        passed_eslint = True
-    else:
-        scores.append(Score("Passes eslint", 0))
+        log_info(f"Result ❌ – bun install fail – dir: {output_project_dir_abs}")
+        return scores
 
     output_backend_dir = f"{tempdir}/backends/output/{model}/{category}/{name}"
     os.makedirs(output_backend_dir, exist_ok=True)
@@ -79,8 +61,25 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
         if run_command_step(run_log_path, lambda: deploy(output_backend, output_project_dir_abs), "convex-dev", "convex dev"):
             scores.append(Score("`convex dev` succeeds", 1))
             passed_deploy = True
+            passed_codegen = True  # convex dev also generates code
         else:
             scores.append(Score("`convex dev` succeeds", 0))
+            log_info(f"Result ❌ – convex dev fail – dir: {output_project_dir_abs}")
+            return scores
+
+        log_info(f"[{category}/{name}] Typechecking (tsc)")
+        if run_command_step(run_log_path, lambda: typecheck_code(output_project_dir_abs), "tsc", "tsc"):
+            scores.append(Score("Passes tsc", 1))
+            passed_tsc = True
+        else:
+            scores.append(Score("Passes tsc", 0))
+
+        log_info(f"[{category}/{name}] Linting (eslint)")
+        if run_command_step(run_log_path, lambda: lint_code(output_project_dir_abs), "eslint", "eslint"):
+            scores.append(Score("Passes eslint", 1))
+            passed_eslint = True
+        else:
+            scores.append(Score("Passes eslint", 0))
 
         eval_path = f"evals/{category}/{name}"
         answer_project_dir, answer_backend_dir = setup_answer_backend(
@@ -89,28 +88,32 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
         log_info(f"[{category}/{name}] Setting up answer backend")
         log_info(f"[{category}/{name}] Installing answer dependencies")
         run_command_step(run_log_path, lambda: install_dependencies(answer_project_dir), "answer-bun", "(answer) bun install", cmd_prefix="(answer) ")
-        log_info(f"[{category}/{name}] Generating answer code")
-        run_command_step(run_log_path, lambda: generate_code(answer_project_dir), "answer-codegen", "(answer) convex codegen", cmd_prefix="(answer) ")
 
         with convex_backend(answer_backend_dir) as answer_backend:
             log_info(f"[{category}/{name}] Deploying answer backend on port {answer_backend['port']}")
             run_command_step(run_log_path, lambda: deploy(answer_backend, answer_project_dir), "answer-convex-dev", "(answer) convex dev", cmd_prefix="(answer) ")
             test_file = os.path.abspath(os.path.join(eval_path, "grader.test.ts"))
             tests_ratio = 0.0
+            vitest_stdout = None
+            test_cmd = None
             try:
                 log_info(f"[{category}/{name}] Running tests")
                 pass_rate, vitest_stdout, test_cmd = run_tests(output_backend, answer_backend, test_file)
                 scores.append(Score("Tests pass", pass_rate))
                 tests_ratio = pass_rate
-                log_cmd_results(run_log_path, [(test_cmd, vitest_stdout)], "vitest")
             except Exception as e:
                 if isinstance(e, TestsFailedException):
                     scores.append(Score("Tests pass", e.ratio))
                     tests_ratio = e.ratio
+                    vitest_stdout = e.vitest_stdout
+                    test_cmd = e.test_cmd
                 else:
                     scores.append(Score("Tests pass", 0))
                     tests_ratio = 0.0
                 append_log(run_log_path, f"[error] vitest: {e}")
+            
+            if test_cmd and vitest_stdout:
+                log_vitest_results(run_log_path, test_cmd, vitest_stdout)
 
             status = "✅" if (
                 passed_filesystem
@@ -143,9 +146,11 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
 
 
 class TestsFailedException(Exception):
-    def __init__(self, message, ratio):
+    def __init__(self, message, ratio, vitest_stdout, test_cmd):
         super().__init__(message)
         self.ratio = ratio
+        self.vitest_stdout = vitest_stdout
+        self.test_cmd = test_cmd
 
 
 @traced
@@ -259,7 +264,21 @@ def lint_code(project_dir):
 
 @traced
 def deploy(backend, project_dir):
-    # Full command with admin key for execution
+    results = []
+    convex_url = f"http://localhost:{backend['port']}"    
+      
+    # Run codegen --init to create convex/tsconfig.json and other boilerplate files
+    init_cmd = ["bunx", "convex", "codegen", "--typecheck", "disable", "--init"]
+    init_done = subprocess.run(
+        init_cmd,
+        cwd=project_dir,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        encoding="utf-8",
+    )
+    results.append((init_cmd, init_done.stdout))
+    
+    # Run convex dev --once to generate code and push functions
     exec_cmd = [
         "bunx",
         "convex",
@@ -268,7 +287,7 @@ def deploy(backend, project_dir):
         "--admin-key",
         admin_key,
         "--url",
-        f"http://localhost:{backend['port']}",
+        convex_url,
     ]
     done = subprocess.run(
         exec_cmd,
@@ -277,18 +296,27 @@ def deploy(backend, project_dir):
         stderr=subprocess.STDOUT,
         encoding="utf-8",
     )
-    if done.returncode != 0:
+    
+    # Check for success: either zero exit code OR output contains success message.
+    # On Windows, bun can crash with a libuv assertion failure after successful deploy,
+    # causing non-zero exit even though "Convex functions ready!" appeared.
+    deploy_succeeded = (
+        done.returncode == 0
+        or "Convex functions ready!" in done.stdout
+    )
+    if not deploy_succeeded:
         raise Exception(f"Failed to deploy:\n{done.stdout}")
-    # Safe command string for logging (omit admin key)
+    
     safe_cmd = [
         "bunx",
         "convex",
         "dev",
         "--once",
         "--url",
-        f"http://localhost:{backend['port']}",
+        convex_url,
     ]
-    return [(safe_cmd, done.stdout)]
+    results.append((safe_cmd, done.stdout))
+    return results
 
 
 @traced
@@ -297,7 +325,6 @@ def setup_answer_backend(tempdir, eval_path, model, category, name):
     os.makedirs(answer_project_dir, exist_ok=True)
 
     answer_dir = f"{eval_path}/answer"
-    generate_code(answer_dir)
 
     for source_path in walk_answer(answer_dir):
         relative_path = os.path.relpath(source_path, answer_dir)
@@ -319,12 +346,22 @@ def run_tests(backend, answer_backend, test_file):
     )
     if answer_backend is not None:
         env["CONVEX_ANSWER_PORT"] = str(answer_backend["port"])
+    
+    # Write JSON reporter output to a temp file so stdout can include human output + console logs
+    tmp_json = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
+    tmp_json_path = tmp_json.name
+    tmp_json.close()
+    
+    # Vitest supports multiple reporters; keep JSON (to parse) and default (to include logs on stdout)
     cmd = [
         "bunx",
         "vitest",
         "run",
         test_file,
         "--reporter=json",
+        "--outputFile",
+        tmp_json_path,
+        "--reporter=default",
         "--no-color",
     ]
     done = subprocess.run(
@@ -335,26 +372,28 @@ def run_tests(backend, answer_backend, test_file):
         encoding="utf-8",
     )
 
+    # Parse the JSON file for test counts
     try:
-        # Removes all characters before the first `{` and after the last `}`
-        cleaned_stdout = re.sub(r"^.*?(\{.*\}).*$", r"\1", done.stdout, flags=re.DOTALL)
-        results = json.loads(cleaned_stdout)
-
+        with open(tmp_json_path, "r", encoding="utf-8") as f:
+            results = json.load(f)
+        
         total = results["numTotalTests"]
         passed = results["numPassedTests"]
         ratio = (passed / total) if total > 0 else 0
     except Exception as e:
         if done.returncode != 0:
-            raise Exception(f"Failed to run tests:\n{done.stdout}")
+            raise Exception(f"Tests failed:\n{done.stdout}")
         else:
-            raise Exception(f"Failed to parse tests results: {e}")
+            raise Exception(f"Failed to parse test results from {tmp_json_path}: {e}")
+    finally:
+        # Clean up the temp file
+        try:
+            os.unlink(tmp_json_path)
+        except Exception:
+            pass
 
     if ratio != 1:
-        error_message = ""
-        for test in results["testResults"][0]["assertionResults"]:
-            if test["status"] == "failed":
-                error_message += f"{test['title']}: {test['failureMessages']}\n"
-        raise TestsFailedException(f"Tests failed:\n{error_message}", ratio)
+        raise TestsFailedException(f"Tests failed (passed {passed}/{total})", ratio, done.stdout, cmd)
     return ratio, done.stdout, cmd
 
 

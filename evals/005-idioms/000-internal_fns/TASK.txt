@@ -8,7 +8,7 @@ Implement these functions in `convex/index.ts`:
    - Should be accessible to client applications
 
 2. Create a mutation `logClientEvent` that:
-   - Takes eventName (string) and data (any) as arguments
+   - Takes arguments:  `{ eventName: string, data: any }`
    - Logs the event to the console
    - Returns the current timestamp
    - Should be accessible to client applications
@@ -18,15 +18,19 @@ Implement these functions in `convex/index.ts`:
    - Is meant to be run from the dashboard
    - Logs "Running daily cleanup" to console
    - Does nothing else
-   - Returns nothing
+   - Returns nothing (use `return null`)
    - Should NOT be accessible to clients
 
 4. Create a mutation `resetCounter` that:
    - Takes no arguments
    - Is meant to be called from CLI or scheduled asynchronously from another function
    - Does nothing but logs "Resetting counter" to console
-   - Returns nothing
+   - Returns nothing (use `return null`)
    - Should NOT be accessible to clients
+
+Function visibility and access expectations:
+- `getPublicStats` and `logClientEvent` must be public and callable by regular clients.
+- `dailyCleanup` (action) and `resetCounter` (mutation) must be internal-only and not callable by regular clients; they should be callable by admin clients.
 
 
 Create only the `convex/index.ts` and `package.json` files. Do not generate any other files.

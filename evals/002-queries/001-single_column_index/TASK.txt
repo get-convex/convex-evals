@@ -13,7 +13,7 @@ export default defineSchema({
 ```
 
 Write a query named `getUserByEmail` in `convex/public.ts` that:
-- Takes an email address as an argument
+- Takes arguments:  `{ email: string }`
 - Efficiently looks up the user by email
 - Returns null if no user is found with that email
 - Throws an error if there are multiple users with the same email

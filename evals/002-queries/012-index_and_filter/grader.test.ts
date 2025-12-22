@@ -3,11 +3,13 @@ import {
   responseAdminClient,
   responseClient,
   compareSchema,
-  compareFunctionSpec,
   addDocuments,
   deleteAllDocuments,
 } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
+import { createAIGraderTest } from "../../../grader/aiGrader";
+
+createAIGraderTest(import.meta.url);
 
 afterEach(async () => {
   await deleteAllDocuments(responseAdminClient, ["users"]);
@@ -15,10 +17,6 @@ afterEach(async () => {
 
 test("compare schema", async ({ skip }) => {
   await compareSchema(skip);
-});
-
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
 });
 
 test("getActiveAdults returns empty array when no matching users exist", async () => {
@@ -82,12 +80,9 @@ test("getActiveAdults handles edge cases", async () => {
   expect(veryOld).toEqual(["VeryOld"]);
 
   // Test age with no possible matches
-  const impossibleAge = await responseClient.query(
-    api.index.getActiveAdults,
-    {
-      minAge: 200,
-    },
-  );
+  const impossibleAge = await responseClient.query(api.index.getActiveAdults, {
+    minAge: 200,
+  });
   expect(impossibleAge).toEqual([]);
 });
 

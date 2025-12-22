@@ -20,7 +20,7 @@ export default defineSchema({
 ```
 
 2. Create a query function `paginateMessagesWithAuthors` in `convex/index.ts` that:
-   - Takes standard pagination parameters
+   - Takes arguments:  `{ paginationOpts: { numItems: number, cursor: string | null } }`
    - Paginates messages in descending order (newest first)
    - Adds the author's name for each message
    - Returns the pagination result to be used with usePaginatedQuery.

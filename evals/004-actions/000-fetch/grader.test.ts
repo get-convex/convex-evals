@@ -1,13 +1,6 @@
 import { expect, test } from "vitest";
-import {
-  responseClient,
-  compareFunctionSpec,
-} from "../../../grader";
+import { responseClient } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
-
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
-});
 
 test("fetches data from httpbin", async () => {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment

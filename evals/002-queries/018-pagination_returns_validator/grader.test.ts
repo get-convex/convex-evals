@@ -3,7 +3,6 @@ import {
   responseAdminClient,
   responseClient,
   compareSchema,
-  compareFunctionSpec,
   addDocuments,
   deleteAllDocuments,
 } from "../../../grader";
@@ -11,6 +10,9 @@ import { api } from "./answer/convex/_generated/api";
 import { beforeEach } from "vitest";
 import { PaginationResult } from "convex/server";
 import { Doc } from "./answer/convex/_generated/dataModel";
+import { createAIGraderTest } from "../../../grader/aiGrader";
+
+createAIGraderTest(import.meta.url);
 
 beforeEach(async () => {
   await deleteAllDocuments(responseAdminClient, ["posts"]);
@@ -18,10 +20,6 @@ beforeEach(async () => {
 
 test("compare schema", async ({ skip }) => {
   await compareSchema(skip);
-});
-
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
 });
 
 test("paginatePosts returns empty page with correct structure when no posts exist", async () => {
@@ -101,22 +99,23 @@ test("paginatePosts maintains consistent ordering across pages", async () => {
   let isDone = false;
 
   while (!isDone) {
-    const result: PaginationResult<Doc<"posts">> = await responseClient.query(api.index.paginatePosts, {
-      paginationOpts: { numItems: 2, cursor },
-    });
+    const result: PaginationResult<Doc<"posts">> = await responseClient.query(
+      api.index.paginatePosts,
+      {
+        paginationOpts: { numItems: 2, cursor },
+      },
+    );
 
     allTitles.push(...result.page.map((post: { title: string }) => post.title));
     cursor = result.continueCursor;
     isDone = result.isDone;
   }
 
-  expect(allTitles).toEqual(posts.map(p => p.title));
+  expect(allTitles).toEqual(posts.map((p) => p.title));
 });
 
 test("paginatePosts handles single item pages", async () => {
-  const posts = [
-    { title: "Single Post", content: "Test Content" },
-  ];
+  const posts = [{ title: "Single Post", content: "Test Content" }];
   await addDocuments(responseAdminClient, "posts", posts);
 
   const result = await responseClient.query(api.index.paginatePosts, {
@@ -152,13 +151,17 @@ test("paginatePosts returns all required pagination fields", async () => {
 });
 
 test("paginatePosts throws on empty pages", async () => {
-  await expect(responseClient.query(api.index.paginatePosts, {
-    paginationOpts: { numItems: 0, cursor: null },
-  })).rejects.toThrow();
+  await expect(
+    responseClient.query(api.index.paginatePosts, {
+      paginationOpts: { numItems: 0, cursor: null },
+    }),
+  ).rejects.toThrow();
 });
 
 test("paginatePosts handles invalid cursor gracefully", async () => {
-  await expect(responseClient.query(api.index.paginatePosts, {
-    paginationOpts: { numItems: 10, cursor: "invalid_cursor" },
-  })).rejects.toThrow();
+  await expect(
+    responseClient.query(api.index.paginatePosts, {
+      paginationOpts: { numItems: 10, cursor: "invalid_cursor" },
+    }),
+  ).rejects.toThrow();
 });

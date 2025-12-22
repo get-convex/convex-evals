@@ -3,18 +3,16 @@ import {
   responseAdminClient,
   responseClient,
   compareSchema,
-  compareFunctionSpec,
   addDocuments,
   listTable,
 } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
+import { createAIGraderTest } from "../../../grader/aiGrader";
+
+createAIGraderTest(import.meta.url);
 
 test("compare schema", async ({ skip }) => {
   await compareSchema(skip);
-});
-
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
 });
 
 test("get pro admins by org returns empty object when no admins exist", async () => {
@@ -72,12 +70,9 @@ test("get pro admins by org returns correct admin mapping", async () => {
   ]);
 
   // Test getting admins for org1
-  const org1Admins = await responseClient.query(
-    api.public.getProAdminsByOrg,
-    {
-      organizationId: org1Id._id,
-    },
-  );
+  const org1Admins = await responseClient.query(api.public.getProAdminsByOrg, {
+    organizationId: org1Id._id,
+  });
 
   // Should include Alice, Bob, and Charlie (unique admins across both teams)
   expect(Object.keys(org1Admins)).toHaveLength(3);
@@ -87,12 +82,9 @@ test("get pro admins by org returns correct admin mapping", async () => {
   expect(org1Admins[user4Id._id]).toBeUndefined();
 
   // Test getting admins for org2
-  const org2Admins = await responseClient.query(
-    api.public.getProAdminsByOrg,
-    {
-      organizationId: org2Id._id,
-    },
-  );
+  const org2Admins = await responseClient.query(api.public.getProAdminsByOrg, {
+    organizationId: org2Id._id,
+  });
 
   // Should only include David
   expect(Object.keys(org2Admins)).toHaveLength(1);

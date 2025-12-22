@@ -1,13 +1,9 @@
 import { expect, test } from "vitest";
-import {
-  compareFunctionSpec,
-  responseAdminClient,
-} from "../../../grader";
+import { responseAdminClient } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
+import { createAIGraderTest } from "../../../grader/aiGrader";
 
-test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
-});
+createAIGraderTest(import.meta.url);
 
 async function getBaseURL(): Promise<string> {
   return await responseAdminClient.query(api.http.getSiteURL, {});
@@ -55,11 +51,7 @@ test("PUT /putBaz returns correct response", async () => {
 
 test("GET /api/* wildcard returns correct response", async () => {
   const baseUrl = await getBaseURL();
-  const testPaths = [
-    "/api/test",
-    "/api/foo/bar",
-    "/api/deeply/nested/path",
-  ];
+  const testPaths = ["/api/test", "/api/foo/bar", "/api/deeply/nested/path"];
 
   for (const path of testPaths) {
     const response = await fetch(`${baseUrl}${path}`);
@@ -97,7 +89,7 @@ test("non-existent paths return 404", async () => {
     "/nonexistent",
     "/getFooBar",
     "/post",
-    "/api",  // without trailing path
+    "/api", // without trailing path
   ];
 
   for (const path of nonExistentPaths) {

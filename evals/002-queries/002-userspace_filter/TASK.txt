@@ -14,7 +14,7 @@ export default defineSchema({
 ```
 
 Write a query named `getPopularPinnedMessages` in `convex/public.ts` that:
-- Takes an author name and a minimum likes threshold as arguments
+- Takes arguments:  `{ author: string, minLikes: number }`
 - Loads all of the messages by the author into memory.
 - Filters IN JAVASCRIPT (not in the database) to find messages that are:
   * Pinned (isPinned === true)

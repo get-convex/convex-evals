@@ -21,7 +21,11 @@ export default defineSchema({
 ```
 
 Create an internal function that logs access to a document by writing to the `accessLogs` table.
-Create a function that queries the `documents` table for some document by ID and logs access to the document asynchronously.
+Create a mutation named `getDocument` in `convex/index.ts` that:
+- Takes arguments:  `{ documentId: Id<"documents"> }`
+- Throws an error with the message "Document not found" if there is no document with that ID
+- Logs access asynchronously by writing a record to `accessLogs` with `{ documentId, action: "read" }`
+- Returns the full document including its system fields
 
 Files to create:
 - `convex/schema.ts` with the schema above

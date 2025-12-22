@@ -16,12 +16,12 @@ export default defineSchema({
 Implement these functions in `convex/index.ts`:
 
 1. Create a mutation `saveFetchResult` that:
-   - Takes a url (string) and data (any) as arguments
+   - Takes arguments:  `{ url: string, data: any }`
    - Inserts a new record into the fetchResults table
    - Returns the ID of the new record
 
 2. Create an action `fetchAndSave` that:
-   - Takes a url string as an argument
+   - Takes arguments:  `{ url: string }`
    - Makes a fetch request to the provided URL
    - Parses the response as JSON
    - It's not important to handle errors here
