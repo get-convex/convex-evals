@@ -1,0 +1,70 @@
+name: Branch Convex Evaluations (Anthropic Models)
+
+on:
+  push:
+    branches:
+      - mikec/upgrades-again
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  run-evals:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install Bun
+      run: npm install -g bun@1.2.1
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install PDM
+      run: |
+        curl -sSL https://pdm.fming.dev/install-pdm.py | python3 -
+
+    - name: Install Python dependencies
+      run: pdm install
+
+    - name: Install Bun dependencies
+      run: bun install
+
+    - name: Create temp directory
+      run: mkdir -p /tmp/convex-evals
+
+    - name: Set Anthropic models
+      run: |
+        echo "MODELS=claude-sonnet-4-5" >> $GITHUB_ENV
+
+    - name: Run evaluations
+      env:
+        ENVIRONMENT: ci
+        OUTPUT_TEMPDIR: /tmp/convex-evals
+        DISABLE_BRAINTRUST: "1"
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: pdm run braintrust eval runner/eval_convex_coding.py
+
+    - name: Upload eval outputs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: eval-outputs
+        path: /tmp/convex-evals/
+        retention-days: 7
+
+    - name: Upload local results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: local-results
+        path: local_results.jsonl
+        retention-days: 7
+
