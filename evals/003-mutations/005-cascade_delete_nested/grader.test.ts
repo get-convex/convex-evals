@@ -129,6 +129,21 @@ test("deletes user and all associated content", async () => {
 });
 
 test("deleteUser throws for non-existent id", async () => {
+  // Create a user, then delete it to get a valid ID that no longer exists
+  await addDocuments(responseAdminClient, "users", [
+    { name: "Temp User", email: "temp@example.com" },
+  ]);
+  const users = (await listTable(
+    responseAdminClient,
+    "users",
+  )) as Doc<"users">[];
+  const deletedUserId = users.at(-1)!._id;
+
+  // Delete the user first
+  await responseClient.mutation(api.index.deleteUser, {
+    userId: deletedUserId,
+  });
+
   const beforeUsers = (await listTable(
     responseAdminClient,
     "users",
@@ -146,11 +161,10 @@ test("deleteUser throws for non-existent id", async () => {
     "likes",
   )) as Doc<"likes">[];
 
+  // Try to delete the already-deleted user - should throw an error containing "not found"
   await expect(
-    responseClient.mutation(api.index.deleteUser, {
-      userId: "nonexistent" as unknown as Id<"users">,
-    }),
-  ).rejects.toThrow(/User not found/i);
+    responseClient.mutation(api.index.deleteUser, { userId: deletedUserId }),
+  ).rejects.toThrow(/not found/i);
 
   const afterUsers = (await listTable(
     responseAdminClient,
