@@ -12,7 +12,7 @@ from runner.logging import append_log, append_log_block, log_cmd_results, log_in
 def convex_scorer(model, tempdir, *, input, expected, metadata, output):
     model = metadata["model"]
     category = metadata["category"]
-    name = metadata["name"]
+    name = metadata["eval_name"]
 
     output_project_dir = f"{tempdir}/output/{model}/{category}/{name}"
     os.makedirs(output_project_dir, exist_ok=True)

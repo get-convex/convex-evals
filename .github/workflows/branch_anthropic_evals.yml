@@ -53,14 +53,16 @@ jobs:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       run: pdm run braintrust eval runner/eval_convex_coding.py
 
+    - name: Clean node_modules from eval outputs
+      if: always()
+      run: npx rimraf "/tmp/convex-evals/**/node_modules"
+
     - name: Upload eval outputs
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: eval-outputs
-        path: |
-          /tmp/convex-evals/
-          !**/node_modules/**
+        path: /tmp/convex-evals/
         retention-days: 7
 
     - name: Upload local results

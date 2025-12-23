@@ -132,7 +132,7 @@ def _write_local_results(result: EvalResultWithSummary):
                 continue  # Skip failed results for now
                 
             category = r.metadata.get("category", "unknown") if r.metadata else "unknown"
-            name = r.metadata.get("name", "unknown") if r.metadata else "unknown"
+            name = r.metadata.get("eval_name", "unknown") if r.metadata else "unknown"
             
             # Determine pass/fail based on "Tests pass" score
             tests_pass_score = 0.0
@@ -236,7 +236,7 @@ def file_report_eval(evaluator, result: EvalResultWithSummary, verbose, jsonl):
         print("=== Eval Failures ===")
         for r in failing_results:
             category = r.metadata.get("category") if r.metadata else "unknown"
-            name = r.metadata.get("name") if r.metadata else "unknown"
+            name = r.metadata.get("eval_name") if r.metadata else "unknown"
             error_text = r.error if isinstance(r.error, str) else str(r.error)
             print(f"- {category}/{name}: {error_text}")
         print(f"Results written to: {OUTPUT_RESULTS_FILE}")
