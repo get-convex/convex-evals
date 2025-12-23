@@ -2,6 +2,6 @@
   "name": "paginated-messages",
   "version": "1.0.0",
   "dependencies": {
-    "convex": "^1.17.4"
+    "convex": "^1.31.2"
   }
 }

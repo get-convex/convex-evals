@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Backend for handling async HTTP requests",
   "dependencies": {
-    "convex": "^1.17.4",
+    "convex": "^1.31.2",
     "node-fetch": "^3.3.2"
   }
 }

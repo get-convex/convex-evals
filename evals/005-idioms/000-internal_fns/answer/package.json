@@ -3,6 +3,6 @@
   "version": "1.0.0",
   "description": "Demonstration of different Convex function types and visibility patterns",
   "dependencies": {
-    "convex": "^1.17.4"
+    "convex": "^1.31.2"
   }
 }

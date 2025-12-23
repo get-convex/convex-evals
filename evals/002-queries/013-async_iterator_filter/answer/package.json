@@ -3,6 +3,6 @@
   "version": "1.0.0",
   "description": "Backend to find teams with deleted admins",
   "dependencies": {
-    "convex": "^1.17.4"
+    "convex": "^1.31.2"
   }
 }
