@@ -1,38 +1,38 @@
 import { expect, test } from "vitest";
 import { responseClient, responseAdminClient } from "../../../grader";
-import { anyApi } from "convex/server";
+import { api, internal } from "./answer/convex/_generated/api";
 
 test("callerMutation schedules tasks and returns null", async () => {
-  expect(await responseClient.mutation(anyApi.index.callerMutation, {})).toBe(
+  expect(await responseClient.mutation(api.index.callerMutation, {})).toBe(
     null,
   );
   await expect(
-    responseClient.mutation(anyApi.index.callerMutation, { extra: true }),
+    responseClient.mutation(api.index.callerMutation, { extra: true }),
   ).rejects.toThrow(/ArgumentValidationError/);
 });
 
 test("callerAction schedules tasks and returns null", async () => {
-  expect(await responseClient.action(anyApi.index.callerAction, {})).toBe(null);
+  expect(await responseClient.action(api.index.callerAction, {})).toBe(null);
   await expect(
-    responseClient.action(anyApi.index.callerAction, { extra: true }),
+    responseClient.action(api.index.callerAction, { extra: true }),
   ).rejects.toThrow(/ArgumentValidationError/);
 });
 
 test("internal logMutation returns null and is private", async () => {
   expect(
-    await responseAdminClient.mutation(anyApi.index.logMutation, {
+    await responseAdminClient.mutation(internal.index.logMutation, {
       message: "Hello, world!",
     }),
   ).toBe(null);
 
   await expect(
-    responseClient.mutation(anyApi.index.logMutation, {
+    responseClient.mutation(internal.index.logMutation, {
       message: "Hello, world!",
     }),
   ).rejects.toThrow(/Could not find public function/);
 
   await expect(
-    responseAdminClient.mutation(anyApi.index.logMutation, {
+    responseAdminClient.mutation(internal.index.logMutation, {
       message: 123 as unknown as string,
     }),
   ).rejects.toThrow(/ArgumentValidationError/);
@@ -40,19 +40,19 @@ test("internal logMutation returns null and is private", async () => {
 
 test("internal logAction returns null and is private", async () => {
   expect(
-    await responseAdminClient.action(anyApi.index.logAction, {
+    await responseAdminClient.action(internal.index.logAction, {
       message: "Hello, world!",
     }),
   ).toBe(null);
 
   await expect(
-    responseClient.action(anyApi.index.logAction, {
+    responseClient.action(internal.index.logAction, {
       message: "Hello, world!",
     }),
   ).rejects.toThrow(/Could not find public function/);
 
   await expect(
-    responseAdminClient.action(anyApi.index.logAction, {
+    responseAdminClient.action(internal.index.logAction, {
       message: 123 as unknown as string,
     }),
   ).rejects.toThrow(/ArgumentValidationError/);

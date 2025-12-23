@@ -29,6 +29,7 @@
     "vitest": "^3.0.2"
   },
   "scripts": {
+    "typecheck": "tsc --noEmit",
     "local:run:fundamentals": "cross-env MODELS=gpt-5 TEST_FILTER=000-fundamentals npm run local:run",
     "local:run:one": "cross-env MODELS=gpt-5 TEST_FILTER=000-fundamentals/000 npm run local:run",
     "local:run": "cross-env DISABLE_BRAINTRUST=1 VERBOSE_INFO_LOGS=1 LOCAL_RESULTS=local_results.jsonl npm run run:evals",
