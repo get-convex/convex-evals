@@ -1,5 +1,6 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "convexbot",
@@ -9,9 +10,9 @@
         "react-dom": "^18.2.0",
       },
       "devDependencies": {
-        "@types/react": "^18.2.0",
-        "@types/react-dom": "^18.2.0",
-        "typescript": "^5.5.4",
+        "@types/react": "^18.0.28",
+        "@types/react-dom": "^18.0.11",
+        "typescript": "^5.7.3",
       },
     },
   },

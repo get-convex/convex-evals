@@ -1,0 +1,95 @@
+2025-12-23T00:35:32.123088Z  INFO convex_local_backend: Starting a Convex backend
+2025-12-23T00:35:32.123230Z  INFO convex_local_backend: The self-host Convex backend will periodically communicate with a remote beacon server. This is to help Convex understand and improve the product. You can disable this telemetry by setting the --disable-beacon flag or the DISABLE_BEACON environment variable.
+2025-12-23T00:35:32.124443Z  INFO convex_local_backend: Sentry is not enabled.
+2025-12-23T00:35:32.132369Z  INFO db_connection: Connected to SQLite at C:\dev\convex\convex-evals\evals\000-fundamentals\005-function_calling\answer\convex_local_backend.sqlite3
+2025-12-23T00:35:32.132723Z  INFO search::searcher::searcher: Searchlight starting, local_storage_path: C:\Users\mikec\AppData\Local\Temp\.tmpzOfVQu max_size: 500.0 MiB
+2025-12-23T00:35:32.133093Z  INFO database::database: Initializing database with system tables...
+2025-12-23T00:35:32.142689Z  INFO database::database: Bootstrapping indexes...
+2025-12-23T00:35:32.143268Z  INFO indexing::backend_in_memory_indexes: Loading 8 tables with 21 indexes...
+2025-12-23T00:35:32.143646Z  INFO database::database: Bootstrapping table metadata...
+2025-12-23T00:35:32.145877Z  INFO database::retention: No tablets left to delete
+2025-12-23T00:35:32.145908Z  INFO database::subscription: Starting subscriptions worker
+2025-12-23T00:35:32.146229Z  INFO database::transaction: Created system table: _db
+2025-12-23T00:35:32.146365Z  INFO database::transaction: Created system table: _deployment_audit_log
+2025-12-23T00:35:32.146461Z  INFO database::transaction: Created system table: _environment_variables
+2025-12-23T00:35:32.146835Z  INFO database::transaction: Created system table: _auth
+2025-12-23T00:35:32.146912Z  INFO database::transaction: Created system table: _external_deps_packages
+2025-12-23T00:35:32.146972Z  INFO database::transaction: Created system table: _session_requests
+2025-12-23T00:35:32.147123Z  INFO database::transaction: Created system table: _backend_state
+2025-12-23T00:35:32.147255Z  INFO database::transaction: Created system table: _exports
+2025-12-23T00:35:32.147431Z  INFO database::transaction: Created system table: _snapshot_imports
+2025-12-23T00:35:32.147501Z  INFO database::transaction: Created system table: _function_handles
+2025-12-23T00:35:32.147597Z  INFO database::transaction: Created system table: _canonical_urls
+2025-12-23T00:35:32.147669Z  INFO database::transaction: Created system table: _log_sinks
+2025-12-23T00:35:32.147731Z  INFO database::transaction: Created system table: _aws_lambda_versions
+2025-12-23T00:35:32.147794Z  INFO database::transaction: Created system table: _backend_info
+2025-12-23T00:35:32.147853Z  INFO database::transaction: Created system table: _file_storage
+2025-12-23T00:35:32.147950Z  INFO database::transaction: Created system table: _scheduled_jobs
+2025-12-23T00:35:32.148108Z  INFO database::transaction: Created system table: _scheduled_job_args
+2025-12-23T00:35:32.148256Z  INFO database::transaction: Created system table: _cron_jobs
+2025-12-23T00:35:32.148370Z  INFO database::transaction: Created system table: _cron_job_logs
+2025-12-23T00:35:32.148456Z  INFO database::transaction: Created system table: _cron_next_run
+2025-12-23T00:35:32.148578Z  INFO database::transaction: Created system table: _modules
+2025-12-23T00:35:32.148687Z  INFO database::transaction: Created system table: _udf_config
+2025-12-23T00:35:32.148749Z  INFO database::transaction: Created system table: _source_packages
+2025-12-23T00:35:32.155821Z  INFO indexing::backend_in_memory_indexes: Loading 12 tables with 31 indexes...
+2025-12-23T00:35:32.156530Z  INFO database::committer: Loaded indexes into memory
+2025-12-23T00:35:32.158400Z  INFO application: files storage path: "C:\\dev\\convex\\convex-evals\\evals\\000-fundamentals\\005-function_calling\\answer\\convex_local_storage\\files"
+2025-12-23T00:35:32.158484Z  INFO application: modules storage path: "C:\\dev\\convex\\convex-evals\\evals\\000-fundamentals\\005-function_calling\\answer\\convex_local_storage\\modules"
+2025-12-23T00:35:32.158547Z  INFO application: search storage path: "C:\\dev\\convex\\convex-evals\\evals\\000-fundamentals\\005-function_calling\\answer\\convex_local_storage\\search"
+2025-12-23T00:35:32.158640Z  INFO application: exports storage path: "C:\\dev\\convex\\convex-evals\\evals\\000-fundamentals\\005-function_calling\\answer\\convex_local_storage\\exports"
+2025-12-23T00:35:32.158709Z  INFO application: snapshot_imports storage path: "C:\\dev\\convex\\convex-evals\\evals\\000-fundamentals\\005-function_calling\\answer\\convex_local_storage\\snapshot_imports"
+2025-12-23T00:35:32.158726Z  INFO database::database: Set search storage to LocalDirStorage { dir: "C:\\dev\\convex\\convex-evals\\evals\\000-fundamentals\\005-function_calling\\answer\\convex_local_storage\\search" }
+2025-12-23T00:35:32.158740Z  INFO application: Local { dir: "C:\\dev\\convex\\convex-evals\\evals\\000-fundamentals\\005-function_calling\\answer\\convex_local_storage" } storage is configured.
+2025-12-23T00:35:32.158760Z  WARN local_backend: Running without a proxy in release mode -- UDF `fetch` requests are unrestricted!
+2025-12-23T00:35:32.182087Z  INFO database::database_index_workers: Starting IndexWorker
+2025-12-23T00:35:32.182164Z  INFO database::search_index_workers::retriable_worker: Starting FastForwardWorker
+2025-12-23T00:35:32.182206Z  INFO database::search_index_workers::retriable_worker: Starting VectorBackfillFlusher
+2025-12-23T00:35:32.182218Z  INFO database::search_index_workers::retriable_worker: Starting VectorCompactor
+2025-12-23T00:35:32.182215Z  INFO database::search_index_workers::retriable_worker: Starting VectorLiveFlusher
+2025-12-23T00:35:32.182253Z  INFO database::search_index_workers::retriable_worker: Starting TextLiveFlusher
+2025-12-23T00:35:32.182256Z  INFO database::search_index_workers::retriable_worker: Starting TextCompactor
+2025-12-23T00:35:32.182251Z  INFO database::search_index_workers::retriable_worker: Starting TextBackfillFlusher
+2025-12-23T00:35:32.182260Z  INFO application::table_summary_worker: Starting background table summary worker
+2025-12-23T00:35:32.182288Z  INFO application::schema_worker: Starting SchemaWorker
+2025-12-23T00:35:32.182473Z  INFO application::scheduled_jobs: Starting scheduled job executor
+2025-12-23T00:35:32.182328Z  INFO application::system_table_cleanup: Starting SystemTableCleanupWorker
+2025-12-23T00:35:32.182527Z  INFO local_backend::beacon: Starting beacon coroutine...
+2025-12-23T00:35:32.182296Z  INFO log_streaming: Starting LogManager
+2025-12-23T00:35:32.182582Z  INFO log_streaming: Starting listening for logs
+2025-12-23T00:35:32.182489Z  INFO database::search_index_bootstrap: Starting search index bootstrap at 1766450132156753500 with upper bound 1766450132156753500
+2025-12-23T00:35:32.182332Z  INFO application::system_table_cleanup: Deleted tablet channel closed, exiting cleanup_deleted_tablets
+2025-12-23T00:35:32.182639Z  INFO database::search_index_bootstrap: Loaded 0 revisions (0 bytes) in 338.6µs.
+2025-12-23T00:35:32.182537Z  INFO model::migrations: Attempting migration
+2025-12-23T00:35:32.182481Z  INFO application::cron_jobs: Starting cron job executor
+2025-12-23T00:35:32.182735Z  INFO database::database_index_workers: 0 database indexes to backfill @ 1766450132156753500
+2025-12-23T00:35:32.182791Z  INFO database::committer: Committed backfilled vector indexes
+2025-12-23T00:35:32.182812Z  INFO database::search_index_bootstrap: SearchIndexBoostrapWorker finished!
+2025-12-23T00:35:32.182833Z  INFO model::migrations: db metadata version up to date at 124
+2025-12-23T00:35:32.182851Z  INFO model::migrations: Migration complete
+2025-12-23T00:35:32.183394Z  INFO log_streaming: Found 0 sink(s) in `Tombstoned` state
+2025-12-23T00:35:32.183409Z  INFO log_streaming: Found 0 sink(s) in Pending state.
+2025-12-23T00:35:32.183416Z  INFO log_streaming: Found 0 inactive sink(s).
+2025-12-23T00:35:32.183769Z  INFO application::exports::worker: No exports requested or in progress.
+2025-12-23T00:35:32.185568Z  INFO common::http: backend listening on 0.0.0.0:49710
+2025-12-23T00:35:32.185794Z  INFO local_backend::proxy: Starting dev site proxy at 0.0.0.0:49711...
+2025-12-23T00:35:32.185871Z  INFO common::http: backend_http_proxy listening on 0.0.0.0:49711
+2025-12-23T00:35:32.188413Z  INFO application::table_summary_worker: Writing table summary checkpoint at ts 1766450132156753500
+2025-12-23T00:35:32.190702Z  INFO application::table_summary_worker: Finishing table summary bootstrap
+2025-12-23T00:35:32.191491Z  INFO database::committer: Bootstrapped table summaries at ts 1766450132156753500
+2025-12-23T00:35:32.191513Z  INFO application::table_summary_worker: Table summary bootstrap finished
+2025-12-23T00:35:33.215336Z  INFO local_backend::beacon: Beacon request with json {"database_uuid":"h022asgnvksc7pyzaasaqak9es7xvpyh","migration_version":124,"compiled_revision":"41c594c5ee62d779456f71a725ba502b616b9706","commit_timestamp":"2025-12-20T01:16:12.000000000Z","uptime":0,"beacon_tag":"self-host","beacon_fields":null} sent successfully to https://api.convex.dev/api/self_host_beacon. This anonymized data is used to help Convex understand and improve the product. You can disable this telemetry by setting the --disable-beacon flag or the DISABLE_BEACON environment variable.
+2025-12-23T00:35:35.025165Z  INFO convex-cloud-http: [] 127.0.0.1:49717 "POST /api/get_config_hashes HTTP/1.1" 200 "-" "node" application/json - 0.496ms
+2025-12-23T00:35:35.035278Z  INFO application: Uploading package with 1 modules to Storage
+2025-12-23T00:35:35.039264Z  INFO application: Upload of ObjectKey("ebbd54dd-7111-48db-99fd-55180cabd2b0") successful
+2025-12-23T00:35:35.039284Z  INFO application: Source package size: (Zipped: 59038, Unzipped, 283724)
+2025-12-23T00:35:35.039501Z  INFO isolate::client: Created funrun isolate worker 0
+2025-12-23T00:35:35.044994Z  INFO model::cron_jobs: Crons Added: [], Updated: [], Deleted: []
+2025-12-23T00:35:35.045136Z  INFO database::bootstrap_model::index: Committed indexes for Global: (added 0. dropped 0)
+2025-12-23T00:35:35.048783Z  INFO convex-cloud-http: [] 127.0.0.1:49717 "POST /api/push_config HTTP/1.1" 200 "-" "node" application/json - 15.052ms
+2025-12-23T00:35:35.759521Z  INFO convex-cloud-http: [] 127.0.0.1:49718 "GET /api/1.18.2/sync HTTP/1.1" 101 "-" "node" - - 0.120ms
+2025-12-23T00:35:35.759816Z  INFO convex-cloud-http: [] 127.0.0.1:49719 "GET /api/1.18.2/sync HTTP/1.1" 101 "-" "node" - - 0.062ms
+2025-12-23T00:35:37.101093Z  INFO isolate::client: Created funrun isolate worker 1
+2025-12-23T00:35:37.104539Z  INFO isolate::client: Created funrun isolate worker 2
+2025-12-23T00:35:37.145610Z  WARN common::errors: Caught developer_error error (RUST_BACKTRACE=1 RUST_LOG=info,common::errors=debug for full trace): IO error: An existing connection was forcibly closed by the remote host. (os error 10054): Client disconnected
+2025-12-23T00:35:37.145723Z  WARN common::errors: Caught developer_error error (RUST_BACKTRACE=1 RUST_LOG=info,common::errors=debug for full trace): IO error: An existing connection was forcibly closed by the remote host. (os error 10054): Client disconnected
