@@ -213,12 +213,12 @@ def main():
   "name": "convexbot",
   "version": "1.0.0",
   "dependencies": {
-    "convex": "^1.17.4",
+    "convex": "^1.31.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "typescript": "^5.5.4",
+    "typescript": "^55.7.3",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0"
   }

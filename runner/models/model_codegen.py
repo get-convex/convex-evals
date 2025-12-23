@@ -152,7 +152,7 @@ def render_prompt(chain_of_thought: bool, task_description: str):
     yield "- Do NOT write to the `convex/_generated` folder. You can assume that `npx convex dev` will populate this folder.\n"
     yield "- It's VERY IMPORTANT to output files to the correct paths, as specified in the task description.\n"
     yield "- Always start with `package.json` and `tsconfig.json` files.\n"
-    yield '- Use Convex version "^1.17.4".\n\n'
+    yield '- Use Convex version "^1.31.2".\n\n'
     yield '- Use Typescript version "^5.7.3".\n\n'
 
     if chain_of_thought:
