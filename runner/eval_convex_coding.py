@@ -77,6 +77,7 @@ def convex_coding_evals(model: ModelTemplate):
             {
                 "input": task_description,
                 "expected": expected,
+                "name": f"{category}/{name}",
                 "metadata": {
                     "name": f"{category}/{name}",
                     "category": category,
