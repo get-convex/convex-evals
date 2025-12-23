@@ -84,6 +84,7 @@ def convex_coding_evals(model: ModelTemplate):
                     "model_name": model.formatted_name,
                     "tempdir": tempdir,
                 },
+                "id": f"{category}/{name}",
             }
         )
 
@@ -93,6 +94,7 @@ def convex_coding_evals(model: ModelTemplate):
         data=data,
         task=lambda input: convex_coding_task(model, input),
         scores=[lambda *args, **kwargs: convex_scorer(model, tempdir, *args, **kwargs)],
+        experiment_name=model.formatted_name,
         metadata={
             "model": model.name,
             "model_slug": model.formatted_name,
