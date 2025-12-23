@@ -58,7 +58,9 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: eval-outputs
-        path: /tmp/convex-evals/
+        path: |
+          /tmp/convex-evals/
+          !**/node_modules/**
         retention-days: 7
 
     - name: Upload local results
