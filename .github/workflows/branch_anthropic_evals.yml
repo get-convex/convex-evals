@@ -54,8 +54,7 @@ jobs:
       run: pdm run braintrust eval runner/eval_convex_coding.py
 
     - name: Clean node_modules from eval outputs
-      if: always()
-      run: npx rimraf "/tmp/convex-evals/**/node_modules"
+      run: bunx rimraf --glob /tmp/convex-evals/**/node_modules
 
     - name: Upload eval outputs
       if: always()
