@@ -39,6 +39,7 @@
     "braintrust:run": "cross-env LOCAL_RESULTS=local_results.jsonl VERBOSE_INFO_LOGS=1 npm run run:evals",
     "run:evals": "pdm run python -m runner.eval_convex_coding",
     "generate:answer-types": "bun run scripts/generateAnswerTypes.ts",
+    "generate:evalscores-types": "cd evalScores && bun run codegen",
     "visualizer": "cd visualizer && bun run dev",
     "visualizer:build": "cd visualizer && bun run build"
   }

@@ -72,11 +72,11 @@ export const sendMessage = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const channel = await ctx.db.get("channels", args.channelId);
+    const channel = await ctx.db.get(args.channelId);
     if (!channel) {
       throw new Error("Channel not found");
     }
-    const user = await ctx.db.get("users", args.authorId);
+    const user = await ctx.db.get(args.authorId);
     if (!user) {
       throw new Error("User not found");
     }
@@ -130,7 +130,7 @@ export const loadContext = internalQuery({
     }),
   ),
   handler: async (ctx, args) => {
-    const channel = await ctx.db.get("channels", args.channelId);
+    const channel = await ctx.db.get(args.channelId);
     if (!channel) {
       throw new Error("Channel not found");
     }
@@ -143,7 +143,7 @@ export const loadContext = internalQuery({
     const result = [];
     for (const message of messages) {
       if (message.authorId) {
-        const user = await ctx.db.get("users", message.authorId);
+        const user = await ctx.db.get(message.authorId);
         if (!user) {
           throw new Error("User not found");
         }

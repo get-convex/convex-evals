@@ -3,6 +3,9 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "codegen": "bunx convex codegen --typecheck disable --init"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },

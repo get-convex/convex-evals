@@ -178,6 +178,8 @@ dist
 # Convex
 **/convex/_generated
 !evals/**/answer/convex/_generated
+!evalScores/convex/_generated
+!examples/**/convex/_generated
 output*/
 evals/**/backend
 __pycache__/
