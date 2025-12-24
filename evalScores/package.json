@@ -4,15 +4,22 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "codegen": "bunx convex codegen --typecheck disable --init"
+    "codegen": "bunx convex codegen --typecheck disable --init",
+    "test": "vitest",
+    "test:once": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "convex-test": "^0.0.35",
+    "vitest": "^3.0.0",
+    "@edge-runtime/vm": "^5.0.0"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
-    "convex": "^1.31.2"
+    "convex": "^1.31.2",
+    "zod": "^4.2.1"
   }
 }
