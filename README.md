@@ -39,7 +39,7 @@ The easiest way to run evals is with the interactive CLI:
 bun run evals
 ```
 
-<video src="docs/assets/cli.mp4" controls width="100%"></video>
+[![CLI demo](docs/assets/cli-thumbnail.jpg)](docs/assets/cli.mp4)
 
 This launches an interactive menu where you can:
 
