@@ -19,9 +19,11 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^2.0.53",
+    "@inquirer/prompts": "^7.2.1",
     "@types/bun": "^1.2.20",
     "@types/node": "^22.12.0",
     "ai": "^5.0.76",
+    "commander": "^13.0.0",
     "convex": "^1.31.2",
     "dotenv": "^17.2.1",
     "prettier": "^3.4.2",
@@ -30,6 +32,10 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "evals": "bun run scripts/runEvals.ts",
+    "evals:failed": "bun run scripts/runEvals.ts run --failed",
+    "evals:list": "bun run scripts/runEvals.ts list",
+    "evals:status": "bun run scripts/runEvals.ts status",
     "local:run:fundamentals": "cross-env MODELS=gpt-5 TEST_FILTER=000-fundamentals npm run local:run",
     "local:run:one": "cross-env MODELS=gpt-5 TEST_FILTER=000-fundamentals/000 npm run local:run",
     "local:run": "cross-env DISABLE_BRAINTRUST=1 VERBOSE_INFO_LOGS=1 LOCAL_RESULTS=local_results.jsonl npm run run:evals",
