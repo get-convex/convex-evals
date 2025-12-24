@@ -2,11 +2,13 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  // Each record is a single eval run for a model (append-only for history)
   evalScores: defineTable({
     model: v.string(),
     scores: v.record(v.string(), v.number()),
-    totalScore: v.optional(v.number()),
-    updatedAt: v.optional(v.number()),
+    totalScore: v.number(),
+    // Optional run identifier (e.g. git sha, date string)
+    runId: v.optional(v.string()),
   }).index("by_model", ["model"]),
 
   authTokens: defineTable({

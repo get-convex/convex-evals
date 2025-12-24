@@ -7,6 +7,7 @@ const UpdateScoresBody = z.object({
   model: z.string(),
   scores: z.record(z.string(), z.number()),
   totalScore: z.number(),
+  runId: z.string().optional(),
 });
 
 const http = httpRouter();
@@ -84,6 +85,9 @@ http.route({
         model: score.model,
         scores: score.scores,
         totalScore: score.totalScore,
+        totalScoreErrorBar: score.totalScoreErrorBar,
+        scoreErrorBars: score.scoreErrorBars,
+        runCount: score.runCount,
       }));
 
       return new Response(JSON.stringify(formattedScores), {
