@@ -31,7 +31,62 @@ echo "ANTHROPIC_API_KEY=<your ANTHROPIC_API_KEY>" > .env
 echo "OPENAI_API_KEY=<your OPENAI_API_KEY>" >> .env
 ```
 
-Then, get a Braintrust API key from [the dashboard](https://www.braintrust.dev/app/Convex/settings/api-keys).
+### Using the CLI (recommended)
+
+The easiest way to run evals is with the interactive CLI:
+
+```bash
+bun run evals
+```
+
+<video src="docs/assets/cli.mp4" controls width="100%"></video>
+
+This launches an interactive menu where you can:
+
+- Run all evals
+- Select specific categories to run
+- Select individual evals
+- Re-run failed evals from your last run
+- Choose which model(s) to use
+
+#### CLI Commands
+
+| Command                         | Description                            |
+| ------------------------------- | -------------------------------------- |
+| `bun run evals`                 | Interactive mode                       |
+| `bun run evals list`            | List all available evals by category   |
+| `bun run evals status`          | Show results from last run             |
+| `bun run evals status --failed` | Show only failed evals                 |
+| `bun run evals models`          | List available models                  |
+| `bun run evals:failed`          | Re-run only failed evals from last run |
+
+#### CLI Options
+
+Run evals directly without interactive mode:
+
+```bash
+# Run specific categories
+bun run evals run -c 000-fundamentals 002-queries
+
+# Run with a specific model
+bun run evals run -m claude-sonnet-4-5 -c 005-idioms
+
+# Run with multiple models
+bun run evals run -m claude-sonnet-4-5 -m gpt-5 -f "000-fundamentals"
+
+# Re-run failed evals
+bun run evals run --failed
+
+# Filter by regex pattern
+bun run evals run -f "pagination"
+
+# Send results to Braintrust
+bun run evals run --braintrust -c 000-fundamentals
+```
+
+### Using Braintrust directly
+
+Get a Braintrust API key from [the dashboard](https://www.braintrust.dev/app/Convex/settings/api-keys).
 You can run the `eval_convex_coding.py` evals with the `braintrust` CLI:
 
 ```bash
@@ -51,36 +106,24 @@ with the `OUTPUT_TEMPDIR` environment variable.
 OUTPUT_TEMPDIR=/tmp/convex-codegen-evals pdm run braintrust eval runner/eval_convex_coding.py
 ```
 
-## Running locally (no Braintrust upload)
+### Environment variables
 
-Run a small slice without uploading. Put the provider API key you need in `.env` (e.g. `OPENAI_API_KEY`).
+| Variable               | Description                             |
+| ---------------------- | --------------------------------------- |
+| `MODELS`               | Comma-separated list of models to run   |
+| `TEST_FILTER`          | Regex pattern to filter evals           |
+| `DISABLE_BRAINTRUST`   | Set to `1` to disable Braintrust upload |
+| `VERBOSE_INFO_LOGS`    | Set to `1` for verbose logging          |
+| `LOCAL_RESULTS`        | Path to write local results JSONL file  |
+| `OUTPUT_TEMPDIR`       | Directory for generated output files    |
+| `CONVEX_EVAL_ENDPOINT` | Endpoint for Convex summary posting     |
+| `CONVEX_AUTH_TOKEN`    | Auth token for Convex summary posting   |
 
-Scripts:
-
-```bash
-# Quick smoke test (first Fundamental)
-npm run local:run:one
-
-# Full Fundamentals category
-npm run local:run:fundamentals
-
-# Baseline local run (override TEST_FILTER as needed)
-npm run local:run
-```
-
-These set:
-
-- `DISABLE_BRAINTRUST=1` (disables Braintrust upload and proxy)
-- `MODELS=gpt-4.1` (change per `runner/models/__init__.py`)
-- `LOCAL_RESULTS=local_results.jsonl`
-
-Output:
+### Output
 
 - Per-step progress lines with the eval id
 - Per-eval result with ✅/❌ and a clickable output dir
-- `local_results.jsonl` plus a `run.log` in each eval’s output directory
-
-Optional Convex summary posting (still local mode): set both `CONVEX_EVAL_ENDPOINT` and `CONVEX_AUTH_TOKEN`.
+- `local_results.jsonl` with detailed results (used by `bun run evals status`)
 
 ## AI grading helper
 
