@@ -474,6 +474,21 @@ async function selectOptions(): Promise<
   return { useBraintrust, verbose, postToConvex };
 }
 
+interface LastRunConfig {
+  models: string[];
+  filter: string | undefined;
+  useBraintrust: boolean;
+  verbose: boolean;
+  postToConvex: boolean;
+}
+
+function formatRunConfigSummary(config: LastRunConfig): string {
+  const parts: string[] = [];
+  parts.push(`Models: ${config.models.join(", ") || "(default)"}`);
+  parts.push(`Filter: ${config.filter || "(all)"}`);
+  return parts.join(", ");
+}
+
 async function interactiveMode(): Promise<void> {
   console.log("\n🧪 Convex Evals Runner\n");
 
@@ -483,19 +498,25 @@ async function interactiveMode(): Promise<void> {
   }
 
   const categories = await discoverCategories();
-  const failedEvals = await getFailedEvals();
+  let failedEvals = await getFailedEvals();
+  let lastRunConfig: LastRunConfig | null = null;
 
   // Main loop with back navigation
   while (true) {
-    // Main menu
+    // Build menu choices dynamically based on whether we have a previous run config
+    const menuChoices = [
+      { name: "Run evals", value: "run" },
+      ...(lastRunConfig
+        ? [{ name: "Run again", value: "run-again" }]
+        : []),
+      { name: "View status", value: "status" },
+      { name: "List available evals", value: "list" },
+      { name: "Exit", value: "exit" },
+    ];
+
     const mainAction = await select({
       message: "What would you like to do?",
-      choices: [
-        { name: "Run evals", value: "run" },
-        { name: "View status", value: "status" },
-        { name: "List available evals", value: "list" },
-        { name: "Exit", value: "exit" },
-      ],
+      choices: menuChoices,
     });
 
     if (mainAction === "exit") {
@@ -543,6 +564,41 @@ async function interactiveMode(): Promise<void> {
       continue;
     }
 
+    if (mainAction === "run-again" && lastRunConfig) {
+      const runAgainChoice = await select({
+        message: "Run again:",
+        choices: [
+          {
+            name: `With same values (${formatRunConfigSummary(lastRunConfig)})`,
+            value: "same",
+          },
+          { name: "Change values", value: "change" },
+          { name: "← Back", value: "back" },
+        ],
+      });
+
+      if (runAgainChoice === "back") continue;
+
+      if (runAgainChoice === "same") {
+        try {
+          await runEvals({
+            models: lastRunConfig.models,
+            filter: lastRunConfig.filter,
+            disableBraintrust: !lastRunConfig.useBraintrust,
+            verbose: lastRunConfig.verbose,
+            postToConvex: lastRunConfig.postToConvex,
+          });
+          // Refresh failed evals after run
+          failedEvals = await getFailedEvals();
+        } catch (error) {
+          console.error("\nEval run failed:", error);
+        }
+        continue;
+      }
+
+      // runAgainChoice === "change" - fall through to run flow but with pre-filled defaults
+    }
+
     // Run evals flow with back navigation
     const filter = await selectFilter(categories, failedEvals);
     if (filter === BACK) continue;
@@ -564,6 +620,15 @@ async function interactiveMode(): Promise<void> {
       continue;
     }
 
+    // Save the run config for "Run again" option
+    lastRunConfig = {
+      models,
+      filter,
+      useBraintrust: options.useBraintrust,
+      verbose: options.verbose,
+      postToConvex: options.postToConvex,
+    };
+
     try {
       await runEvals({
         models,
@@ -572,11 +637,11 @@ async function interactiveMode(): Promise<void> {
         verbose: options.verbose,
         postToConvex: options.postToConvex,
       });
+      // Refresh failed evals after run
+      failedEvals = await getFailedEvals();
     } catch (error) {
       console.error("\nEval run failed:", error);
     }
-
-    // After running, loop back to main menu
   }
 }
 

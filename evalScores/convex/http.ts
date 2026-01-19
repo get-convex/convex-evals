@@ -88,6 +88,8 @@ http.route({
         totalScoreErrorBar: score.totalScoreErrorBar,
         scoreErrorBars: score.scoreErrorBars,
         runCount: score.runCount,
+        latestRunId: score.latestRunId,
+        latestRunTime: score.latestRunTime,
       }));
 
       return new Response(JSON.stringify(formattedScores), {
