@@ -234,6 +234,11 @@ interface RunOptions {
   disableBraintrust: boolean;
   verbose: boolean;
   outputTempdir?: string;
+  postToConvex: boolean;
+}
+
+function isConvexPostingConfigured(): boolean {
+  return Boolean(process.env.CONVEX_EVAL_ENDPOINT && process.env.CONVEX_AUTH_TOKEN);
 }
 
 function buildEnvVars(options: RunOptions): Record<string, string> {
@@ -256,6 +261,10 @@ function buildEnvVars(options: RunOptions): Record<string, string> {
 
   if (options.verbose) {
     env.VERBOSE_INFO_LOGS = "1";
+  }
+
+  if (options.postToConvex) {
+    env.POST_TO_CONVEX = "1";
   }
 
   env.LOCAL_RESULTS = LOCAL_RESULTS_FILE;
@@ -285,6 +294,9 @@ async function runEvals(options: RunOptions): Promise<void> {
   console.log(`  Filter: ${options.filter || "(all)"}`);
   console.log(
     `  Braintrust: ${options.disableBraintrust ? "disabled" : "enabled"}`,
+  );
+  console.log(
+    `  Post to Convex: ${options.postToConvex ? "yes" : "no"}${options.postToConvex && !isConvexPostingConfigured() ? " (⚠️  CONVEX_EVAL_ENDPOINT or CONVEX_AUTH_TOKEN not set)" : ""}`,
   );
   console.log(`  Verbose: ${options.verbose ? "yes" : "no"}`);
   console.log("");
@@ -438,19 +450,28 @@ async function selectModels(): Promise<SelectResult<string[]>> {
 }
 
 async function selectOptions(): Promise<
-  SelectResult<{ useBraintrust: boolean; verbose: boolean }>
+  SelectResult<{ useBraintrust: boolean; verbose: boolean; postToConvex: boolean }>
 > {
   const useBraintrust = await confirm({
     message: "Send results to Braintrust?",
     default: false,
   });
 
+  // Only ask about Convex posting if the env vars are configured
+  let postToConvex = false;
+  if (isConvexPostingConfigured()) {
+    postToConvex = await confirm({
+      message: "Post results to Convex database?",
+      default: false,
+    });
+  }
+
   const verbose = await confirm({
     message: "Enable verbose logging?",
     default: true,
   });
 
-  return { useBraintrust, verbose };
+  return { useBraintrust, verbose, postToConvex };
 }
 
 async function interactiveMode(): Promise<void> {
@@ -549,6 +570,7 @@ async function interactiveMode(): Promise<void> {
         filter,
         disableBraintrust: !options.useBraintrust,
         verbose: options.verbose,
+        postToConvex: options.postToConvex,
       });
     } catch (error) {
       console.error("\nEval run failed:", error);
@@ -577,6 +599,7 @@ program
   .option("-c, --category <categories...>", "Run specific categories")
   .option("--failed", "Re-run only failed evals from last run")
   .option("--braintrust", "Send results to Braintrust")
+  .option("--post-to-convex", "Post results to Convex database")
   .option("-v, --verbose", "Enable verbose logging", true)
   .option("--no-verbose", "Disable verbose logging")
   .option("-o, --output <dir>", "Output directory for results")
@@ -613,6 +636,7 @@ program
       disableBraintrust: !options.braintrust,
       verbose: options.verbose,
       outputTempdir: options.output,
+      postToConvex: options.postToConvex || false,
     });
   });
 

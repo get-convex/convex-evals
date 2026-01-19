@@ -4,6 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "dev": "convex dev",
     "codegen": "bunx convex codegen --typecheck disable --init",
     "test": "vitest",
     "test:once": "vitest run",

@@ -13,8 +13,10 @@ CONVEX_AUTH_TOKEN = os.getenv("CONVEX_AUTH_TOKEN")
 
 
 def post_scores_to_convex(model_name: str, category_scores: dict, total_score: float) -> None:
-    # When Braintrust is disabled, also disable reporting to the Convex endpoint
-    if os.getenv("DISABLE_BRAINTRUST") == "1":
+    # Skip posting unless explicitly enabled or Braintrust is enabled
+    post_to_convex = os.getenv("POST_TO_CONVEX") == "1"
+    braintrust_enabled = os.getenv("DISABLE_BRAINTRUST") != "1"
+    if not post_to_convex and not braintrust_enabled:
         return
     payload = {"model": model_name, "scores": category_scores, "totalScore": total_score}
     if CONVEX_EVAL_ENDPOINT is not None and CONVEX_AUTH_TOKEN is not None:
@@ -265,6 +267,13 @@ def file_report_eval(evaluator, result: EvalResultWithSummary, verbose, jsonl):
     model_name = None
     if results and results[0].metadata and "model_name" in results[0].metadata:
         model_name = results[0].metadata["model_name"]
+
+    # Post scores to Convex if enabled
+    try:
+        category_scores = {cat: tests_pass_scores[cat] / num_tests[cat] for cat in num_tests}
+        post_scores_to_convex(model_name or "unknown", category_scores, overall_rate)
+    except Exception as e:
+        log_info(f"Error posting scores to Convex: {e}")
 
     log_info("")
     log_info("=== Eval Summary ===")
