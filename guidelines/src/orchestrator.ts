@@ -4,27 +4,7 @@ import { randomBytes } from 'crypto';
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 
-// Use Claude Opus for orchestration tasks
-const MODEL_ID = 'claude-opus-4-5';
-
-// Safety limit to prevent infinite loops in construction phase
-const MAX_CONSTRUCTION_ITERATIONS = 50;
-
-// Max parallel failure analyzers to prevent rate limiting
-const MAX_PARALLEL_ANALYZERS = 5;
-
-/**
- * Generate a human-readable, sortable run ID.
- * Format: YYYY-MM-DD_HH-mm-ss_xxxx (sorts alphabetically by date)
- */
-function generateRunId(): string {
-  const now = new Date();
-  const date = now.toISOString().slice(0, 10); // YYYY-MM-DD
-  const time = now.toTimeString().slice(0, 8).replace(/:/g, '-'); // HH-mm-ss
-  const random = randomBytes(2).toString('hex'); // 4 char hex
-  return `${date}_${time}_${random}`;
-}
-import type { LockFileStatus, FailureAnalysis } from './types.js';
+import type { LockFileStatus, FailureAnalysis, EvalStability } from './types.js';
 import { Logger } from './logger.js';
 import {
   readGuidelines,
@@ -34,15 +14,63 @@ import {
   writeProposal,
   getRunDir,
   countTokens,
+  getWorkingGuidelinesPath,
+  readCheckpoint,
+  writeCheckpoint,
 } from './guidelineStore.js';
 import { readLockFile, writeLockFile, deleteLockFile, isProcessRunning } from './lockFile.js';
 import { runEvals } from './evalRunner.js';
 import { analyzeFailure } from './failureAnalyser.js';
 
+// Use Claude Opus for orchestration tasks
+const MODEL_ID = 'claude-opus-4-5';
+
+// ============================================================================
+// Configuration Constants
+// ============================================================================
+
+// Safety limit to prevent infinite loops in construction phase
+const MAX_CONSTRUCTION_ITERATIONS = 50;
+
+// Max parallel failure analyzers to prevent rate limiting
+const MAX_PARALLEL_ANALYZERS = 5;
+
+// "Good enough" threshold - if we can't achieve 100%, accept this pass rate
+const MIN_PASS_RATE_THRESHOLD = 0.90; // 90%
+
+// Number of iterations at plateau before accepting as "good enough"
+const STABLE_PLATEAU_ITERATIONS = 5;
+
+// Maximum regression allowed before reverting to checkpoint
+const MAX_REGRESSION_ALLOWED = 2; // If we drop more than 2 passing evals, revert
+
+// Number of runs to determine eval stability (flaky detection)
+const STABILITY_CHECK_RUNS = 3;
+
+// ============================================================================
+// Types
+// ============================================================================
+
 export interface OrchestratorOptions {
   model: string;
   provider: string;
   filter?: string;
+}
+
+// ============================================================================
+// Main Entry Point
+// ============================================================================
+
+/**
+ * Generate a human-readable, sortable run ID.
+ * Format: YYYY-MM-DD_HH-mm-ss_xxxx (sorts alphabetically by date)
+ */
+function generateRunId(): string {
+  const now = new Date();
+  const date = now.toISOString().slice(0, 10);
+  const time = now.toTimeString().slice(0, 8).replace(/:/g, '-');
+  const random = randomBytes(2).toString('hex');
+  return `${date}_${time}_${random}`;
 }
 
 export async function runOrchestrator(options: OrchestratorOptions): Promise<void> {
@@ -68,19 +96,33 @@ export async function runOrchestrator(options: OrchestratorOptions): Promise<voi
     phase: 'startup',
     iteration: 0,
     updatedAt: new Date().toISOString(),
+    bestPassCount: 0,
+    bestIteration: 0,
+    stableIterations: 0,
   };
   writeLockFile(options.provider, options.model, lockStatus);
 
   try {
-    // Create run directory
+    // Create run directory for logs
     const runDir = getRunDir(options.provider, options.model, runId);
     mkdirSync(join(runDir, 'logs'), { recursive: true });
 
-    // Copy committed guidelines to working guidelines
+    // Initialize working guidelines from committed (if exists) or checkpoint (if exists)
     const committedGuidelines = readGuidelines(options.provider, options.model);
-    writeWorkingGuidelines(options.provider, options.model, runId, committedGuidelines);
+    const checkpointGuidelines = readCheckpoint(options.provider, options.model);
+    const existingWorking = readWorkingGuidelines(options.provider, options.model);
 
-    logger.info(`Starting with ${committedGuidelines ? 'existing' : 'empty'} guidelines`);
+    // Priority: existing working > checkpoint > committed > empty
+    const startingGuidelines = existingWorking || checkpointGuidelines || committedGuidelines;
+    
+    if (!existingWorking) {
+      writeWorkingGuidelines(options.provider, options.model, startingGuidelines);
+    }
+
+    const source = existingWorking ? 'existing working' : 
+                   checkpointGuidelines ? 'checkpoint' : 
+                   committedGuidelines ? 'committed' : 'empty';
+    logger.info(`Starting with ${source} guidelines (${countTokens(startingGuidelines)} tokens)`);
 
     // Begin construction phase
     await constructionPhase(options, runId, logger);
@@ -104,6 +146,10 @@ function setupLogger(provider: string, model: string, runId: string): Logger {
   return new Logger(logPath);
 }
 
+// ============================================================================
+// Construction Phase
+// ============================================================================
+
 async function constructionPhase(
   options: OrchestratorOptions,
   runId: string,
@@ -114,10 +160,14 @@ async function constructionPhase(
   const lockStatus = readLockFile(options.provider, options.model)!;
   lockStatus.phase = 'construction';
   lockStatus.iteration = 0;
+  lockStatus.bestPassCount = 0;
+  lockStatus.bestIteration = 0;
+  lockStatus.stableIterations = 0;
   lockStatus.updatedAt = new Date().toISOString();
   writeLockFile(options.provider, options.model, lockStatus);
 
   let iteration = 0;
+  let previousPassCount = 0;
 
   while (iteration < MAX_CONSTRUCTION_ITERATIONS) {
     iteration++;
@@ -128,11 +178,8 @@ async function constructionPhase(
     lockStatus.updatedAt = new Date().toISOString();
     writeLockFile(options.provider, options.model, lockStatus);
 
-    // Run evals with working guidelines
-    const workingGuidelinesPath = join(
-      getRunDir(options.provider, options.model, runId),
-      'working_guidelines.txt'
-    );
+    // Run evals with working guidelines (at model level, not run level)
+    const workingGuidelinesPath = getWorkingGuidelinesPath(options.provider, options.model);
 
     const result = await runEvals({
       model: options.model,
@@ -153,26 +200,88 @@ async function constructionPhase(
       failed: result.failed,
       total: result.total,
     };
-    lockStatus.updatedAt = new Date().toISOString();
-    writeLockFile(options.provider, options.model, lockStatus);
 
+    // ========================================================================
+    // Check for 100% pass rate
+    // ========================================================================
     if (result.failed === 0) {
       logger.step('All evals passed! Running reliability check (3x)...');
       const allPass = await reliabilityCheck(options, runId, logger, workingGuidelinesPath);
 
       if (allPass) {
         logger.step('Reliability check passed! Copying to committed location.');
-        const workingGuidelines = readWorkingGuidelines(options.provider, options.model, runId);
+        const workingGuidelines = readWorkingGuidelines(options.provider, options.model);
         writeGuidelines(options.provider, options.model, workingGuidelines);
+        writeCheckpoint(options.provider, options.model, workingGuidelines);
         return;
       }
 
       logger.info('Reliability check failed, continuing construction');
     }
 
-    // Analyze failures with controlled parallelism
+    // ========================================================================
+    // Check for regression - revert to checkpoint if we dropped too much
+    // ========================================================================
+    if (result.passed < previousPassCount - MAX_REGRESSION_ALLOWED) {
+      const checkpoint = readCheckpoint(options.provider, options.model);
+      if (checkpoint) {
+        logger.warn(`Regression detected! Dropped from ${previousPassCount} to ${result.passed}. Reverting to checkpoint.`);
+        writeWorkingGuidelines(options.provider, options.model, checkpoint);
+        previousPassCount = lockStatus.bestPassCount ?? 0;
+        continue; // Skip this iteration's analysis, retry with checkpoint
+      }
+    }
+
+    // ========================================================================
+    // Track best result and update checkpoint
+    // ========================================================================
+    const bestPassCount = lockStatus.bestPassCount ?? 0;
+    if (result.passed > bestPassCount) {
+      logger.info(`New best: ${result.passed} passing (previous: ${bestPassCount})`);
+      lockStatus.bestPassCount = result.passed;
+      lockStatus.bestIteration = iteration;
+      lockStatus.stableIterations = 1;
+      
+      // Save checkpoint
+      const currentGuidelines = readWorkingGuidelines(options.provider, options.model);
+      writeCheckpoint(options.provider, options.model, currentGuidelines);
+    } else if (result.passed === bestPassCount) {
+      lockStatus.stableIterations = (lockStatus.stableIterations ?? 0) + 1;
+    } else {
+      lockStatus.stableIterations = 0;
+    }
+
+    lockStatus.updatedAt = new Date().toISOString();
+    writeLockFile(options.provider, options.model, lockStatus);
+
+    // ========================================================================
+    // Check for "good enough" plateau
+    // ========================================================================
+    const passRate = result.passed / result.total;
+    const stableIterations = lockStatus.stableIterations ?? 0;
+
+    if (passRate >= MIN_PASS_RATE_THRESHOLD && stableIterations >= STABLE_PLATEAU_ITERATIONS) {
+      logger.step(
+        `Reached stable plateau at ${(passRate * 100).toFixed(1)}% ` +
+        `(${result.passed}/${result.total}) for ${stableIterations} iterations. ` +
+        `Accepting as good enough.`
+      );
+      const workingGuidelines = readWorkingGuidelines(options.provider, options.model);
+      writeGuidelines(options.provider, options.model, workingGuidelines);
+      return;
+    }
+
+    previousPassCount = result.passed;
+
+    // ========================================================================
+    // Identify consistently failing evals (ignore flaky ones for now)
+    // ========================================================================
     const failedEvals = result.results.filter(r => !r.passed);
-    logger.step(`Analyzing ${failedEvals.length} failures (max 5 parallel)`);
+    
+    // Only analyze if we have failures
+    if (failedEvals.length === 0) continue;
+
+    logger.step(`Analyzing ${failedEvals.length} failures (max ${MAX_PARALLEL_ANALYZERS} parallel)`);
     lockStatus.currentAction = `analyzing ${failedEvals.length} failures`;
     lockStatus.updatedAt = new Date().toISOString();
     writeLockFile(options.provider, options.model, lockStatus);
@@ -189,32 +298,63 @@ async function constructionPhase(
 
     // Log each analysis result
     for (const analysis of analyses) {
-      logger.info(`Analysis result`, {
+      logger.info('Analysis result', {
         confidence: analysis.confidence,
-        issue: analysis.analysis.slice(0, 200) + (analysis.analysis.length > 200 ? '...' : ''),
-        suggestedGuideline: analysis.suggestedGuideline.slice(0, 150) + (analysis.suggestedGuideline.length > 150 ? '...' : ''),
+        issue: truncate(analysis.analysis, 200),
+        suggestedGuideline: truncate(analysis.suggestedGuideline, 150),
       });
     }
 
-    // Incorporate all suggestions at once - let the model deduplicate and prioritize
-    logger.step(`Incorporating ${analyses.length} guideline suggestions`);
+    // Filter to high/medium confidence only
+    const goodAnalyses = analyses.filter(a => a.confidence !== 'low');
+    if (goodAnalyses.length === 0) {
+      logger.info('No high/medium confidence suggestions, skipping incorporation');
+      continue;
+    }
+
+    // Incorporate suggestions
+    logger.step(`Incorporating ${goodAnalyses.length} guideline suggestions (filtered from ${analyses.length})`);
     lockStatus.currentAction = 'incorporating suggestions';
     lockStatus.updatedAt = new Date().toISOString();
     writeLockFile(options.provider, options.model, lockStatus);
 
-    const currentGuidelines = readWorkingGuidelines(options.provider, options.model, runId);
-    const updatedGuidelines = await incorporateSuggestions(currentGuidelines, analyses, logger);
+    const currentGuidelines = readWorkingGuidelines(options.provider, options.model);
+    const updatedGuidelines = await incorporateSuggestions(currentGuidelines, goodAnalyses, logger);
 
-    writeWorkingGuidelines(options.provider, options.model, runId, updatedGuidelines);
+    writeWorkingGuidelines(options.provider, options.model, updatedGuidelines);
 
     logger.info(`Updated guidelines (${countTokens(updatedGuidelines)} tokens)`);
   }
 
+  // ========================================================================
+  // Max iterations reached - check if we should accept current state
+  // ========================================================================
+  const finalResult = lockStatus.lastEvalResult;
+  if (finalResult) {
+    const passRate = finalResult.passed / finalResult.total;
+    
+    if (passRate >= MIN_PASS_RATE_THRESHOLD) {
+      logger.step(
+        `Max iterations reached. Accepting ${(passRate * 100).toFixed(1)}% pass rate ` +
+        `(${finalResult.passed}/${finalResult.total}) as good enough.`
+      );
+      const workingGuidelines = readWorkingGuidelines(options.provider, options.model);
+      writeGuidelines(options.provider, options.model, workingGuidelines);
+      return;
+    }
+  }
+
   throw new Error(
     `Construction phase failed after ${MAX_CONSTRUCTION_ITERATIONS} iterations. ` +
-      `Last result: ${lockStatus.lastEvalResult?.passed}/${lockStatus.lastEvalResult?.total} passing`
+    `Best result: ${lockStatus.bestPassCount}/${lockStatus.lastEvalResult?.total ?? '?'} passing ` +
+    `(${((lockStatus.bestPassCount ?? 0) / (lockStatus.lastEvalResult?.total ?? 1) * 100).toFixed(1)}%). ` +
+    `Required: ${(MIN_PASS_RATE_THRESHOLD * 100).toFixed(0)}%`
   );
 }
+
+// ============================================================================
+// Reliability Check
+// ============================================================================
 
 async function reliabilityCheck(
   options: OrchestratorOptions,
@@ -241,6 +381,10 @@ async function reliabilityCheck(
 
   return true;
 }
+
+// ============================================================================
+// Refinement Phase
+// ============================================================================
 
 async function refinementPhase(
   options: OrchestratorOptions,
@@ -295,11 +439,10 @@ async function refinementPhase(
       logger.step(`Proposal ${proposalNum} passed! Committing.`);
       writeGuidelines(options.provider, options.model, proposal);
       failedAttempts = 0;
-      failedProposalSummaries.length = 0; // Reset on success
+      failedProposalSummaries.length = 0;
     } else {
       logger.info(`Proposal ${proposalNum} failed. Keeping for debugging.`);
       failedAttempts++;
-      // Track what was tried so we don't repeat it
       const summary = summarizeProposalDiff(currentGuidelines, proposal);
       failedProposalSummaries.push(summary);
     }
@@ -316,7 +459,6 @@ function summarizeProposalDiff(original: string, proposal: string): string {
   const proposalTokens = countTokens(proposal);
   const diff = originalTokens - proposalTokens;
 
-  // Simple heuristic summary - could be more sophisticated
   if (diff > 50) return `Removed ~${diff} tokens (too aggressive)`;
   if (diff < 0) return `Added ${-diff} tokens (made it longer)`;
   return `Changed ~${Math.abs(diff)} tokens (subtle change that broke evals)`;
@@ -348,6 +490,10 @@ async function testProposal(
   return true;
 }
 
+// ============================================================================
+// Guideline Incorporation (LLM-powered)
+// ============================================================================
+
 async function incorporateSuggestions(
   currentGuidelines: string,
   analyses: FailureAnalysis[],
@@ -370,15 +516,21 @@ ${analyses.map(formatAnalysis).join('\n\n')}
 ## Your Task
 
 Review the suggestions and current guidelines. Create an updated version that:
-- Prioritize HIGH confidence suggestions over medium/low
-- Deduplicates similar guidelines
-- Resolves any conflicts
+- Prioritizes HIGH confidence suggestions over medium/low
+- Deduplicates similar guidelines (merge if they cover the same concept)
+- Resolves any conflicts between guidelines
 - Keeps each guideline focused on one concept
-- Orders guidelines from most to least commonly needed
+- Orders guidelines by topic (imports, functions, database, etc.) then by importance
 - Minimizes token count while preserving effectiveness
-- Uses specific examples where helpful
+- Uses specific code examples where helpful
 - Each guideline should be 50-100 tokens
 - Consider the related legacy guidelines when crafting new ones
+
+IMPORTANT FORMATTING RULES:
+- Do NOT number the guidelines (no "1.", "2.", etc.)
+- Use markdown headers (##) to organize by topic
+- Use bullet points (-) for individual guidelines within each section
+- Keep the format clean and scannable
 
 Return ONLY the updated guidelines text, no commentary.`;
 
@@ -420,6 +572,11 @@ Propose ONE refinement to make these guidelines more concise while maintaining e
 Be conservative - only make changes you're confident won't break the evals.
 ${failedAttempts.length > 0 ? 'IMPORTANT: Avoid refinements similar to the failed attempts listed above.' : ''}
 
+IMPORTANT FORMATTING RULES:
+- Do NOT number the guidelines (no "1.", "2.", etc.)
+- Keep the same organizational structure (headers for topics)
+- Use bullet points (-) for individual guidelines
+
 Return ONLY the refined guidelines text, no commentary.`;
 
   const result = await generateText({
@@ -430,6 +587,10 @@ Return ONLY the refined guidelines text, no commentary.`;
 
   return result.text;
 }
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
 
 async function getLegacyGuidelines(): Promise<string> {
   const path = join(import.meta.dir, '..', '..', 'runner', 'models', 'guidelines.py');
@@ -460,7 +621,6 @@ async function runWithConcurrencyLimit<T, R>(
     }
   }
 
-  // Start workers up to maxConcurrency
   const workers = Array(Math.min(maxConcurrency, items.length))
     .fill(null)
     .map(() => worker());
@@ -469,3 +629,7 @@ async function runWithConcurrencyLimit<T, R>(
   return results;
 }
 
+function truncate(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  return text.slice(0, maxLength) + '...';
+}

@@ -36,6 +36,10 @@ export interface LockFileStatus {
   };
   currentAction?: string;
   updatedAt: string;
+  // Tracking for plateau detection and checkpointing
+  bestPassCount?: number;
+  bestIteration?: number;
+  stableIterations?: number;
 }
 
 export interface ModelStatus {
@@ -53,4 +57,27 @@ export interface RunOptions {
   runId: string;
   filter?: string;
   guidelinesPath: string;
+}
+
+/**
+ * Tracks eval stability across multiple runs to identify flaky vs deterministic failures.
+ */
+export interface EvalStability {
+  evalName: string;
+  passCount: number;
+  failCount: number;
+  // An eval is considered flaky if it has both passes and failures
+  isFlaky: boolean;
+  // An eval is consistently failing if it fails every time
+  isConsistentlyFailing: boolean;
+}
+
+/**
+ * Checkpoint data saved alongside guidelines to track progress.
+ */
+export interface CheckpointData {
+  passCount: number;
+  failCount: number;
+  iteration: number;
+  timestamp: string;
 }

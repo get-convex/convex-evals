@@ -22,20 +22,54 @@ const ANALYSIS_TIMEOUT_MS = 5 * 60 * 1000;
 // Max retries for structured output parsing failures
 const MAX_RETRIES = 3;
 
+// Maximum characters per file content to prevent token limit issues
+const MAX_FILE_CHARS = 15000;
+
+// Maximum characters for run log (usually very long)
+const MAX_LOG_CHARS = 10000;
+
+// Maximum characters for legacy guidelines
+const MAX_LEGACY_CHARS = 20000;
+
+/**
+ * Truncate content to a maximum length, keeping both start and end for context.
+ * Shows first half and last half with a marker in between.
+ */
+function truncateContent(content: string, maxChars: number): string {
+  if (content.length <= maxChars) return content;
+  
+  const halfSize = Math.floor(maxChars / 2) - 50; // Leave room for truncation marker
+  const start = content.slice(0, halfSize);
+  const end = content.slice(-halfSize);
+  const truncatedChars = content.length - maxChars;
+  
+  return `${start}\n\n... [${truncatedChars} characters truncated] ...\n\n${end}`;
+}
+
+/**
+ * For run logs, keep the end (where errors usually are) and trim the start.
+ */
+function truncateLog(content: string, maxChars: number): string {
+  if (content.length <= maxChars) return content;
+  
+  const truncatedChars = content.length - maxChars;
+  return `... [${truncatedChars} characters truncated from start] ...\n\n${content.slice(-maxChars)}`;
+}
+
 export async function analyzeFailure(
   evalResult: EvalResult,
   legacyGuidelines: string
 ): Promise<FailureAnalysis> {
-  // Gather context
+  // Gather and truncate context to prevent token limit issues
   const taskContent = existsSync(evalResult.taskPath)
-    ? readFileSync(evalResult.taskPath, 'utf-8')
+    ? truncateContent(readFileSync(evalResult.taskPath, 'utf-8'), MAX_FILE_CHARS)
     : 'Task file not found';
 
   const expectedContent = evalResult.expectedFiles
     .map(file => {
       if (!existsSync(file)) return `${file}: File not found`;
       const content = readFileSync(file, 'utf-8');
-      return `=== ${file} ===\n${content}`;
+      return `=== ${file} ===\n${truncateContent(content, MAX_FILE_CHARS)}`;
     })
     .join('\n\n');
 
@@ -43,13 +77,16 @@ export async function analyzeFailure(
     .map(file => {
       if (!existsSync(file)) return `${file}: File not found`;
       const content = readFileSync(file, 'utf-8');
-      return `=== ${file} ===\n${content}`;
+      return `=== ${file} ===\n${truncateContent(content, MAX_FILE_CHARS)}`;
     })
     .join('\n\n');
 
   const runLog = existsSync(evalResult.runLogPath)
-    ? readFileSync(evalResult.runLogPath, 'utf-8')
+    ? truncateLog(readFileSync(evalResult.runLogPath, 'utf-8'), MAX_LOG_CHARS)
     : 'Run log not found';
+  
+  // Truncate legacy guidelines too
+  const truncatedLegacyGuidelines = truncateContent(legacyGuidelines, MAX_LEGACY_CHARS);
 
   // Web search tool for Convex docs lookup
   const webSearchTool = anthropic.tools.webSearch_20250305({
@@ -76,7 +113,7 @@ ${outputContent}
 ${runLog}
 
 ### Legacy Guidelines for Reference
-${legacyGuidelines}
+${truncatedLegacyGuidelines}
 
 ## Your Task
 

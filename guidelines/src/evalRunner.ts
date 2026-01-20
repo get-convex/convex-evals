@@ -70,15 +70,36 @@ function parseResults(resultsPath: string, outputDir: string): EvalRunResult {
   }
 
   const content = readFileSync(resultsPath, 'utf-8').trim();
-  const data = JSON.parse(content);
-
-  // Handle summary format with individual_results array
-  if (data.individual_results && Array.isArray(data.individual_results)) {
-    return parseSummaryFormat(data, outputDir);
+  
+  // Handle multi-line JSONL: the file may contain multiple JSON objects (one per run)
+  // We want the LAST one (most recent run)
+  const lines = content.split('\n').filter(line => line.trim());
+  
+  if (lines.length === 0) {
+    throw new Error(`Results file is empty: ${resultsPath}`);
+  }
+  
+  // Take the last line (most recent run results)
+  const lastLine = lines[lines.length - 1];
+  
+  let data: unknown;
+  try {
+    data = JSON.parse(lastLine);
+  } catch (err) {
+    throw new Error(`Failed to parse results JSON from ${resultsPath}: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // Fall back to JSONL format (multiple lines, each a separate result)
+  // Handle summary format with individual_results array
+  if (isObject(data) && 'individual_results' in data && Array.isArray(data.individual_results)) {
+    return parseSummaryFormat(data as unknown as SummaryResult, outputDir);
+  }
+
+  // Fall back to JSONL format (multiple lines, each a separate result - old braintrust format)
   return parseJsonlFormat(content, outputDir);
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 interface SummaryResult {

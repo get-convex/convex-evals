@@ -43,14 +43,43 @@ export function writeGuidelines(provider: string, model: string, content: string
   writeFileSync(path, content, 'utf-8');
 }
 
-export function readWorkingGuidelines(provider: string, model: string, runId: string): string {
-  const path = join(getRunDir(provider, model, runId), 'working_guidelines.txt');
+/**
+ * Working guidelines live at the model level (not per-run) and persist across runs.
+ * They are iterated on during construction phase.
+ */
+export function getWorkingGuidelinesPath(provider: string, model: string): string {
+  return join(getTmpModelDir(provider, model), 'working_guidelines.txt');
+}
+
+export function readWorkingGuidelines(provider: string, model: string): string {
+  const path = getWorkingGuidelinesPath(provider, model);
   if (!existsSync(path)) return '';
   return readFileSync(path, 'utf-8');
 }
 
-export function writeWorkingGuidelines(provider: string, model: string, runId: string, content: string): void {
-  const path = join(getRunDir(provider, model, runId), 'working_guidelines.txt');
+export function writeWorkingGuidelines(provider: string, model: string, content: string): void {
+  const path = getWorkingGuidelinesPath(provider, model);
+  const dir = dirname(path);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  writeFileSync(path, content, 'utf-8');
+}
+
+/**
+ * Checkpoint is a known-good version of guidelines that achieved the best pass rate.
+ * Used to revert if new changes cause regression.
+ */
+export function getCheckpointPath(provider: string, model: string): string {
+  return join(getTmpModelDir(provider, model), 'checkpoint_guidelines.txt');
+}
+
+export function readCheckpoint(provider: string, model: string): string {
+  const path = getCheckpointPath(provider, model);
+  if (!existsSync(path)) return '';
+  return readFileSync(path, 'utf-8');
+}
+
+export function writeCheckpoint(provider: string, model: string, content: string): void {
+  const path = getCheckpointPath(provider, model);
   const dir = dirname(path);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   writeFileSync(path, content, 'utf-8');

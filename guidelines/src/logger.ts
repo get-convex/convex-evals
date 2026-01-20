@@ -4,7 +4,7 @@ import { join } from 'path';
 export class Logger {
   constructor(private logPath: string) {}
 
-  log(level: 'info' | 'debug' | 'step' | 'error', message: string, data?: object) {
+  log(level: 'info' | 'debug' | 'step' | 'warn' | 'error', message: string, data?: object) {
     const timestamp = new Date().toISOString();
     const line = `[${timestamp}] [${level.toUpperCase()}] ${message}`;
 
@@ -25,6 +25,10 @@ export class Logger {
 
   step(message: string, data?: object) {
     this.log('step', message, data);
+  }
+
+  warn(message: string, data?: object) {
+    this.log('warn', message, data);
   }
 
   error(message: string, data?: object) {
