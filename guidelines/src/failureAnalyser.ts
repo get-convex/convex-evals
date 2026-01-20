@@ -16,6 +16,9 @@ const CONVEX_DOCS_DOMAINS = ['docs.convex.dev', 'stack.convex.dev'];
 // Use latest Claude Sonnet model
 const MODEL_ID = 'claude-sonnet-4-5-20250929';
 
+// Timeout for LLM analysis (5 minutes) - includes potential web search
+const ANALYSIS_TIMEOUT_MS = 5 * 60 * 1000;
+
 export async function analyzeFailure(
   evalResult: EvalResult,
   legacyGuidelines: string
@@ -87,19 +90,33 @@ Guidelines should be:
 - 50-100 tokens each
 - Not redundant with existing guidelines`;
 
-  const { output } = await generateText({
-    model: anthropic(MODEL_ID),
-    output: Output.object({ schema: analysisSchema }),
-    prompt,
-    tools: { web_search: webSearchTool },
-  });
+  // Add timeout with AbortController
+  const abortController = new AbortController();
+  const timeout = setTimeout(() => abortController.abort(), ANALYSIS_TIMEOUT_MS);
 
-  if (!output) throw new Error('Failed to generate analysis output');
+  try {
+    const { output } = await generateText({
+      model: anthropic(MODEL_ID),
+      output: Output.object({ schema: analysisSchema }),
+      prompt,
+      tools: { web_search: webSearchTool },
+      abortSignal: abortController.signal,
+    });
 
-  return {
-    analysis: output.analysis,
-    suggestedGuideline: output.suggestedGuideline,
-    confidence: output.confidence,
-    relatedLegacyGuidelines: output.relatedLegacyGuidelines,
-  };
+    if (!output) throw new Error(`Failed to generate analysis output for eval: ${evalResult.evalName}`);
+
+    return {
+      analysis: output.analysis,
+      suggestedGuideline: output.suggestedGuideline,
+      confidence: output.confidence,
+      relatedLegacyGuidelines: output.relatedLegacyGuidelines,
+    };
+  } catch (error) {
+    if (abortController.signal.aborted) {
+      throw new Error(`Analysis timed out after ${ANALYSIS_TIMEOUT_MS / 1000}s for eval: ${evalResult.evalName}`);
+    }
+    throw new Error(`Analysis failed for eval ${evalResult.evalName}: ${error}`);
+  } finally {
+    clearTimeout(timeout);
+  }
 }

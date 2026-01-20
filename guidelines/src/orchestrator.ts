@@ -1,12 +1,15 @@
 import { anthropic } from '@ai-sdk/anthropic';
-import { generateText, LanguageModel } from 'ai';
+import { generateText } from 'ai';
 import { randomUUID } from 'crypto';
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 
 // Use Claude Opus for orchestration tasks
 const MODEL_ID = 'claude-opus-4-5';
-import type { LockFileStatus } from './types.js';
+
+// Safety limit to prevent infinite loops in construction phase
+const MAX_CONSTRUCTION_ITERATIONS = 50;
+import type { LockFileStatus, FailureAnalysis } from './types.js';
 import { Logger } from './logger.js';
 import {
   readGuidelines,
@@ -101,9 +104,9 @@ async function constructionPhase(
 
   let iteration = 0;
 
-  while (true) {
+  while (iteration < MAX_CONSTRUCTION_ITERATIONS) {
     iteration++;
-    logger.step(`Construction iteration ${iteration}`);
+    logger.step(`Construction iteration ${iteration}/${MAX_CONSTRUCTION_ITERATIONS}`);
 
     lockStatus.iteration = iteration;
     lockStatus.currentAction = 'running evals';
@@ -171,16 +174,17 @@ async function constructionPhase(
     writeLockFile(options.provider, options.model, lockStatus);
 
     const currentGuidelines = readWorkingGuidelines(options.provider, options.model, runId);
-    const updatedGuidelines = await incorporateSuggestions(
-      currentGuidelines,
-      analyses.map(a => a.suggestedGuideline),
-      logger
-    );
+    const updatedGuidelines = await incorporateSuggestions(currentGuidelines, analyses, logger);
 
     writeWorkingGuidelines(options.provider, options.model, runId, updatedGuidelines);
 
     logger.info(`Updated guidelines (${countTokens(updatedGuidelines)} tokens)`);
   }
+
+  throw new Error(
+    `Construction phase failed after ${MAX_CONSTRUCTION_ITERATIONS} iterations. ` +
+      `Last result: ${lockStatus.lastEvalResult?.passed}/${lockStatus.lastEvalResult?.total} passing`
+  );
 }
 
 async function reliabilityCheck(
@@ -224,6 +228,7 @@ async function refinementPhase(
 
   let proposalNum = 0;
   let failedAttempts = 0;
+  const failedProposalSummaries: string[] = [];
 
   while (failedAttempts < 10) {
     proposalNum++;
@@ -234,9 +239,13 @@ async function refinementPhase(
     lockStatus.updatedAt = new Date().toISOString();
     writeLockFile(options.provider, options.model, lockStatus);
 
-    // Generate refinement proposal
+    // Generate refinement proposal with context about what already failed
     const currentGuidelines = readGuidelines(options.provider, options.model);
-    const proposal = await generateRefinementProposal(currentGuidelines, logger);
+    const proposal = await generateRefinementProposal(
+      currentGuidelines,
+      failedProposalSummaries,
+      logger
+    );
 
     writeProposal(options.provider, options.model, runId, proposalNum, proposal);
     logger.info(`Proposal ${proposalNum}: ${countTokens(proposal)} tokens`);
@@ -257,9 +266,13 @@ async function refinementPhase(
       logger.step(`Proposal ${proposalNum} passed! Committing.`);
       writeGuidelines(options.provider, options.model, proposal);
       failedAttempts = 0;
+      failedProposalSummaries.length = 0; // Reset on success
     } else {
       logger.info(`Proposal ${proposalNum} failed. Keeping for debugging.`);
       failedAttempts++;
+      // Track what was tried so we don't repeat it
+      const summary = summarizeProposalDiff(currentGuidelines, proposal);
+      failedProposalSummaries.push(summary);
     }
   }
 
@@ -267,6 +280,17 @@ async function refinementPhase(
   lockStatus.phase = 'complete';
   lockStatus.updatedAt = new Date().toISOString();
   writeLockFile(options.provider, options.model, lockStatus);
+}
+
+function summarizeProposalDiff(original: string, proposal: string): string {
+  const originalTokens = countTokens(original);
+  const proposalTokens = countTokens(proposal);
+  const diff = originalTokens - proposalTokens;
+
+  // Simple heuristic summary - could be more sophisticated
+  if (diff > 50) return `Removed ~${diff} tokens (too aggressive)`;
+  if (diff < 0) return `Added ${-diff} tokens (made it longer)`;
+  return `Changed ~${Math.abs(diff)} tokens (subtle change that broke evals)`;
 }
 
 async function testProposal(
@@ -297,20 +321,27 @@ async function testProposal(
 
 async function incorporateSuggestions(
   currentGuidelines: string,
-  suggestions: string[],
+  analyses: FailureAnalysis[],
   logger: Logger
 ): Promise<string> {
+  const formatAnalysis = (a: FailureAnalysis, i: number) =>
+    `### Suggestion ${i + 1} (confidence: ${a.confidence})
+**Analysis:** ${a.analysis}
+**Suggested Guideline:** ${a.suggestedGuideline}
+${a.relatedLegacyGuidelines.length > 0 ? `**Related Legacy Guidelines:** ${a.relatedLegacyGuidelines.join('; ')}` : ''}`;
+
   const prompt = `You are an expert at creating concise, effective guidelines for AI code generation.
 
 ## Current Guidelines
 ${currentGuidelines || 'None yet'}
 
-## New Suggestions
-${suggestions.map((s, i) => `${i + 1}. ${s}`).join('\n')}
+## New Suggestions from Failure Analysis
+${analyses.map(formatAnalysis).join('\n\n')}
 
 ## Your Task
 
 Review the suggestions and current guidelines. Create an updated version that:
+- Prioritize HIGH confidence suggestions over medium/low
 - Deduplicates similar guidelines
 - Resolves any conflicts
 - Keeps each guideline focused on one concept
@@ -318,11 +349,12 @@ Review the suggestions and current guidelines. Create an updated version that:
 - Minimizes token count while preserving effectiveness
 - Uses specific examples where helpful
 - Each guideline should be 50-100 tokens
+- Consider the related legacy guidelines when crafting new ones
 
 Return ONLY the updated guidelines text, no commentary.`;
 
   const result = await generateText({
-    model: anthropic(MODEL_ID) as LanguageModel,
+    model: anthropic(MODEL_ID),
     prompt,
     temperature: 0.7,
   });
@@ -332,13 +364,23 @@ Return ONLY the updated guidelines text, no commentary.`;
 
 async function generateRefinementProposal(
   currentGuidelines: string,
+  failedAttempts: string[],
   logger: Logger
 ): Promise<string> {
+  const failedAttemptsSection =
+    failedAttempts.length > 0
+      ? `
+## Previous Failed Refinement Attempts
+These refinements were tried but caused eval failures - avoid similar changes:
+${failedAttempts.map((f, i) => `${i + 1}. ${f}`).join('\n')}
+`
+      : '';
+
   const prompt = `You are an expert at refining guidelines for AI code generation.
 
 ## Current Guidelines
 ${currentGuidelines}
-
+${failedAttemptsSection}
 ## Your Task
 
 Propose ONE refinement to make these guidelines more concise while maintaining effectiveness:
@@ -347,11 +389,12 @@ Propose ONE refinement to make these guidelines more concise while maintaining e
 - Simplify wording while preserving meaning
 
 Be conservative - only make changes you're confident won't break the evals.
+${failedAttempts.length > 0 ? 'IMPORTANT: Avoid refinements similar to the failed attempts listed above.' : ''}
 
 Return ONLY the refined guidelines text, no commentary.`;
 
   const result = await generateText({
-    model: anthropic(MODEL_ID) as LanguageModel,
+    model: anthropic(MODEL_ID),
     prompt,
     temperature: 0.7,
   });

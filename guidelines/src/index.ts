@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { config } from 'dotenv';
 import { select, input, confirm } from '@inquirer/prompts';
 import { Command } from 'commander';
 import { readdirSync, existsSync, rmSync, statSync, readFileSync } from 'fs';
@@ -13,6 +14,9 @@ import {
 } from './guidelineStore.js';
 import { readLockFile, isProcessRunning } from './lockFile.js';
 import { runOrchestrator } from './orchestrator.js';
+
+// Load .env from the project root (two levels up from src/)
+config({ path: join(import.meta.dir, '..', '..', '.env') });
 
 interface ModelChoice {
   name: string;
@@ -356,23 +360,42 @@ function displayHistory(provider: string, model: string) {
 }
 
 function displayLogs(provider: string, model: string) {
+  const tmpDir = getTmpModelDir(provider, model);
+
+  // First check if there's an active run
   const lockFile = readLockFile(provider, model);
 
-  if (!lockFile) {
-    console.log(`\nNo active run for ${provider}/${model}\n`);
+  // Find the most recent run (whether active or completed)
+  let runId: string | null = null;
+
+  if (lockFile) {
+    // Use active run if exists
+    runId = lockFile.runId;
+  } else if (existsSync(tmpDir)) {
+    // Otherwise find most recent run directory
+    const runs = readdirSync(tmpDir)
+      .filter(name => name !== '.lock' && existsSync(join(tmpDir, name)) && statSync(join(tmpDir, name)).isDirectory())
+      .map(name => ({ name, mtime: statSync(join(tmpDir, name)).mtime }))
+      .sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+
+    if (runs.length > 0) runId = runs[0].name;
+  }
+
+  if (!runId) {
+    console.log(`\nNo runs found for ${provider}/${model}\n`);
     return;
   }
 
-  const logPath = join(getTmpModelDir(provider, model), lockFile.runId, 'logs', 'orchestrator.log');
+  const logPath = join(tmpDir, runId, 'logs', 'orchestrator.log');
 
   if (!existsSync(logPath)) {
     console.log(`\nLog file not found: ${logPath}\n`);
     return;
   }
 
-  const { readFileSync } = require('fs');
   const logs = readFileSync(logPath, 'utf-8');
-  console.log(`\n=== Logs for ${provider}/${model} (${lockFile.runId}) ===\n`);
+  const status = lockFile ? '(active)' : '(completed)';
+  console.log(`\n=== Logs for ${provider}/${model} ${status} - ${runId} ===\n`);
   console.log(logs);
 }
 
@@ -415,7 +438,44 @@ function cleanAll() {
   console.log('\nAll temp files cleaned\n');
 }
 
+function checkRequiredApiKeys(): { missing: string[]; warnings: string[] } {
+  const missing: string[] = [];
+  const warnings: string[] = [];
+
+  // Anthropic key is required for the failure analyser and orchestrator LLM calls
+  if (!process.env.ANTHROPIC_API_KEY) {
+    missing.push('ANTHROPIC_API_KEY (required for failure analysis and guideline generation)');
+  }
+
+  // Warn about common model provider keys that might be needed for evals
+  if (!process.env.OPENAI_API_KEY) {
+    warnings.push('OPENAI_API_KEY (needed if running evals for OpenAI models)');
+  }
+
+  return { missing, warnings };
+}
+
 async function startGeneration(provider: string, model: string, filter?: string) {
+  // Check for required API keys before starting
+  const { missing, warnings } = checkRequiredApiKeys();
+
+  if (missing.length > 0) {
+    console.error('\n❌ Missing required API keys:\n');
+    for (const key of missing) {
+      console.error(`   - ${key}`);
+    }
+    console.error('\nPlease set these environment variables and try again.\n');
+    throw new Error('Missing required API keys');
+  }
+
+  if (warnings.length > 0) {
+    console.log('\n⚠️  Optional API keys not set:\n');
+    for (const key of warnings) {
+      console.log(`   - ${key}`);
+    }
+    console.log();
+  }
+
   console.log(`\n🚀 Starting guideline generation for ${provider}/${model}\n`);
 
   try {
