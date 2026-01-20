@@ -1,6 +1,6 @@
 import { anthropic } from '@ai-sdk/anthropic';
 import { generateText } from 'ai';
-import { randomUUID } from 'crypto';
+import { randomBytes } from 'crypto';
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 
@@ -9,6 +9,18 @@ const MODEL_ID = 'claude-opus-4-5';
 
 // Safety limit to prevent infinite loops in construction phase
 const MAX_CONSTRUCTION_ITERATIONS = 50;
+
+/**
+ * Generate a human-readable, sortable run ID.
+ * Format: YYYY-MM-DD_HH-mm-ss_xxxx (sorts alphabetically by date)
+ */
+function generateRunId(): string {
+  const now = new Date();
+  const date = now.toISOString().slice(0, 10); // YYYY-MM-DD
+  const time = now.toTimeString().slice(0, 8).replace(/:/g, '-'); // HH-mm-ss
+  const random = randomBytes(2).toString('hex'); // 4 char hex
+  return `${date}_${time}_${random}`;
+}
 import type { LockFileStatus, FailureAnalysis } from './types.js';
 import { Logger } from './logger.js';
 import {
@@ -31,7 +43,7 @@ export interface OrchestratorOptions {
 }
 
 export async function runOrchestrator(options: OrchestratorOptions): Promise<void> {
-  const runId = randomUUID();
+  const runId = generateRunId();
   const logger = setupLogger(options.provider, options.model, runId);
 
   logger.step(`Starting orchestrator for ${options.provider}/${options.model}`);
