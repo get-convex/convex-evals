@@ -10,6 +10,9 @@ const MODEL_ID = 'claude-opus-4-5';
 // Safety limit to prevent infinite loops in construction phase
 const MAX_CONSTRUCTION_ITERATIONS = 50;
 
+// Max parallel failure analyzers to prevent rate limiting
+const MAX_PARALLEL_ANALYZERS = 5;
+
 /**
  * Generate a human-readable, sortable run ID.
  * Format: YYYY-MM-DD_HH-mm-ss_xxxx (sorts alphabetically by date)
@@ -167,20 +170,34 @@ async function constructionPhase(
       logger.info('Reliability check failed, continuing construction');
     }
 
-    // Analyze failures
-    logger.step(`Analyzing ${result.failed} failures`);
-    lockStatus.currentAction = 'analyzing failures';
+    // Analyze failures with controlled parallelism
+    const failedEvals = result.results.filter(r => !r.passed);
+    logger.step(`Analyzing ${failedEvals.length} failures (max 5 parallel)`);
+    lockStatus.currentAction = `analyzing ${failedEvals.length} failures`;
     lockStatus.updatedAt = new Date().toISOString();
     writeLockFile(options.provider, options.model, lockStatus);
 
-    const evalResult = result.results.filter(r => !r.passed);
     const legacyGuidelines = await getLegacyGuidelines();
-    const analyses = await Promise.all(
-      evalResult.map(evalItem => analyzeFailure(evalItem, legacyGuidelines))
+    const analyses = await runWithConcurrencyLimit(
+      failedEvals,
+      (evalItem) => analyzeFailure(evalItem, legacyGuidelines),
+      MAX_PARALLEL_ANALYZERS,
+      (evalItem, index) => {
+        logger.info(`Analyzing failure ${index + 1}/${failedEvals.length}: ${evalItem.evalName}`);
+      }
     );
 
-    // Incorporate suggestions
-    logger.step('Incorporating guideline suggestions');
+    // Log each analysis result
+    for (const analysis of analyses) {
+      logger.info(`Analysis result`, {
+        confidence: analysis.confidence,
+        issue: analysis.analysis.slice(0, 200) + (analysis.analysis.length > 200 ? '...' : ''),
+        suggestedGuideline: analysis.suggestedGuideline.slice(0, 150) + (analysis.suggestedGuideline.length > 150 ? '...' : ''),
+      });
+    }
+
+    // Incorporate all suggestions at once - let the model deduplicate and prioritize
+    logger.step(`Incorporating ${analyses.length} guideline suggestions`);
     lockStatus.currentAction = 'incorporating suggestions';
     lockStatus.updatedAt = new Date().toISOString();
     writeLockFile(options.provider, options.model, lockStatus);
@@ -421,3 +438,34 @@ async function getLegacyGuidelines(): Promise<string> {
   const { readFileSync } = await import('fs');
   return readFileSync(path, 'utf-8');
 }
+
+/**
+ * Run async tasks with a concurrency limit to prevent rate limiting.
+ */
+async function runWithConcurrencyLimit<T, R>(
+  items: T[],
+  fn: (item: T) => Promise<R>,
+  maxConcurrency: number,
+  onStart?: (item: T, index: number) => void
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let currentIndex = 0;
+
+  async function worker(): Promise<void> {
+    while (currentIndex < items.length) {
+      const index = currentIndex++;
+      const item = items[index];
+      onStart?.(item, index);
+      results[index] = await fn(item);
+    }
+  }
+
+  // Start workers up to maxConcurrency
+  const workers = Array(Math.min(maxConcurrency, items.length))
+    .fill(null)
+    .map(() => worker());
+
+  await Promise.all(workers);
+  return results;
+}
+

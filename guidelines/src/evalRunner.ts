@@ -69,9 +69,87 @@ function parseResults(resultsPath: string, outputDir: string): EvalRunResult {
     throw new Error(`Results file not found: ${resultsPath}`);
   }
 
-  const lines = readFileSync(resultsPath, 'utf-8')
-    .split('\n')
-    .filter(line => line.trim());
+  const content = readFileSync(resultsPath, 'utf-8').trim();
+  const data = JSON.parse(content);
+
+  // Handle summary format with individual_results array
+  if (data.individual_results && Array.isArray(data.individual_results)) {
+    return parseSummaryFormat(data, outputDir);
+  }
+
+  // Fall back to JSONL format (multiple lines, each a separate result)
+  return parseJsonlFormat(content, outputDir);
+}
+
+interface SummaryResult {
+  individual_results: Array<{
+    category: string;
+    name: string;
+    passed: boolean;
+    failure_reason: string | null;
+    directory_path: string;
+  }>;
+  run_stats: {
+    total_tests: number;
+    total_passed: number;
+    total_failed: number;
+  };
+}
+
+function parseSummaryFormat(data: SummaryResult, outputDir: string): EvalRunResult {
+  const results: EvalResult[] = [];
+
+  for (const item of data.individual_results) {
+    const evalName = `${item.category}/${item.name}`;
+    const evalDir = join(outputDir, 'output', item.directory_path.split('/').pop() ?? '', item.category, item.name);
+    
+    // Try multiple possible paths for eval output
+    const possibleDirs = [
+      join(outputDir, evalName),
+      item.directory_path,
+    ];
+    
+    let actualEvalDir = possibleDirs.find(d => existsSync(d)) ?? evalDir;
+
+    const taskPath = join(actualEvalDir, 'TASK.txt');
+    const runLogPath = join(actualEvalDir, 'run.log');
+
+    const expectedFiles: string[] = [];
+    const outputFiles: string[] = [];
+
+    if (existsSync(actualEvalDir)) {
+      const expectedDir = join(actualEvalDir, 'expected');
+      const outputDirPath = join(actualEvalDir, 'output');
+
+      if (existsSync(expectedDir)) {
+        expectedFiles.push(...readdirSync(expectedDir).map(f => join(expectedDir, f)));
+      }
+
+      if (existsSync(outputDirPath)) {
+        outputFiles.push(...getAllFiles(outputDirPath));
+      }
+    }
+
+    results.push({
+      evalName,
+      passed: item.passed,
+      expectedFiles,
+      outputFiles,
+      runLogPath,
+      taskPath,
+    });
+  }
+
+  return {
+    passed: data.run_stats.total_passed,
+    failed: data.run_stats.total_failed,
+    total: data.run_stats.total_tests,
+    results,
+  };
+}
+
+function parseJsonlFormat(content: string, outputDir: string): EvalRunResult {
+  const lines = content.split('\n').filter(line => line.trim());
 
   const results: EvalResult[] = [];
   let passed = 0;
@@ -85,12 +163,10 @@ function parseResults(resultsPath: string, outputDir: string): EvalRunResult {
     if (isPassed) passed++;
     else failed++;
 
-    // Find the eval output directory
     const evalDir = join(outputDir, evalName);
     const taskPath = join(evalDir, 'TASK.txt');
     const runLogPath = join(evalDir, 'run.log');
 
-    // Find expected and output files
     const expectedFiles: string[] = [];
     const outputFiles: string[] = [];
 
