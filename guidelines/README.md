@@ -36,8 +36,16 @@ flowchart TD
         CheckLegacy --> SuggestGuideline[Suggest guideline]
     end
 
+    subgraph incorporator [Incorporator Sub-Agent]
+        ReceiveAnalyses[Receive failure analyses] --> ReadHistory[Read iteration history]
+        ReadHistory --> ResearchDocs[Research Convex docs]
+        ResearchDocs --> SynthesizePatterns[Identify root causes]
+        SynthesizePatterns --> GenerateGuidelines[Generate updated guidelines]
+    end
+
     orchestrator --> analyser
-    analyser --> orchestrator
+    analyser --> incorporator
+    incorporator --> orchestrator
 ```
 
 ## Directory Structure
@@ -48,6 +56,8 @@ guidelines/
     index.ts              # Interactive CLI entry point
     orchestrator.ts       # Main orchestrator agent
     failureAnalyser.ts    # Failure analysis sub-agent
+    incorporator.ts       # Guideline incorporation sub-agent
+    iterationHistory.ts   # Iteration history tracking
     evalRunner.ts         # Wrapper to spawn Python eval runner
     guidelineStore.ts     # Read/write/merge guidelines
     lockFile.ts           # Lock file management
@@ -58,6 +68,7 @@ guidelines/
   tmp/                                    # GITIGNORED - local temp files
     {provider}_{model}/                   # One folder per model
       .lock                               # Lock file with status JSON
+      iteration_history.json              # Iteration history with eval-level results (persists across runs)
       working_guidelines.txt              # Current working copy (persists across runs)
       checkpoint_guidelines.txt           # Best-known-good checkpoint (for regression recovery)
       {runId}/                            # Each run gets unique folder (for debug history)
@@ -108,6 +119,24 @@ Only incorporate high/medium confidence suggestions from failure analysis. Low c
 
 Guidelines use markdown headers (##) for topics and bullet points (-) for individual guidelines, not numbered lists. This makes merging and deduplication easier.
 
+### 7. Incorporator Sub-Agent with Iteration History
+
+The incorporator is a dedicated sub-agent that synthesizes failure analyses into guidelines:
+
+- **Research capabilities**: Has web search access to Convex docs (like the failure analyser)
+- **Pattern recognition**: Groups failures by category and identifies root causes
+- **Iteration history**: Receives feedback on what changes worked or caused regressions in previous iterations
+- **Learning**: Can see which evals started passing or regressed after guideline changes
+- **History persistence**: Iteration history is saved in `tmp/{provider}_{model}/iteration_history.json` and persists across runs
+
+The incorporator receives:
+- Current guidelines
+- Failure analyses grouped by category (pagination, imports, storage, etc.)
+- Iteration history showing what changed and what outcomes resulted
+- Legacy guidelines for reference
+
+This enables the system to learn from past iterations and progressively improve guidelines based on what actually works.
+
 ## Configuration Constants
 
 ```typescript
@@ -124,6 +153,7 @@ MAX_REGRESSION_ALLOWED = 2           // Revert if we lose >2 passing evals
 
 - **Committed guidelines**: `guidelines/generated/{provider}_{model}_guidelines.txt` (checked into git)
 - **Lock file**: `guidelines/tmp/{provider}_{model}/.lock` (status JSON, persists across runs)
+- **Iteration history**: `guidelines/tmp/{provider}_{model}/iteration_history.json` (tracks eval-level results per iteration, persists across runs)
 - **Working guidelines**: `guidelines/tmp/{provider}_{model}/working_guidelines.txt` (persists across runs)
 - **Checkpoint**: `guidelines/tmp/{provider}_{model}/checkpoint_guidelines.txt` (best-known-good)
 - **Proposal files**: `guidelines/tmp/{provider}_{model}/{runId}/proposal_NNN.txt`
@@ -146,9 +176,11 @@ MAX_REGRESSION_ALLOWED = 2           // Revert if we lose >2 passing evals
 3. Check for regression → revert to checkpoint if dropped more than 2
 4. Update checkpoint if new best achieved
 5. Check for "good enough" plateau → commit if 90%+ for 5 iterations
-6. Analyze failures (high/medium confidence only)
-7. Incorporate suggestions
-8. Loop back to step 1
+6. Save iteration record with eval-level results to history
+7. Analyze failures (high/medium confidence only)
+8. Incorporate suggestions using incorporator sub-agent (with iteration history feedback)
+9. Update iteration record with guideline changes summary
+10. Loop back to step 1
 
 ### Refinement Phase
 

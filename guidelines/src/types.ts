@@ -81,3 +81,35 @@ export interface CheckpointData {
   iteration: number;
   timestamp: string;
 }
+
+/**
+ * Track per-eval results for an iteration
+ */
+export interface IterationRecord {
+  iteration: number;
+  runId: string;
+  timestamp: string;
+  passCount: number;
+  failCount: number;
+  evalResults: Record<string, boolean>; // evalName -> passed
+  guidelinesDiff?: string; // Summary of what changed
+}
+
+/**
+ * Full history for a model
+ */
+export interface IterationHistory {
+  iterations: IterationRecord[];
+}
+
+/**
+ * Computed feedback for the incorporator
+ */
+export interface IterationFeedback {
+  previousIteration: number;
+  currentIteration: number;
+  passCountDelta: number; // +3 means 3 more passing
+  evalsFlippedToPass: string[]; // Evals that started passing
+  evalsFlippedToFail: string[]; // Evals that regressed
+  changesMade: string; // What guidelines changed
+}

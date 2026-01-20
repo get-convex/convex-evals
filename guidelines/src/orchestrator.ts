@@ -4,7 +4,7 @@ import { randomBytes } from 'crypto';
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 
-import type { LockFileStatus, FailureAnalysis, EvalStability } from './types.js';
+import type { LockFileStatus, FailureAnalysis, EvalStability, IterationRecord } from './types.js';
 import { Logger } from './logger.js';
 import {
   readGuidelines,
@@ -21,6 +21,13 @@ import {
 import { readLockFile, writeLockFile, deleteLockFile, isProcessRunning } from './lockFile.js';
 import { runEvals } from './evalRunner.js';
 import { analyzeFailure } from './failureAnalyser.js';
+import { runIncorporator } from './incorporator.js';
+import {
+  readIterationHistory,
+  appendIterationRecord,
+  summarizeGuidelinesDiff,
+  updateLastIterationDiff,
+} from './iterationHistory.js';
 
 // Use Claude Opus for orchestration tasks
 const MODEL_ID = 'claude-opus-4-5';
@@ -63,12 +70,14 @@ export interface OrchestratorOptions {
 
 /**
  * Generate a human-readable, sortable run ID.
- * Format: YYYY-MM-DD_HH-mm-ss_xxxx (sorts alphabetically by date)
+ * Format: YYYY-MM-DD_HH-mm-ss_xxxx (sorts alphabetically by date/time, uses UTC)
  */
 function generateRunId(): string {
   const now = new Date();
-  const date = now.toISOString().slice(0, 10);
-  const time = now.toTimeString().slice(0, 8).replace(/:/g, '-');
+  // Use UTC consistently for proper alphabetical sorting
+  const iso = now.toISOString();
+  const date = iso.slice(0, 10); // YYYY-MM-DD
+  const time = iso.slice(11, 19).replace(/:/g, '-'); // HH-mm-ss (from HH:mm:ss)
   const random = randomBytes(2).toString('hex');
   return `${date}_${time}_${random}`;
 }
@@ -201,6 +210,22 @@ async function constructionPhase(
       total: result.total,
     };
 
+    // Save iteration record for history tracking
+    const evalResults: Record<string, boolean> = {};
+    for (const evalResult of result.results) {
+      evalResults[evalResult.evalName] = evalResult.passed;
+    }
+
+    const iterationRecord: IterationRecord = {
+      iteration,
+      runId,
+      timestamp: new Date().toISOString(),
+      passCount: result.passed,
+      failCount: result.failed,
+      evalResults,
+    };
+    appendIterationRecord(options.provider, options.model, iterationRecord);
+
     // ========================================================================
     // Check for 100% pass rate
     // ========================================================================
@@ -296,15 +321,6 @@ async function constructionPhase(
       }
     );
 
-    // Log each analysis result
-    for (const analysis of analyses) {
-      logger.info('Analysis result', {
-        confidence: analysis.confidence,
-        issue: truncate(analysis.analysis, 200),
-        suggestedGuideline: truncate(analysis.suggestedGuideline, 150),
-      });
-    }
-
     // Filter to high/medium confidence only
     const goodAnalyses = analyses.filter(a => a.confidence !== 'low');
     if (goodAnalyses.length === 0) {
@@ -312,18 +328,38 @@ async function constructionPhase(
       continue;
     }
 
-    // Incorporate suggestions
+    // Incorporate suggestions using the incorporator sub-agent
     logger.step(`Incorporating ${goodAnalyses.length} guideline suggestions (filtered from ${analyses.length})`);
     lockStatus.currentAction = 'incorporating suggestions';
     lockStatus.updatedAt = new Date().toISOString();
     writeLockFile(options.provider, options.model, lockStatus);
 
     const currentGuidelines = readWorkingGuidelines(options.provider, options.model);
-    const updatedGuidelines = await incorporateSuggestions(currentGuidelines, goodAnalyses, logger);
+    const history = readIterationHistory(options.provider, options.model);
+
+    // Prepare analyses with eval names for grouping
+    const analysesWithEvalNames = failedEvals
+      .map((evalItem, idx) => ({
+        evalName: evalItem.evalName,
+        analysis: analyses[idx],
+      }))
+      .filter((item) => item.analysis.confidence !== 'low');
+
+    const updatedGuidelines = await runIncorporator(
+      currentGuidelines,
+      analysesWithEvalNames,
+      history,
+      logger
+    );
+
+    // Update the iteration record with the diff summary
+    const diffSummary = summarizeGuidelinesDiff(currentGuidelines, updatedGuidelines);
+    updateLastIterationDiff(options.provider, options.model, diffSummary);
 
     writeWorkingGuidelines(options.provider, options.model, updatedGuidelines);
 
     logger.info(`Updated guidelines (${countTokens(updatedGuidelines)} tokens)`);
+    logger.info(`Guidelines diff: ${diffSummary}`);
   }
 
   // ========================================================================
@@ -491,57 +527,8 @@ async function testProposal(
 }
 
 // ============================================================================
-// Guideline Incorporation (LLM-powered)
+// Refinement Phase
 // ============================================================================
-
-async function incorporateSuggestions(
-  currentGuidelines: string,
-  analyses: FailureAnalysis[],
-  logger: Logger
-): Promise<string> {
-  const formatAnalysis = (a: FailureAnalysis, i: number) =>
-    `### Suggestion ${i + 1} (confidence: ${a.confidence})
-**Analysis:** ${a.analysis}
-**Suggested Guideline:** ${a.suggestedGuideline}
-${a.relatedLegacyGuidelines.length > 0 ? `**Related Legacy Guidelines:** ${a.relatedLegacyGuidelines.join('; ')}` : ''}`;
-
-  const prompt = `You are an expert at creating concise, effective guidelines for AI code generation.
-
-## Current Guidelines
-${currentGuidelines || 'None yet'}
-
-## New Suggestions from Failure Analysis
-${analyses.map(formatAnalysis).join('\n\n')}
-
-## Your Task
-
-Review the suggestions and current guidelines. Create an updated version that:
-- Prioritizes HIGH confidence suggestions over medium/low
-- Deduplicates similar guidelines (merge if they cover the same concept)
-- Resolves any conflicts between guidelines
-- Keeps each guideline focused on one concept
-- Orders guidelines by topic (imports, functions, database, etc.) then by importance
-- Minimizes token count while preserving effectiveness
-- Uses specific code examples where helpful
-- Each guideline should be 50-100 tokens
-- Consider the related legacy guidelines when crafting new ones
-
-IMPORTANT FORMATTING RULES:
-- Do NOT number the guidelines (no "1.", "2.", etc.)
-- Use markdown headers (##) to organize by topic
-- Use bullet points (-) for individual guidelines within each section
-- Keep the format clean and scannable
-
-Return ONLY the updated guidelines text, no commentary.`;
-
-  const result = await generateText({
-    model: anthropic(MODEL_ID),
-    prompt,
-    temperature: 0.7,
-  });
-
-  return result.text;
-}
 
 async function generateRefinementProposal(
   currentGuidelines: string,

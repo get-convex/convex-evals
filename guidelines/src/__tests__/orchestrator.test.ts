@@ -220,44 +220,102 @@ describe('orchestrator helpers', () => {
     });
   });
 
-  describe('incorporateSuggestions prompt building', () => {
-    test('should format analyses correctly', () => {
+  describe('iteration history integration', () => {
+    test('should create iteration record structure', () => {
+      const evalResults = {
+        '000-fundamentals/003-crons': false,
+        '000-fundamentals/008-helper_fns': true,
+        '002-queries/015-pagination': false,
+      };
+
+      const record = {
+        iteration: 1,
+        runId: 'test-run-1',
+        timestamp: '2026-01-20T10:00:00Z',
+        passCount: 1,
+        failCount: 2,
+        evalResults,
+      };
+
+      expect(record.iteration).toBe(1);
+      expect(Object.keys(record.evalResults).length).toBe(3);
+      expect(record.passCount + record.failCount).toBe(3);
+    });
+
+    test('should map eval results to iteration record', () => {
+      const evalResults: Record<string, boolean> = {};
+      const mockEvalResults = [
+        { evalName: 'eval1', passed: true },
+        { evalName: 'eval2', passed: false },
+        { evalName: 'eval3', passed: true },
+      ];
+
+      for (const result of mockEvalResults) {
+        evalResults[result.evalName] = result.passed;
+      }
+
+      expect(evalResults['eval1']).toBe(true);
+      expect(evalResults['eval2']).toBe(false);
+      expect(evalResults['eval3']).toBe(true);
+    });
+
+    test('should prepare analyses with eval names for incorporator', () => {
+      const failedEvals = [
+        { evalName: '002-queries/015-pagination', passed: false },
+        { evalName: '000-fundamentals/008-helper_fns', passed: false },
+      ];
+
       const analyses: FailureAnalysis[] = [
         {
-          analysis: 'Model used array instead of cronJobs()',
-          suggestedGuideline: 'Always use cronJobs() for cron definitions',
+          analysis: 'Pagination error',
+          suggestedGuideline: 'Use .paginate()',
           confidence: 'high',
-          relatedLegacyGuidelines: ['Use cronJobs() helper'],
+          relatedLegacyGuidelines: [],
         },
         {
-          analysis: 'Missing import statement',
-          suggestedGuideline: 'Import cronJobs from convex/server',
-          confidence: 'medium',
+          analysis: 'Import error',
+          suggestedGuideline: 'Import from correct location',
+          confidence: 'high',
           relatedLegacyGuidelines: [],
         },
       ];
 
-      const formatAnalysis = (a: FailureAnalysis, i: number) =>
-        `### Suggestion ${i + 1} (confidence: ${a.confidence})
-**Analysis:** ${a.analysis}
-**Suggested Guideline:** ${a.suggestedGuideline}
-${a.relatedLegacyGuidelines.length > 0 ? `**Related Legacy Guidelines:** ${a.relatedLegacyGuidelines.join('; ')}` : ''}`;
+      const analysesWithEvalNames = failedEvals.map((evalItem, idx) => ({
+        evalName: evalItem.evalName,
+        analysis: analyses[idx],
+      }));
 
-      const formatted = analyses.map(formatAnalysis).join('\n\n');
-
-      expect(formatted).toContain('### Suggestion 1 (confidence: high)');
-      expect(formatted).toContain('### Suggestion 2 (confidence: medium)');
-      expect(formatted).toContain('**Analysis:** Model used array instead of cronJobs()');
-      expect(formatted).toContain('**Related Legacy Guidelines:** Use cronJobs() helper');
+      expect(analysesWithEvalNames.length).toBe(2);
+      expect(analysesWithEvalNames[0].evalName).toBe('002-queries/015-pagination');
+      expect(analysesWithEvalNames[0].analysis.confidence).toBe('high');
+      expect(analysesWithEvalNames[1].evalName).toBe('000-fundamentals/008-helper_fns');
     });
 
-    test('should prioritize high confidence suggestions in prompt', () => {
-      const prompt = `Review the suggestions and current guidelines. Create an updated version that:
-- Prioritize HIGH confidence suggestions over medium/low
-- Deduplicates similar guidelines`;
+    test('should filter low confidence analyses', () => {
+      const analyses: FailureAnalysis[] = [
+        {
+          analysis: 'High confidence issue',
+          suggestedGuideline: 'Fix it',
+          confidence: 'high',
+          relatedLegacyGuidelines: [],
+        },
+        {
+          analysis: 'Medium confidence issue',
+          suggestedGuideline: 'Maybe fix it',
+          confidence: 'medium',
+          relatedLegacyGuidelines: [],
+        },
+        {
+          analysis: 'Low confidence issue',
+          suggestedGuideline: 'Uncertain fix',
+          confidence: 'low',
+          relatedLegacyGuidelines: [],
+        },
+      ];
 
-      expect(prompt).toContain('Prioritize HIGH confidence');
-      expect(prompt).toContain('Deduplicates');
+      const goodAnalyses = analyses.filter(a => a.confidence !== 'low');
+      expect(goodAnalyses.length).toBe(2);
+      expect(goodAnalyses.every(a => a.confidence !== 'low')).toBe(true);
     });
   });
 });
