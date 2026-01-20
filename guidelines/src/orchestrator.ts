@@ -1,8 +1,11 @@
 import { anthropic } from '@ai-sdk/anthropic';
-import { generateText } from 'ai';
+import { generateText, LanguageModel } from 'ai';
 import { randomUUID } from 'crypto';
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
+
+// Use Claude Opus for orchestration tasks
+const MODEL_ID = 'claude-opus-4-5';
 import type { LockFileStatus } from './types.js';
 import { Logger } from './logger.js';
 import {
@@ -319,7 +322,7 @@ Review the suggestions and current guidelines. Create an updated version that:
 Return ONLY the updated guidelines text, no commentary.`;
 
   const result = await generateText({
-    model: anthropic('claude-sonnet-4-20250514') as any,
+    model: anthropic(MODEL_ID) as LanguageModel,
     prompt,
     temperature: 0.7,
   });
@@ -348,7 +351,7 @@ Be conservative - only make changes you're confident won't break the evals.
 Return ONLY the refined guidelines text, no commentary.`;
 
   const result = await generateText({
-    model: anthropic('claude-sonnet-4-20250514') as any,
+    model: anthropic(MODEL_ID) as LanguageModel,
     prompt,
     temperature: 0.7,
   });
