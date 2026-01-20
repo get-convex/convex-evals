@@ -6,6 +6,10 @@
   "engines": {
     "bun": ">=1.2"
   },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "start": "bun run src/index.ts"
+  },
   "dependencies": {
     "ai": "^5.0.76",
     "@ai-sdk/anthropic": "^1.0.0",

@@ -13,6 +13,17 @@ def should_skip_guidelines() -> bool:
     return os.getenv("EVALS_EXPERIMENT") == "no_guidelines"
 
 
+def get_guidelines_content() -> str:
+    """Get guidelines content from custom file or default."""
+    custom_path = os.getenv("CUSTOM_GUIDELINES_PATH")
+    if custom_path and os.path.exists(custom_path):
+        with open(custom_path, "r") as f:
+            return f.read()
+    if should_skip_guidelines():
+        return ""
+    return "".join(render_guidelines(CONVEX_GUIDELINES))
+
+
 class Model(ConvexCodegenModel):
     def __init__(self, api_key: str, model: ModelTemplate):
         self.model = model
@@ -149,8 +160,9 @@ def render_prompt(chain_of_thought: bool, task_description: str):
     yield "- Ensure your code is clear, efficient, concise, and innovative.\n"
     yield "- Maintain a friendly and approachable tone in any comments or documentation.\n\n"
 
-    if not should_skip_guidelines():
-        yield from render_guidelines(CONVEX_GUIDELINES)
+    guidelines_content = get_guidelines_content()
+    if guidelines_content:
+        yield guidelines_content
         yield "\n"
 
     yield "\n# File Structure\n"

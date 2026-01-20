@@ -1,0 +1,12 @@
+# Generated Guidelines
+
+This directory contains the final, committed guidelines for each model.
+
+Guidelines are named: `{provider}_{model}_guidelines.txt`
+
+Examples:
+- `anthropic_claude-sonnet-4-5_guidelines.txt`
+- `openai_gpt-5_guidelines.txt`
+- `google_gemini-2.5-pro_guidelines.txt`
+
+These files are committed to git and reviewed by humans before committing.
