@@ -8,6 +8,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "test": "bun test",
     "start": "bun run src/index.ts"
   },
   "dependencies": {

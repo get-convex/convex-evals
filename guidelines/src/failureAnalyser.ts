@@ -19,6 +19,9 @@ const MODEL_ID = 'claude-sonnet-4-5-20250929';
 // Timeout for LLM analysis (5 minutes) - includes potential web search
 const ANALYSIS_TIMEOUT_MS = 5 * 60 * 1000;
 
+// Max retries for structured output parsing failures
+const MAX_RETRIES = 3;
+
 export async function analyzeFailure(
   evalResult: EvalResult,
   legacyGuidelines: string
@@ -90,33 +93,59 @@ Guidelines should be:
 - 50-100 tokens each
 - Not redundant with existing guidelines`;
 
-  // Add timeout with AbortController
-  const abortController = new AbortController();
-  const timeout = setTimeout(() => abortController.abort(), ANALYSIS_TIMEOUT_MS);
+  // Retry loop for structured output failures
+  let lastError: Error | null = null;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const abortController = new AbortController();
+    const timeout = setTimeout(() => abortController.abort(), ANALYSIS_TIMEOUT_MS);
 
-  try {
-    const { output } = await generateText({
-      model: anthropic(MODEL_ID),
-      output: Output.object({ schema: analysisSchema }),
-      prompt,
-      tools: { web_search: webSearchTool },
-      abortSignal: abortController.signal,
-    });
+    try {
+      const { output } = await generateText({
+        model: anthropic(MODEL_ID),
+        output: Output.object({ schema: analysisSchema }),
+        prompt,
+        tools: { web_search: webSearchTool },
+        abortSignal: abortController.signal,
+      });
 
-    if (!output) throw new Error(`Failed to generate analysis output for eval: ${evalResult.evalName}`);
+      if (!output) {
+        lastError = new Error(`No output generated on attempt ${attempt}`);
+        continue;
+      }
 
-    return {
-      analysis: output.analysis,
-      suggestedGuideline: output.suggestedGuideline,
-      confidence: output.confidence,
-      relatedLegacyGuidelines: output.relatedLegacyGuidelines,
-    };
-  } catch (error) {
-    if (abortController.signal.aborted) {
-      throw new Error(`Analysis timed out after ${ANALYSIS_TIMEOUT_MS / 1000}s for eval: ${evalResult.evalName}`);
+      return {
+        analysis: output.analysis,
+        suggestedGuideline: output.suggestedGuideline,
+        confidence: output.confidence,
+        relatedLegacyGuidelines: output.relatedLegacyGuidelines,
+      };
+    } catch (error) {
+      clearTimeout(timeout);
+      
+      if (abortController.signal.aborted) {
+        lastError = new Error(`Analysis timed out after ${ANALYSIS_TIMEOUT_MS / 1000}s`);
+        break; // Don't retry timeouts
+      }
+      
+      lastError = error instanceof Error ? error : new Error(String(error));
+      
+      // Only retry on parsing errors, not other failures
+      const isParsingError = String(error).includes('NoObjectGenerated') || 
+                             String(error).includes('could not parse');
+      if (!isParsingError) break;
+      
+      console.warn(`[${evalResult.evalName}] Retry ${attempt}/${MAX_RETRIES} after parsing error`);
+    } finally {
+      clearTimeout(timeout);
     }
-    throw new Error(`Analysis failed for eval ${evalResult.evalName}: ${error}`);
-  } finally {
-    clearTimeout(timeout);
   }
+
+  // Return a low-confidence fallback analysis instead of crashing
+  console.warn(`[${evalResult.evalName}] All retries failed, returning fallback analysis`);
+  return {
+    analysis: `Analysis failed after ${MAX_RETRIES} attempts: ${lastError?.message ?? 'Unknown error'}. Manual review recommended for eval: ${evalResult.evalName}`,
+    suggestedGuideline: `Review and fix the issue in eval ${evalResult.evalName} - automatic analysis could not determine the root cause.`,
+    confidence: 'low',
+    relatedLegacyGuidelines: [],
+  };
 }
