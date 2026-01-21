@@ -1,15 +1,71 @@
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
-import { mkdirSync, writeFileSync, rmSync, existsSync } from 'fs';
+import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, copyFileSync } from 'fs';
 import { join } from 'path';
 
-// We'll test the internal functions directly since the MCP server requires more setup
-// First, let's extract the testable logic into separate functions
+// Import the exported functions from tools.ts
+import {
+  toGitBashPath,
+  parseResultsSummary,
+  classifyErrorPattern,
+  createOrchestratorTools,
+} from './tools';
 
-// Import the path conversion helper
-function toGitBashPath(windowsPath: string): string {
-  let path = windowsPath.replace(/\\/g, '/');
-  path = path.replace(/^([A-Za-z]):/, (_, drive) => `/${drive.toLowerCase()}`);
-  return path;
+// Test fixtures directory
+const TEST_DIR = join(import.meta.dir, '..', 'tmp', '_test_fixtures');
+const TEST_OUTPUT_DIR = join(TEST_DIR, 'eval_output');
+const TEST_RESULTS_PATH = join(TEST_DIR, 'results.jsonl');
+const TEST_WORKSPACE_ROOT = join(import.meta.dir, '..', '..');
+const TEST_MODEL_NAME = 'test-model';
+
+// Sample results data matching the real format
+function createTestResultsData() {
+  return {
+    individual_results: [
+      {
+        category: '000-fundamentals',
+        name: '000-empty_functions',
+        passed: true,
+        tests_pass_score: 1.0,
+        failure_reason: null,
+      },
+      {
+        category: '000-fundamentals',
+        name: '001-basic_schema',
+        passed: false,
+        tests_pass_score: 0.0,
+        failure_reason: 'convex dev fail',
+      },
+      {
+        category: '002-queries',
+        name: '009-text_search',
+        passed: false,
+        tests_pass_score: 0.0,
+        failure_reason: 'convex dev fail',
+      },
+      {
+        category: '004-actions',
+        name: '000-fetch',
+        passed: false,
+        tests_pass_score: 0.0,
+        failure_reason: 'convex dev fail',
+      },
+    ],
+  };
+}
+
+// Alternative format with evalName field
+function createTestResultsDataWithEvalName() {
+  return {
+    passed: 1,
+    failed: 3,
+    total: 4,
+    results: [
+      { evalName: '000-fundamentals/000-empty_functions', passed: true },
+      { evalName: '000-fundamentals/001-basic_schema', passed: false },
+      { evalName: '002-queries/009-text_search', passed: false },
+      { evalName: '004-actions/000-fetch', passed: false },
+    ],
+  };
 }
 
 describe('toGitBashPath', () => {
@@ -29,106 +85,161 @@ describe('toGitBashPath', () => {
   test('handles mixed slashes', () => {
     expect(toGitBashPath('C:\\dev/convex\\test')).toBe('/c/dev/convex/test');
   });
+
+  test('handles paths without drive letters', () => {
+    expect(toGitBashPath('/usr/local/bin')).toBe('/usr/local/bin');
+  });
 });
 
-// Test fixture setup
-const TEST_DIR = join(import.meta.dir, '..', 'tmp', '_test_fixtures');
-const TEST_OUTPUT_DIR = join(TEST_DIR, 'eval_output');
-const TEST_RESULTS_PATH = join(TEST_DIR, 'results.jsonl');
+describe('parseResultsSummary', () => {
+  beforeAll(() => {
+    mkdirSync(TEST_DIR, { recursive: true });
+  });
 
-// Sample results data matching the real format
-const SAMPLE_RESULTS = {
-  summary: {
-    project_name: 'Test Project',
-    scores: {},
-    metrics: {},
-  },
-  individual_results: [
-    {
-      category: '000-fundamentals',
-      name: '000-empty_functions',
-      passed: true,
-      tests_pass_score: 1.0,
-      failure_reason: null,
-      directory_path: join(TEST_OUTPUT_DIR, 'output', 'test-model', '000-fundamentals', '000-empty_functions'),
-    },
-    {
-      category: '000-fundamentals',
-      name: '001-basic_schema',
-      passed: false,
-      tests_pass_score: 0.0,
-      failure_reason: 'convex dev fail',
-      directory_path: join(TEST_OUTPUT_DIR, 'output', 'test-model', '000-fundamentals', '001-basic_schema'),
-    },
-    {
-      category: '002-queries',
-      name: '009-text_search',
-      passed: false,
-      tests_pass_score: 0.0,
-      failure_reason: 'convex dev fail',
-      directory_path: join(TEST_OUTPUT_DIR, 'output', 'test-model', '002-queries', '009-text_search'),
-    },
-    {
-      category: '004-actions',
-      name: '000-fetch',
-      passed: false,
-      tests_pass_score: 0.0,
-      failure_reason: 'convex dev fail',
-      directory_path: join(TEST_OUTPUT_DIR, 'output', 'test-model', '004-actions', '000-fetch'),
-    },
-  ],
-  run_stats: {
-    total_tests: 4,
-    total_passed: 1,
-    total_failed: 3,
-    overall_score: 0.25,
-  },
-};
+  afterAll(() => {
+    if (existsSync(TEST_DIR)) {
+      rmSync(TEST_DIR, { recursive: true, force: true });
+    }
+  });
 
-// Convert to the format expected by tools (evalName instead of category/name)
-function formatResultsForTools() {
-  return {
-    passed: 1,
-    failed: 3,
-    total: 4,
-    results: SAMPLE_RESULTS.individual_results.map((r) => ({
-      evalName: `${r.category}/${r.name}`,
-      passed: r.passed,
-      taskPath: join(TEST_DIR, 'evals', r.category, r.name, 'TASK.txt'),
-      expectedFiles: [join(TEST_DIR, 'evals', r.category, r.name, 'answer', 'convex', 'index.ts')],
-      outputFiles: [join(r.directory_path, 'convex', 'index.ts')],
-      runLogPath: join(r.directory_path, 'run.log'),
-    })),
-  };
-}
+  test('returns null for non-existent file', () => {
+    const result = parseResultsSummary('/nonexistent/path/results.jsonl');
+    expect(result).toBeNull();
+  });
 
-describe('Tool fixtures', () => {
+  test('parses individual_results format correctly', () => {
+    const data = createTestResultsData();
+    writeFileSync(TEST_RESULTS_PATH, JSON.stringify(data) + '\n');
+
+    const result = parseResultsSummary(TEST_RESULTS_PATH);
+    expect(result).not.toBeNull();
+    expect(result!.passed).toBe(1);
+    expect(result!.failed).toBe(3);
+    expect(result!.total).toBe(4);
+    expect(result!.failures).toHaveLength(3);
+    expect(result!.failures).toContain('000-fundamentals/001-basic_schema');
+    expect(result!.failures).toContain('002-queries/009-text_search');
+    expect(result!.failures).toContain('004-actions/000-fetch');
+  });
+
+  test('parses results format with evalName correctly', () => {
+    const data = createTestResultsDataWithEvalName();
+    writeFileSync(TEST_RESULTS_PATH, JSON.stringify(data) + '\n');
+
+    const result = parseResultsSummary(TEST_RESULTS_PATH);
+    expect(result).not.toBeNull();
+    expect(result!.passed).toBe(1);
+    expect(result!.failed).toBe(3);
+    expect(result!.total).toBe(4);
+    expect(result!.failures).toContain('000-fundamentals/001-basic_schema');
+  });
+
+  test('handles invalid JSON gracefully', () => {
+    writeFileSync(TEST_RESULTS_PATH, 'not valid json\n');
+    const result = parseResultsSummary(TEST_RESULTS_PATH);
+    expect(result).toBeNull();
+  });
+
+  test('reads last line for multi-line files', () => {
+    const data1 = { individual_results: [{ category: 'test', name: 'old', passed: true }] };
+    const data2 = createTestResultsData();
+    writeFileSync(TEST_RESULTS_PATH, JSON.stringify(data1) + '\n' + JSON.stringify(data2) + '\n');
+
+    const result = parseResultsSummary(TEST_RESULTS_PATH);
+    expect(result).not.toBeNull();
+    expect(result!.total).toBe(4); // Should read the last line (data2)
+  });
+});
+
+describe('classifyErrorPattern', () => {
+  test('identifies v.json pattern', () => {
+    const errorLines = 'Error: v.json is not a function\nFailed to analyze';
+    expect(classifyErrorPattern(errorLines)).toBe('v.json() does not exist');
+  });
+
+  test('identifies i.json pattern (minified)', () => {
+    const errorLines = 'TypeError: i.json is not a function';
+    expect(classifyErrorPattern(errorLines)).toBe('v.json() does not exist');
+  });
+
+  test('identifies v.dict pattern', () => {
+    const errorLines = 'Error: v.dict is not a function';
+    expect(classifyErrorPattern(errorLines)).toBe('v.dict() does not exist');
+  });
+
+  test('identifies "use node" mutation pattern', () => {
+    const errorLines = 'saveFetchResult defined in index.js is a Mutation function. "use node"';
+    expect(classifyErrorPattern(errorLines)).toBe('mutations in "use node" file');
+  });
+
+  test('identifies "use node" not allowed pattern', () => {
+    const errorLines = '"use node" directive is not allowed';
+    expect(classifyErrorPattern(errorLines)).toBe('"use node" not allowed');
+  });
+
+  test('identifies pagination pattern', () => {
+    const errorLines = "Object contains extra field 'pageStatus'";
+    expect(classifyErrorPattern(errorLines)).toBe('pagination returns validator incomplete');
+  });
+
+  test('identifies splitCursor pattern', () => {
+    const errorLines = 'splitCursor is not defined';
+    expect(classifyErrorPattern(errorLines)).toBe('pagination returns validator incomplete');
+  });
+
+  test('identifies text search pattern', () => {
+    const errorLines = "Property '.search' does not exist on type 'GenericDatabaseReader'";
+    expect(classifyErrorPattern(errorLines)).toBe('wrong text search API');
+  });
+
+  test('identifies range query pattern', () => {
+    const errorLines = 'Cannot read property .range of undefined';
+    expect(classifyErrorPattern(errorLines)).toBe('wrong index range API');
+  });
+
+  test('identifies nullable return pattern', () => {
+    const errorLines = "Type 'null' is not assignable to type 'string'";
+    expect(classifyErrorPattern(errorLines)).toBe('nullable return type not handled');
+  });
+
+  test('returns first line for unknown patterns', () => {
+    const errorLines = 'Some completely new error type\nSecond line';
+    expect(classifyErrorPattern(errorLines)).toBe('Some completely new error type');
+  });
+
+  test('returns unknown for empty error lines', () => {
+    expect(classifyErrorPattern('')).toBe('unknown');
+    expect(classifyErrorPattern('   ')).toBe('unknown');
+  });
+});
+
+describe('MCP Tools Integration', () => {
   beforeAll(() => {
     // Create test directory structure
     mkdirSync(TEST_DIR, { recursive: true });
     mkdirSync(TEST_OUTPUT_DIR, { recursive: true });
 
     // Create results.jsonl with properly formatted data
-    const resultsData = formatResultsForTools();
+    const resultsData = createTestResultsDataWithEvalName();
     writeFileSync(TEST_RESULTS_PATH, JSON.stringify(resultsData) + '\n');
 
     // Create run.log files with different error patterns
     const runLogDirs = [
       {
-        path: join(TEST_OUTPUT_DIR, 'output', 'test-model', '000-fundamentals', '001-basic_schema'),
+        path: join(TEST_OUTPUT_DIR, 'output', TEST_MODEL_NAME, '000-fundamentals', '001-basic_schema'),
         content: `Starting eval...
 Error: v.json is not a function
     at Module._compile (internal/modules/cjs/loader.js:1085:14)
 Failed to analyze index.js`,
       },
       {
-        path: join(TEST_OUTPUT_DIR, 'output', 'test-model', '002-queries', '009-text_search'),
+        path: join(TEST_OUTPUT_DIR, 'output', TEST_MODEL_NAME, '002-queries', '009-text_search'),
         content: `Starting eval...
 TypeScript error: Property 'search' does not exist on type 'GenericDatabaseReader'
 Build failed with 1 error`,
       },
       {
-        path: join(TEST_OUTPUT_DIR, 'output', 'test-model', '004-actions', '000-fetch'),
+        path: join(TEST_OUTPUT_DIR, 'output', TEST_MODEL_NAME, '004-actions', '000-fetch'),
         content: `Starting eval...
 Error: v.json is not a function
     at Object.<anonymous> (convex/index.ts:5:23)
@@ -143,7 +254,7 @@ Build failed`,
 
     // Create passing eval directory (no run.log needed for passing)
     mkdirSync(
-      join(TEST_OUTPUT_DIR, 'output', 'test-model', '000-fundamentals', '000-empty_functions'),
+      join(TEST_OUTPUT_DIR, 'output', TEST_MODEL_NAME, '000-fundamentals', '000-empty_functions'),
       { recursive: true }
     );
   });
@@ -155,216 +266,68 @@ Build failed`,
     }
   });
 
-  test('test fixtures are created correctly', () => {
-    expect(existsSync(TEST_RESULTS_PATH)).toBe(true);
-    expect(
-      existsSync(join(TEST_OUTPUT_DIR, 'output', 'test-model', '000-fundamentals', '001-basic_schema', 'run.log'))
-    ).toBe(true);
+  test('createOrchestratorTools creates a valid MCP server object', () => {
+    // The MCP server is an opaque object - we just verify it's created without error
+    const server = createOrchestratorTools(TEST_WORKSPACE_ROOT, TEST_OUTPUT_DIR, TEST_RESULTS_PATH, TEST_MODEL_NAME);
+    expect(server).toBeDefined();
+    // The returned object is McpSdkServerConfigWithInstance which is used by the SDK
   });
-});
 
-// Now test the actual tool logic by importing and calling the functions
-// We need to refactor tools.ts to export testable functions first
+  // Test the underlying logic functions that power the tools
+  describe('Tool logic via exported functions', () => {
+    test('parseResultsSummary correctly extracts summary from test data', () => {
+      const result = parseResultsSummary(TEST_RESULTS_PATH);
+      expect(result).not.toBeNull();
+      expect(result!.passed).toBe(1);
+      expect(result!.failed).toBe(3);
+      expect(result!.total).toBe(4);
+      expect(result!.failures).toContain('000-fundamentals/001-basic_schema');
+      expect(result!.failures).toContain('002-queries/009-text_search');
+      expect(result!.failures).toContain('004-actions/000-fetch');
+    });
 
-describe('Tool logic (integration)', () => {
-  beforeAll(() => {
-    // Ensure fixtures exist
-    if (!existsSync(TEST_DIR)) {
-      mkdirSync(TEST_DIR, { recursive: true });
-      mkdirSync(TEST_OUTPUT_DIR, { recursive: true });
-
-      const resultsData = formatResultsForTools();
-      writeFileSync(TEST_RESULTS_PATH, JSON.stringify(resultsData) + '\n');
-
-      // Create run.log files
-      const basicSchemaDir = join(TEST_OUTPUT_DIR, 'output', 'test-model', '000-fundamentals', '001-basic_schema');
-      mkdirSync(basicSchemaDir, { recursive: true });
-      writeFileSync(
-        join(basicSchemaDir, 'run.log'),
-        `Error: v.json is not a function\nFailed to analyze`
+    test('classifyErrorPattern correctly identifies patterns in test run.log files', () => {
+      // Read the test run.log and verify classification
+      const basicSchemaLog = readFileSync(
+        join(TEST_OUTPUT_DIR, 'output', TEST_MODEL_NAME, '000-fundamentals', '001-basic_schema', 'run.log'),
+        'utf-8'
       );
+      expect(classifyErrorPattern(basicSchemaLog)).toBe('v.json() does not exist');
 
-      const textSearchDir = join(TEST_OUTPUT_DIR, 'output', 'test-model', '002-queries', '009-text_search');
-      mkdirSync(textSearchDir, { recursive: true });
-      writeFileSync(
-        join(textSearchDir, 'run.log'),
-        `TypeScript error: Property 'search' does not exist`
+      const textSearchLog = readFileSync(
+        join(TEST_OUTPUT_DIR, 'output', TEST_MODEL_NAME, '002-queries', '009-text_search', 'run.log'),
+        'utf-8'
       );
-
-      const fetchDir = join(TEST_OUTPUT_DIR, 'output', 'test-model', '004-actions', '000-fetch');
-      mkdirSync(fetchDir, { recursive: true });
-      writeFileSync(join(fetchDir, 'run.log'), `Error: v.json is not a function`);
-    }
+      // The pattern detection looks for 'search' and 'does not exist' together
+      expect(classifyErrorPattern(textSearchLog)).toBe('wrong text search API');
+    });
   });
 
-  afterAll(() => {
-    if (existsSync(TEST_DIR)) {
-      rmSync(TEST_DIR, { recursive: true, force: true });
-    }
-  });
+  // Test checkpoint operations using copyFileSync directly (same logic as tools)
+  describe('Checkpoint operations', () => {
+    const checkpointTestDir = join(TEST_DIR, 'checkpoint_test');
+    const workingPath = join(checkpointTestDir, 'working.txt');
+    const checkpointPath = join(checkpointTestDir, 'checkpoint.txt');
 
-  test('can parse results.jsonl with jq-like extraction', async () => {
-    // Simulate what GetEvalSummary does
-    const { execSync } = await import('child_process');
-    const bashResultsPath = toGitBashPath(TEST_RESULTS_PATH);
+    beforeAll(() => {
+      mkdirSync(checkpointTestDir, { recursive: true });
+      writeFileSync(workingPath, 'working content v1');
+    });
 
-    try {
-      const result = execSync(
-        `tail -1 "${bashResultsPath}" | jq '{passed, failed, total, failures: [.results[] | select(.passed == false) | .evalName]}'`,
-        { encoding: 'utf-8', shell: 'bash' }
-      );
+    test('copyFileSync can save checkpoint', () => {
+      copyFileSync(workingPath, checkpointPath);
+      expect(existsSync(checkpointPath)).toBe(true);
+      expect(readFileSync(checkpointPath, 'utf-8')).toBe('working content v1');
+    });
 
-      const parsed = JSON.parse(result);
-      expect(parsed.passed).toBe(1);
-      expect(parsed.failed).toBe(3);
-      expect(parsed.total).toBe(4);
-      expect(parsed.failures).toContain('000-fundamentals/001-basic_schema');
-      expect(parsed.failures).toContain('002-queries/009-text_search');
-      expect(parsed.failures).toContain('004-actions/000-fetch');
-    } catch (error) {
-      // jq might not be available, skip this test
-      console.log('Skipping jq test - jq not available');
-    }
-  });
+    test('copyFileSync can revert to checkpoint', () => {
+      // First modify the working file
+      writeFileSync(workingPath, 'working content v2 - modified');
+      expect(readFileSync(workingPath, 'utf-8')).toBe('working content v2 - modified');
 
-  test('can extract specific eval from results', async () => {
-    const { execSync } = await import('child_process');
-    const bashResultsPath = toGitBashPath(TEST_RESULTS_PATH);
-    const evalName = '000-fundamentals/001-basic_schema';
-
-    try {
-      const result = execSync(
-        `tail -1 "${bashResultsPath}" | jq '.results[] | select(.evalName == "${evalName}")'`,
-        { encoding: 'utf-8', shell: 'bash' }
-      );
-
-      const parsed = JSON.parse(result);
-      expect(parsed.evalName).toBe(evalName);
-      expect(parsed.passed).toBe(false);
-    } catch (error) {
-      console.log('Skipping jq test - jq not available');
-    }
-  });
-
-  test('can grep errors from run.log', async () => {
-    const { execSync } = await import('child_process');
-    const runLogPath = join(
-      TEST_OUTPUT_DIR,
-      'output',
-      'test-model',
-      '000-fundamentals',
-      '001-basic_schema',
-      'run.log'
-    );
-    const bashRunLogPath = toGitBashPath(runLogPath);
-
-    try {
-      const result = execSync(
-        `grep -i -E "(error|fail)" "${bashRunLogPath}" | head -5`,
-        { encoding: 'utf-8', shell: 'bash' }
-      );
-
-      expect(result).toContain('v.json is not a function');
-    } catch (error) {
-      // grep returns exit code 1 if no matches
-      console.log('Grep test:', error);
-    }
-  });
-});
-
-describe('Error pattern grouping logic', () => {
-  test('identifies v.json pattern', () => {
-    const errorLines = 'Error: v.json is not a function\nFailed to analyze';
-    expect(errorLines.includes('v.json is not a function')).toBe(true);
-  });
-
-  test('identifies text search pattern', () => {
-    // The actual pattern in tools.ts checks for '.search' AND 'does not exist'
-    const errorLines = "Property '.search' does not exist on type 'GenericDatabaseReader'";
-    expect(errorLines.includes('.search') && errorLines.includes('does not exist')).toBe(true);
-  });
-
-  test('identifies text search pattern - alternative', () => {
-    // Also test the realistic error message
-    const errorLines = "ctx.db.search is not a function";
-    expect(errorLines.includes('search')).toBe(true);
-  });
-
-  test('identifies pagination pattern', () => {
-    const errorLines = "Object contains extra field 'pageStatus'";
-    expect(errorLines.includes('pageStatus')).toBe(true);
-  });
-
-  test('identifies use node pattern', () => {
-    const errorLines = '"use node" directive is not allowed';
-    expect(errorLines.includes('"use node"') && errorLines.includes('not allowed')).toBe(true);
-  });
-
-  test('identifies mutations in node file pattern', () => {
-    const errorLines = 'saveFetchResult defined in index.js is a Mutation function. "use node"';
-    expect(errorLines.includes('"use node"') && errorLines.includes('Mutation')).toBe(true);
-  });
-});
-
-describe('Checkpoint operations', () => {
-  const checkpointTestDir = join(TEST_DIR, 'checkpoint_test');
-  const workingPath = join(checkpointTestDir, 'working.txt');
-  const checkpointPath = join(checkpointTestDir, 'checkpoint.txt');
-
-  beforeAll(() => {
-    mkdirSync(checkpointTestDir, { recursive: true });
-    writeFileSync(workingPath, 'working content v1');
-  });
-
-  afterAll(() => {
-    if (existsSync(checkpointTestDir)) {
-      rmSync(checkpointTestDir, { recursive: true, force: true });
-    }
-  });
-
-  test('can save checkpoint', async () => {
-    const { copyFileSync } = await import('fs');
-
-    copyFileSync(workingPath, checkpointPath);
-
-    expect(existsSync(checkpointPath)).toBe(true);
-    const { readFileSync } = await import('fs');
-    expect(readFileSync(checkpointPath, 'utf-8')).toBe('working content v1');
-  });
-
-  test('can revert to checkpoint', async () => {
-    const { copyFileSync, writeFileSync: write, readFileSync } = await import('fs');
-
-    // Modify working file
-    write(workingPath, 'working content v2 - modified');
-    expect(readFileSync(workingPath, 'utf-8')).toBe('working content v2 - modified');
-
-    // Revert
-    copyFileSync(checkpointPath, workingPath);
-    expect(readFileSync(workingPath, 'utf-8')).toBe('working content v1');
-  });
-});
-
-// We can't directly import LEGACY_GUIDELINES from tools.ts since it's not exported,
-// but we can verify the structure exists by checking specific known guidelines content
-describe('Legacy guidelines', () => {
-  test('should have guidelines for common sections', () => {
-    // These are known sections from the original guidelines.py
-    const expectedSections = [
-      'function_guidelines',
-      'pagination',
-      'cron_guidelines',
-      'file_storage_guidelines',
-      'schema_guidelines',
-      'typescript_guidelines',
-      'query_guidelines',
-      'mutation_guidelines',
-      'action_guidelines',
-      'validator_guidelines',
-    ];
-
-    // We can't directly test the array, but we can verify the file compiles
-    // and the tool is exported. The actual content is tested by the tool itself.
-    expect(expectedSections.length).toBeGreaterThan(0);
+      // Revert
+      copyFileSync(checkpointPath, workingPath);
+      expect(readFileSync(workingPath, 'utf-8')).toBe('working content v1');
+    });
   });
 });

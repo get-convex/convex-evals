@@ -1,6 +1,5 @@
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
-import { execSync } from 'child_process';
 import { readFileSync, existsSync, copyFileSync } from 'fs';
 import { join } from 'path';
 
@@ -377,43 +376,118 @@ export default crons;
 /**
  * Convert Windows path to Git Bash path format
  */
-function toGitBashPath(windowsPath: string): string {
+export function toGitBashPath(windowsPath: string): string {
   let path = windowsPath.replace(/\\/g, '/');
   path = path.replace(/^([A-Za-z]):/, (_, drive) => `/${drive.toLowerCase()}`);
   return path;
 }
 
 /**
- * Execute a bash command and return the output
+ * Read the last line of a file (like tail -1)
  */
-function runBash(command: string, cwd?: string): string {
-  try {
-    const result = execSync(command, {
-      cwd,
-      encoding: 'utf-8',
-      maxBuffer: 10 * 1024 * 1024, // 10MB
-      shell: 'bash',
-    });
-    return result;
-  } catch (error) {
-    const execError = error as { stderr?: string; stdout?: string; message: string };
-    return `Error: ${execError.message}\nStderr: ${execError.stderr ?? ''}\nStdout: ${execError.stdout ?? ''}`;
+function readLastLine(filePath: string): string {
+  const content = readFileSync(filePath, 'utf-8');
+  const lines = content.trim().split('\n');
+  return lines[lines.length - 1] || '';
+}
+
+/**
+ * Read a file and extract lines matching a pattern (like grep)
+ */
+function grepFile(filePath: string, patterns: RegExp[], maxLines = 20): string[] {
+  const content = readFileSync(filePath, 'utf-8');
+  const lines = content.split('\n');
+  const matches: string[] = [];
+
+  for (const line of lines) {
+    if (matches.length >= maxLines) break;
+    for (const pattern of patterns) {
+      if (pattern.test(line)) {
+        matches.push(line);
+        break;
+      }
+    }
   }
+
+  return matches;
+}
+
+/**
+ * Read the last N lines of a file (like tail -N)
+ */
+function readLastLines(filePath: string, n: number): string[] {
+  const content = readFileSync(filePath, 'utf-8');
+  const lines = content.trim().split('\n');
+  return lines.slice(-n);
 }
 
 /**
  * Create custom MCP tools for the orchestrator
  */
+/**
+ * Parse results.jsonl and extract summary data
+ */
+export function parseResultsSummary(resultsPath: string): {
+  passed: number;
+  failed: number;
+  total: number;
+  failures: string[];
+  results: Array<{ evalName: string; passed: boolean; [key: string]: unknown }>;
+} | null {
+  if (!existsSync(resultsPath)) return null;
+
+  try {
+    const lastLine = readLastLine(resultsPath);
+    const data = JSON.parse(lastLine);
+
+    // Handle both formats: {results: [...]} or {individual_results: [...]}
+    const results = data.results || data.individual_results || [];
+
+    const passed = results.filter((r: { passed?: boolean }) => r.passed === true).length;
+    const failed = results.filter((r: { passed?: boolean }) => r.passed === false).length;
+    const failures = results
+      .filter((r: { passed?: boolean }) => r.passed === false)
+      .map((r: { evalName?: string; category?: string; name?: string }) =>
+        r.evalName || `${r.category}/${r.name}`
+      );
+
+    return { passed, failed, total: results.length, failures, results };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Classify error lines into a pattern category
+ */
+export function classifyErrorPattern(errorLines: string): string {
+  if (errorLines.includes('v.json is not a function') || errorLines.includes('i.json is not a function'))
+    return 'v.json() does not exist';
+  if (errorLines.includes('v.dict is not a function') || errorLines.includes('a.dict is not a function'))
+    return 'v.dict() does not exist';
+  if (errorLines.includes('"use node"') && errorLines.includes('Mutation'))
+    return 'mutations in "use node" file';
+  if (errorLines.includes('"use node"') && errorLines.includes('not allowed'))
+    return '"use node" not allowed';
+  if (errorLines.includes('pageStatus') || errorLines.includes('splitCursor'))
+    return 'pagination returns validator incomplete';
+  // Check for text search errors - look for 'search' and 'does not exist' or 'not a function'
+  if ((errorLines.includes('.search') || errorLines.includes("'search'") || errorLines.includes('"search"')) &&
+      (errorLines.includes('does not exist') || errorLines.includes('not a function')))
+    return 'wrong text search API';
+  if (errorLines.includes('.range')) return 'wrong index range API';
+  if (errorLines.includes('null') && errorLines.includes('string'))
+    return 'nullable return type not handled';
+  if (errorLines.trim()) return errorLines.split('\n')[0].slice(0, 80);
+  return 'unknown';
+}
+
 export function createOrchestratorTools(
   workspaceRoot: string,
   outputDir: string,
   resultsPath: string,
   modelName: string
 ) {
-  const bashWorkspaceRoot = toGitBashPath(workspaceRoot);
-  const bashOutputDir = toGitBashPath(outputDir);
-  const bashResultsPath = toGitBashPath(resultsPath);
-
   return createSdkMcpServer({
     name: 'orchestrator-tools',
     version: '1.0.0',
@@ -424,14 +498,19 @@ export function createOrchestratorTools(
         'Get a summary of the eval results including pass/fail counts and list of failed eval names. Returns minimal data to conserve context.',
         {},
         async () => {
-          if (!existsSync(resultsPath)) {
-            return { content: [{ type: 'text', text: 'Error: results.jsonl not found' }] };
+          const summary = parseResultsSummary(resultsPath);
+          if (!summary) {
+            return { content: [{ type: 'text', text: 'Error: results.jsonl not found or invalid' }] };
           }
 
-          const command = `tail -1 "${bashResultsPath}" | jq '{passed, failed, total, failures: [.results[] | select(.passed == false) | .evalName]}'`;
-          const result = runBash(command, workspaceRoot);
+          const result = {
+            passed: summary.passed,
+            failed: summary.failed,
+            total: summary.total,
+            failures: summary.failures,
+          };
 
-          return { content: [{ type: 'text', text: result }] };
+          return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
         }
       ),
 
@@ -443,36 +522,39 @@ export function createOrchestratorTools(
           evalName: z.string().describe('The eval name like "002-queries/009-text_search"'),
         },
         async ({ evalName }) => {
-          if (!existsSync(resultsPath)) {
-            return { content: [{ type: 'text', text: 'Error: results.jsonl not found' }] };
+          const summary = parseResultsSummary(resultsPath);
+          if (!summary) {
+            return { content: [{ type: 'text', text: 'Error: results.jsonl not found or invalid' }] };
           }
 
-          // Get the eval result from results.jsonl
-          const command = `tail -1 "${bashResultsPath}" | jq '.results[] | select(.evalName == "${evalName}")'`;
-          const evalResult = runBash(command, workspaceRoot);
+          // Find the eval result
+          const evalResult = summary.results.find((r) => {
+            const name = r.evalName || `${r.category}/${r.name}`;
+            return name === evalName;
+          });
 
-          // Parse to get paths
-          try {
-            const parsed = JSON.parse(evalResult);
-            const summary = {
-              evalName: parsed.evalName,
-              passed: parsed.passed,
-              taskPath: parsed.taskPath,
-              expectedFiles: parsed.expectedFiles,
-              outputFiles: parsed.outputFiles,
-              runLogPath: parsed.runLogPath,
-              // Also provide Git Bash versions for subagent
-              bashPaths: {
-                taskPath: toGitBashPath(parsed.taskPath),
-                runLogPath: toGitBashPath(parsed.runLogPath),
-                expectedDir: toGitBashPath(join(workspaceRoot, 'evals', evalName, 'answer', 'convex')),
-                outputDir: toGitBashPath(join(outputDir, 'output', modelName, evalName, 'convex')),
-              },
-            };
-            return { content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }] };
-          } catch {
-            return { content: [{ type: 'text', text: evalResult }] };
+          if (!evalResult) {
+            return { content: [{ type: 'text', text: `Error: Eval "${evalName}" not found in results` }] };
           }
+
+          // Build paths
+          const result = {
+            evalName,
+            passed: evalResult.passed,
+            taskPath: join(workspaceRoot, 'evals', evalName, 'TASK.txt'),
+            expectedDir: join(workspaceRoot, 'evals', evalName, 'answer', 'convex'),
+            outputDir: join(outputDir, 'output', modelName, evalName, 'convex'),
+            runLogPath: join(outputDir, 'output', modelName, evalName, 'run.log'),
+            // Also provide Git Bash versions for subagent
+            bashPaths: {
+              taskPath: toGitBashPath(join(workspaceRoot, 'evals', evalName, 'TASK.txt')),
+              expectedDir: toGitBashPath(join(workspaceRoot, 'evals', evalName, 'answer', 'convex')),
+              outputDir: toGitBashPath(join(outputDir, 'output', modelName, evalName, 'convex')),
+              runLogPath: toGitBashPath(join(outputDir, 'output', modelName, evalName, 'run.log')),
+            },
+          };
+
+          return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
         }
       ),
 
@@ -486,23 +568,24 @@ export function createOrchestratorTools(
         async ({ evalName }) => {
           // Try to find the run.log - path is output/{modelName}/{evalName}/run.log
           const runLogPath = join(outputDir, 'output', modelName, evalName, 'run.log');
-          const bashRunLogPath = toGitBashPath(runLogPath);
 
           if (!existsSync(runLogPath)) {
             return { content: [{ type: 'text', text: `Error: run.log not found at ${runLogPath}` }] };
           }
 
-          // Extract error lines - look for common error patterns
-          const command = `grep -i -E "(error|fail|exception|TypeError|SyntaxError|ReferenceError)" "${bashRunLogPath}" | head -20`;
-          const errors = runBash(command, workspaceRoot);
+          // Extract error lines using pure Node.js
+          const errorPatterns = [/error/i, /fail/i, /exception/i, /TypeError/i, /SyntaxError/i, /ReferenceError/i];
+          const errors = grepFile(runLogPath, errorPatterns, 20);
 
-          if (!errors.trim()) {
+          if (errors.length === 0) {
             // If no explicit errors, get the last 10 lines which often contain the issue
-            const lastLines = runBash(`tail -10 "${bashRunLogPath}"`, workspaceRoot);
-            return { content: [{ type: 'text', text: `No explicit errors found. Last 10 lines:\n${lastLines}` }] };
+            const lastLines = readLastLines(runLogPath, 10);
+            return {
+              content: [{ type: 'text', text: `No explicit errors found. Last 10 lines:\n${lastLines.join('\n')}` }],
+            };
           }
 
-          return { content: [{ type: 'text', text: errors }] };
+          return { content: [{ type: 'text', text: errors.join('\n') }] };
         }
       ),
 
@@ -512,54 +595,24 @@ export function createOrchestratorTools(
         'Analyze all failed evals and group them by similar error patterns. Returns groups with representative eval for each pattern.',
         {},
         async () => {
-          if (!existsSync(resultsPath)) {
-            return { content: [{ type: 'text', text: 'Error: results.jsonl not found' }] };
-          }
-
-          // Get all failed evals
-          const command = `tail -1 "${bashResultsPath}" | jq '[.results[] | select(.passed == false) | .evalName]'`;
-          const failedEvalsJson = runBash(command, workspaceRoot);
-
-          let failedEvals: string[];
-          try {
-            failedEvals = JSON.parse(failedEvalsJson);
-          } catch {
-            return { content: [{ type: 'text', text: `Error parsing failed evals: ${failedEvalsJson}` }] };
+          const summary = parseResultsSummary(resultsPath);
+          if (!summary) {
+            return { content: [{ type: 'text', text: 'Error: results.jsonl not found or invalid' }] };
           }
 
           // Group by error pattern
           const patterns: Record<string, { pattern: string; evals: string[]; sample: string }> = {};
 
-          for (const evalName of failedEvals) {
+          for (const evalName of summary.failures) {
             const runLogPath = join(outputDir, 'output', modelName, evalName, 'run.log');
             if (!existsSync(runLogPath)) continue;
 
-            const bashRunLogPath = toGitBashPath(runLogPath);
-            const errorCmd = `grep -i -E "(error|fail|TypeError|SyntaxError)" "${bashRunLogPath}" | head -5`;
-            const errorLines = runBash(errorCmd, workspaceRoot).trim();
+            // Extract error lines using pure Node.js
+            const errorPatterns = [/error/i, /fail/i, /TypeError/i, /SyntaxError/i];
+            const errorLines = grepFile(runLogPath, errorPatterns, 5).join('\n');
 
-            // Create a simplified pattern key
-            let patternKey = 'unknown';
-            if (errorLines.includes('v.json is not a function') || errorLines.includes('i.json is not a function')) {
-              patternKey = 'v.json() does not exist';
-            } else if (errorLines.includes('v.dict is not a function') || errorLines.includes('a.dict is not a function')) {
-              patternKey = 'v.dict() does not exist';
-            } else if (errorLines.includes('"use node"') && errorLines.includes('Mutation')) {
-              patternKey = 'mutations in "use node" file';
-            } else if (errorLines.includes('"use node"') && errorLines.includes('not allowed')) {
-              patternKey = '"use node" not allowed';
-            } else if (errorLines.includes('pageStatus') || errorLines.includes('splitCursor')) {
-              patternKey = 'pagination returns validator incomplete';
-            } else if (errorLines.includes('.search') && errorLines.includes('does not exist')) {
-              patternKey = 'wrong text search API';
-            } else if (errorLines.includes('.range')) {
-              patternKey = 'wrong index range API';
-            } else if (errorLines.includes('null') && errorLines.includes('string')) {
-              patternKey = 'nullable return type not handled';
-            } else if (errorLines) {
-              // Use first error line as pattern
-              patternKey = errorLines.split('\n')[0].slice(0, 80);
-            }
+            // Classify the error pattern
+            const patternKey = classifyErrorPattern(errorLines);
 
             if (!patterns[patternKey]) {
               patterns[patternKey] = { pattern: patternKey, evals: [], sample: errorLines };
