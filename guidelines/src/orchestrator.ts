@@ -135,20 +135,102 @@ export async function runOrchestrator(options: OrchestratorOptions): Promise<voi
 
     // Stream responses and log progress
     for await (const msg of q) {
+      // Log all messages to detailed log
+      logger.detailed(`Message type: ${msg.type}`, msg);
+
       if (msg.type === 'assistant') {
-        type ContentBlock = { type: string; text?: string };
-        const assistantMsg = msg as SDKMessage & { message: { content: ContentBlock[] } };
-        const text = assistantMsg.message.content
-          .filter((block: ContentBlock): block is ContentBlock & { type: 'text'; text: string } => block.type === 'text' && typeof block.text === 'string')
-          .map((block: ContentBlock & { text: string }) => block.text)
-          .join('');
+        type ContentBlock = { type: string; text?: string; name?: string; input?: unknown };
+        type Usage = { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number };
+        const assistantMsg = msg as SDKMessage & {
+          message: { content: ContentBlock[]; usage?: Usage };
+        };
+
+        // Log token usage if available
+        const usage = assistantMsg.message.usage;
+        if (usage) {
+          const inputTokens = usage.input_tokens ?? 0;
+          const cacheTokens = usage.cache_read_input_tokens ?? 0;
+          const outputTokens = usage.output_tokens ?? 0;
+          // Claude Opus context window is 200K tokens
+          const contextWindow = 200000;
+          const totalContext = inputTokens + outputTokens;
+          const contextPercent = ((totalContext / contextWindow) * 100).toFixed(1);
+          logger.tokens(inputTokens, outputTokens, cacheTokens, contextWindow);
+        }
+
+        // Extract and log text content
+        const textBlocks = assistantMsg.message.content.filter(
+          (block: ContentBlock): block is ContentBlock & { type: 'text'; text: string } =>
+            block.type === 'text' && typeof block.text === 'string'
+        );
+        const text = textBlocks.map((block: ContentBlock & { text: string }) => block.text).join('');
         if (text) {
-          logger.info('Agent:', { text: text.slice(0, 500) }); // Log first 500 chars
+          logger.info('Agent:', { text: text.slice(0, 500) });
+        }
+
+        // Extract and log tool use blocks
+        const toolBlocks = assistantMsg.message.content.filter(
+          (block: ContentBlock) => block.type === 'tool_use'
+        );
+        for (const toolBlock of toolBlocks) {
+          const tb = toolBlock as ContentBlock & { name: string; input: unknown };
+          logger.tool(tb.name, tb.input as object);
         }
       }
 
+      // Log tool progress (for long-running tools like Bash)
+      if (msg.type === 'tool_progress') {
+        const progressMsg = msg as SDKMessage & {
+          tool_name: string;
+          elapsed_time_seconds: number;
+        };
+        logger.toolProgress(progressMsg.tool_name, progressMsg.elapsed_time_seconds);
+      }
+
+      // Log subagent/task notifications
+      if (msg.type === 'system') {
+        const sysMsg = msg as SDKMessage & { subtype?: string; task_id?: string; status?: string; summary?: string };
+        if (sysMsg.subtype === 'task_notification') {
+          const status = sysMsg.status as 'completed' | 'failed' | 'stopped';
+          const statusMap: Record<string, 'complete' | 'failed'> = {
+            completed: 'complete',
+            failed: 'failed',
+            stopped: 'failed',
+          };
+          logger.subagent(
+            `Task ${sysMsg.task_id}`,
+            statusMap[status] || 'complete',
+            sysMsg.summary
+          );
+        }
+      }
+
+      // Log user messages (tool results)
+      if (msg.type === 'user') {
+        const userMsg = msg as SDKMessage & { tool_use_result?: unknown };
+        if (userMsg.tool_use_result !== undefined) {
+          logger.detailed('Tool result:', userMsg.tool_use_result);
+        }
+      }
+
+      // Log final result with total usage
+      if (msg.type === 'result') {
+        type ModelUsage = {
+          inputTokens: number;
+          outputTokens: number;
+          cacheReadInputTokens: number;
+          contextWindow: number;
+          costUSD: number;
+        };
+        const resultMsg = msg as SDKMessage & {
+          total_cost_usd: number;
+          modelUsage: Record<string, ModelUsage>;
+          num_turns: number;
+        };
+        logger.result(resultMsg.total_cost_usd, resultMsg.modelUsage, resultMsg.num_turns);
+      }
+
       // Update lock file periodically based on session state
-      // The agent will update files, so we can read them to track progress
       updateLockFileFromState(options.provider, options.model, lockStatus);
     }
 
