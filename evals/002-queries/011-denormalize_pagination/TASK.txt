@@ -26,8 +26,14 @@ export default defineSchema({
 
 Create a query `paginateDogsByOwnerAge` in `convex/index.ts` that:
 - Takes arguments:  `{ cursor: string | null, numItems: number }`
-- Paginates over the dogs table by the owner's age
-- Returns `{ continueCursor, dogs }` where `continueCursor` is a string and `dogs` is an array of dog records { name, breed }
+- Paginates over the dogs table by the owner's age using the index
+- Returns an object with this structure:
+```ts
+{
+  dogs: { name: string, breed: string }[],
+  continueCursor: string,
+}
+```
 
 The goal is to demonstrate how denormalization can be used to create efficient lookups on fields from related tables
 

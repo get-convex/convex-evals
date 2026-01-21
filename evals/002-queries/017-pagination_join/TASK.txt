@@ -22,10 +22,22 @@ export default defineSchema({
 2. Create a query function `paginateMessagesWithAuthors` in `convex/index.ts` that:
    - Takes arguments:  `{ paginationOpts: { numItems: number, cursor: string | null } }`
    - Paginates messages in descending order (newest first)
-   - Adds the author's name for each message
+   - Adds the author's name to each message as an `author` field (string)
    - Returns the pagination result to be used with usePaginatedQuery.
    - Should be compatible with usePaginatedQuery hook
    - Don't provide a returns validator for this example
+   - Throw an error if the author is not found
+
+Each message in the returned page should have this structure:
+```ts
+{
+  _id: Id<"messages">,
+  _creationTime: number,
+  authorId: Id<"users">,
+  content: string,
+  author: string,  // The author's name
+}
+```
 
 Only implement the `paginateMessagesWithAuthors` function in `convex/index.ts`. Do not generate any other functions.
 

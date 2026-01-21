@@ -34,11 +34,26 @@ Dont forget to write out the above schema.
 Write a query named `getAuthorDashboard` in `convex/public.ts` that:
 - Takes arguments:  `{ email: string }`, returning null if the user doesn't exist
 - Throws an error if the user exists but its preferences are missing
-- Returns an object containing:
-  * user: the user's name, email, theme, and notifications
-  * posts: array of user's 15 most recent posts, each with
-    - the post title
-    - reactionCounts: count of each reaction type
+- Returns an object with this structure:
+```ts
+{
+  user: {
+    name: string,
+    email: string,
+    theme: string,
+    notifications: boolean,
+  },
+  posts: {
+    title: string,
+    reactionCounts: {
+      like: number,
+      heart: number,
+      celebrate: number,
+    },
+  }[],
+}
+```
+- Returns the user's 15 most recent posts (by creation time, descending)
 - Demonstrates efficient parallel fetching:
   * Fetch preferences and posts in parallel
   * Kicks off reactions fetches as posts are streamed in

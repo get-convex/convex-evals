@@ -34,13 +34,13 @@ Implement the following functions in `convex/index.ts`:
    - Takes an argument object `{ documentId: Id<"documents">, metadata: { title: string, author: { name: string, contact: { email: string, phone?: string | undefined } }, tags: string[] } }`
    - Replaces the entire metadata object while preserving content
    - Throws an error if document doesn't exist
-   - Returns nothing
+   - Returns null (use `returns: v.null()` and `return null`)
 
 3. Create a mutation `patchAuthorInfo` that:
    - Takes an argument object `{ documentId: Id<"documents">, author: { name: string, contact: { email: string, phone?: string | undefined } } }`
    - Updates only the metadata.author portion of the document
    - Throws an error if document doesn't exist
-   - Returns nothing
+   - Returns null (use `returns: v.null()` and `return null`)
 
 4. Create a query `getDocument` that:
    - Takes an argument object `{ documentId: Id<"documents"> }`

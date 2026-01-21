@@ -30,7 +30,8 @@ export default defineSchema({
 
 4. Create a query `getFileMetadata`:
    - Takes a file ID argument named `fileId`
-   - Retrieves the file record and returns all of its system metadata
+   - Retrieves the file record and returns the storage metadata using `ctx.db.system.get()`
+   - Returns an object with: `_id`, `_creationTime`, `contentType` (optional string), `sha256`, and `size`
    - Throws an error if the file is not found
 
 5. Create a mutation `deleteFile`:
