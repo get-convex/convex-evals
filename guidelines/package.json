@@ -12,12 +12,10 @@
     "start": "bun run src/index.ts"
   },
   "dependencies": {
-    "ai": "^6.0.42",
-    "@ai-sdk/anthropic": "^3.0.15",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.14",
     "@inquirer/prompts": "^7.2.1",
     "commander": "^13.0.0",
-    "dotenv": "^16.4.0",
-    "zod": "^3.25.0"
+    "dotenv": "^16.4.0"
   },
   "devDependencies": {
     "@types/bun": "^1.2.20",

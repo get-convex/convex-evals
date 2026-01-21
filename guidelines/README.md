@@ -54,11 +54,10 @@ flowchart TD
 guidelines/
   src/
     index.ts              # Interactive CLI entry point
-    orchestrator.ts       # Main orchestrator agent
-    failureAnalyser.ts    # Failure analysis sub-agent
-    incorporator.ts       # Guideline incorporation sub-agent
+    orchestrator.ts       # Main orchestrator agent (uses Claude Agent SDK)
+    subagents.ts          # Subagent definitions (failure-analyser, incorporator)
     iterationHistory.ts   # Iteration history tracking
-    evalRunner.ts         # Wrapper to spawn Python eval runner
+    evalRunner.ts         # Wrapper to spawn Python eval runner (legacy)
     guidelineStore.ts     # Read/write/merge guidelines
     lockFile.ts           # Lock file management
     logger.ts             # Verbose logging to console + file
@@ -141,10 +140,10 @@ This enables the system to learn from past iterations and progressively improve 
 
 ```typescript
 MAX_CONSTRUCTION_ITERATIONS = 50     // Safety limit
-MAX_PARALLEL_ANALYZERS = 5           // Prevent rate limiting
 MIN_PASS_RATE_THRESHOLD = 0.90       // 90% is "good enough"
 STABLE_PLATEAU_ITERATIONS = 5        // Must sustain for 5 iterations
 MAX_REGRESSION_ALLOWED = 2           // Revert if we lose >2 passing evals
+STABILITY_CHECK_RUNS = 3             // Reliability check runs
 ```
 
 ## Algorithm Details
@@ -263,13 +262,24 @@ The Python runner is configured via environment variables:
 ```json
 {
   "dependencies": {
-    "ai": "^5.0.76",
-    "@ai-sdk/anthropic": "^1.0.0",
-    "zod": "^3.23.0",
-    "commander": "^13.0.0"
+    "@anthropic-ai/claude-agent-sdk": "^0.2.14",
+    "@inquirer/prompts": "^7.2.1",
+    "commander": "^13.0.0",
+    "dotenv": "^16.4.0"
   }
 }
 ```
+
+## Architecture: Claude Agent SDK
+
+The orchestrator uses the Claude Agent SDK V2 interface for session-based agent interactions:
+
+- **Main orchestrator**: A Claude Opus agent with access to Read, Write, Bash, Glob, Grep, and Task tools
+- **Subagents**: Defined programmatically via the `agents` parameter:
+  - `failure-analyser`: Analyzes individual eval failures (Claude Sonnet)
+  - `incorporator`: Synthesizes analyses into guidelines (Claude Opus)
+
+The orchestrator receives a comprehensive prompt with the algorithm, file paths, and decision criteria. It autonomously runs evals, analyzes failures via subagents, and updates guidelines.
 
 ## Future: Combining Guidelines
 
