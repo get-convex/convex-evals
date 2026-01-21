@@ -70,6 +70,10 @@ class Model(ConvexCodegenModel):
                 {"role": "user", "content": user_prompt},
             ],
         }
+        # Only add temperature for models that support it (reasoning models like o1/o3/gpt-5 don't)
+        if self.model.supports_temperature:
+            temperature = float(os.getenv("EVAL_TEMPERATURE", "0.7"))
+            create_params["temperature"] = temperature
         # Some newer models (e.g., GPT-5 family) expect `max_completion_tokens` instead of `max_tokens`.
         if self.model.name.startswith("gpt-5"):
             create_params["max_completion_tokens"] = max_token_limit

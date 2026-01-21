@@ -62,13 +62,12 @@ guidelines/
     lockFile.ts           # Lock file management
     logger.ts             # Verbose logging to console + file
     types.ts              # Shared types
-  generated/                              # COMMITTED to git (user reviews and commits)
-    {provider}_{model}_guidelines.txt     # Final guidelines per model
+  generated/                              # COMMITTED to git
+    {provider}_{model}_guidelines.txt     # Working guidelines per model (committed as they improve)
   tmp/                                    # GITIGNORED - local temp files
     {provider}_{model}/                   # One folder per model
       .lock                               # Lock file with status JSON
       iteration_history.json              # Iteration history with eval-level results (persists across runs)
-      working_guidelines.txt              # Current working copy (persists across runs)
       checkpoint_guidelines.txt           # Best-known-good checkpoint (for regression recovery)
       {runId}/                            # Each run gets unique folder (for debug history)
         proposal_001.txt                  # Refinement proposals (kept for debugging)
@@ -83,11 +82,12 @@ guidelines/
 
 ## Key Features
 
-### 1. Working Guidelines at Model Level
+### 1. Working Guidelines in Git
 
-Working guidelines live at `tmp/{provider}_{model}/working_guidelines.txt` (not per-run). This means:
+Working guidelines live at `generated/{provider}_{model}_guidelines.txt` so they can be committed to git as they improve. This means:
 - Guidelines persist across runs and are iterated upon
-- Only refinement proposals are written to run-specific directories
+- Progress can be tracked and committed to version control
+- Only refinement proposals and temp files are written to run-specific directories
 - Easier to resume and inspect current state
 
 ### 2. Checkpointing and Regression Recovery
@@ -150,11 +150,10 @@ STABILITY_CHECK_RUNS = 3             // Reliability check runs
 
 ### File Locations
 
-- **Committed guidelines**: `guidelines/generated/{provider}_{model}_guidelines.txt` (checked into git)
+- **Working guidelines**: `guidelines/generated/{provider}_{model}_guidelines.txt` (committed to git as they improve)
 - **Lock file**: `guidelines/tmp/{provider}_{model}/.lock` (status JSON, persists across runs)
 - **Iteration history**: `guidelines/tmp/{provider}_{model}/iteration_history.json` (tracks eval-level results per iteration, persists across runs)
-- **Working guidelines**: `guidelines/tmp/{provider}_{model}/working_guidelines.txt` (persists across runs)
-- **Checkpoint**: `guidelines/tmp/{provider}_{model}/checkpoint_guidelines.txt` (best-known-good)
+- **Checkpoint**: `guidelines/tmp/{provider}_{model}/checkpoint_guidelines.txt` (best-known-good, for regression recovery)
 - **Proposal files**: `guidelines/tmp/{provider}_{model}/{runId}/proposal_NNN.txt`
 - **Eval output**: `guidelines/tmp/{provider}_{model}/{runId}/eval_output/`
 - **Logs**: `guidelines/tmp/{provider}_{model}/{runId}/logs/`

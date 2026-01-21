@@ -19,6 +19,7 @@ class ModelTemplate(BaseModel):
     uses_system_prompt: bool
     provider: ModelProvider
     override_proxy: str | None = None
+    supports_temperature: bool = True  # Some reasoning models (o1, o3, gpt-5) don't support temperature
 
 
 ALL_MODELS = [
@@ -81,6 +82,7 @@ ALL_MODELS = [
         requires_chain_of_thought=False,
         uses_system_prompt=False,
         provider=ModelProvider.OPENAI,
+        supports_temperature=False,
     ),
     ModelTemplate(
         name="gpt-4.1",
@@ -97,6 +99,7 @@ ALL_MODELS = [
         requires_chain_of_thought=False,
         uses_system_prompt=False,
         provider=ModelProvider.OPENAI,
+        supports_temperature=False,
     ),
     ModelTemplate(
         name="gpt-5.2",
@@ -105,6 +108,7 @@ ALL_MODELS = [
         requires_chain_of_thought=False,
         uses_system_prompt=False,
         provider=ModelProvider.OPENAI,
+        supports_temperature=False,
     ),
     ModelTemplate(
         name="gpt-5",
@@ -113,6 +117,7 @@ ALL_MODELS = [
         requires_chain_of_thought=False,
         uses_system_prompt=False,
         provider=ModelProvider.OPENAI,
+        supports_temperature=False,
     ),
     ModelTemplate(
         name="gpt-5-mini",
@@ -121,6 +126,7 @@ ALL_MODELS = [
         requires_chain_of_thought=False,
         uses_system_prompt=False,
         provider=ModelProvider.OPENAI,
+        supports_temperature=False,
     ),
     ModelTemplate(
         name="gpt-5-nano",
@@ -129,6 +135,7 @@ ALL_MODELS = [
         requires_chain_of_thought=False,
         uses_system_prompt=False,
         provider=ModelProvider.OPENAI,
+        supports_temperature=False,
     ),
     ModelTemplate(
         name="deepseek-ai/DeepSeek-V3",
@@ -145,6 +152,7 @@ ALL_MODELS = [
         requires_chain_of_thought=False,
         uses_system_prompt=False,
         provider=ModelProvider.TOGETHER,
+        supports_temperature=False,
     ),
     ModelTemplate(
         name="meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",

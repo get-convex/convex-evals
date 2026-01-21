@@ -44,24 +44,20 @@ export function writeGuidelines(provider: string, model: string, content: string
 }
 
 /**
- * Working guidelines live at the model level (not per-run) and persist across runs.
- * They are iterated on during construction phase.
+ * Working guidelines live in the generated/ directory so they can be committed to git.
+ * They persist across runs and are iterated on during construction phase.
+ * This is the same location as "committed" guidelines - we no longer distinguish between them.
  */
 export function getWorkingGuidelinesPath(provider: string, model: string): string {
-  return join(getTmpModelDir(provider, model), 'working_guidelines.txt');
+  return getCommittedGuidelinesPath(provider, model);
 }
 
 export function readWorkingGuidelines(provider: string, model: string): string {
-  const path = getWorkingGuidelinesPath(provider, model);
-  if (!existsSync(path)) return '';
-  return readFileSync(path, 'utf-8');
+  return readGuidelines(provider, model);
 }
 
 export function writeWorkingGuidelines(provider: string, model: string, content: string): void {
-  const path = getWorkingGuidelinesPath(provider, model);
-  const dir = dirname(path);
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  writeFileSync(path, content, 'utf-8');
+  writeGuidelines(provider, model, content);
 }
 
 /**

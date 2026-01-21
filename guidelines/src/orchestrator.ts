@@ -315,9 +315,9 @@ function buildOrchestratorPrompt(
   const workspaceRoot = join(import.meta.dir, '..', '..');
   const tmpDir = getTmpModelDir(options.provider, options.model);
   const runDir = getRunDir(options.provider, options.model, runId);
+  // Working guidelines are stored in generated/ so they can be committed to git as they improve
   const workingGuidelinesPath = getWorkingGuidelinesPath(options.provider, options.model);
   const checkpointPath = getCheckpointPath(options.provider, options.model);
-  const committedPath = getCommittedGuidelinesPath(options.provider, options.model);
   const historyPath = join(tmpDir, 'iteration_history.json');
   const resultsPath = join(runDir, 'results.jsonl');
   const outputDir = join(runDir, 'eval_output');
@@ -372,9 +372,8 @@ Delegate all file reading to subagents when analyzing failures.
 
 All paths are relative to the workspace root (where you can use Read/Write tools):
 
-- **Working Guidelines**: ${workingGuidelinesPath}
-- **Checkpoint Guidelines**: ${checkpointPath}
-- **Committed Guidelines**: ${committedPath}
+- **Working Guidelines**: ${workingGuidelinesPath} (in generated/ so you can commit to git as guidelines improve)
+- **Checkpoint Guidelines**: ${checkpointPath} (best-known-good, for regression recovery)
 - **Iteration History**: ${historyPath}
 - **Eval Results**: ${resultsPath}
 - **Eval Output Directory**: ${outputDir}
@@ -419,10 +418,9 @@ tail -1 ${bashResultsPath} | jq '.results[] | select(.evalName == "category/name
 If \`failed === 0\`:
 - Run the evals ${STABILITY_CHECK_RUNS} more times (reliability check)
 - If all ${STABILITY_CHECK_RUNS} runs pass:
-  - Copy working guidelines to committed location: \`${committedPath}\`
-  - Copy to checkpoint: \`${checkpointPath}\`
+  - Copy working guidelines to checkpoint: \`${checkpointPath}\`
   - Update lock file phase to "complete"
-  - **STOP** - you're done with construction phase
+  - **STOP** - you're done with construction phase (working guidelines are already in generated/ for git commit)
 - If any reliability check fails, continue to step 3
 
 ### 3. Check for Regression
@@ -457,9 +455,9 @@ Calculate: \`passRate = passed / total\`
 
 If \`passRate >= ${MIN_PASS_RATE_THRESHOLD}\` AND \`stableIterations >= ${STABLE_PLATEAU_ITERATIONS}\`:
 - We've reached a stable plateau at ${(MIN_PASS_RATE_THRESHOLD * 100).toFixed(0)}%+ for ${STABLE_PLATEAU_ITERATIONS} iterations
-- Copy working guidelines to committed: \`${committedPath}\`
+- Copy working guidelines to checkpoint: \`${checkpointPath}\`
 - Update lock file phase to "complete"
-- **STOP** - construction phase complete
+- **STOP** - construction phase complete (working guidelines are already in generated/ for git commit)
 
 ### 6. Check Iteration Limit
 
@@ -564,7 +562,7 @@ Go back to step 1 and run evals again with updated guidelines.
 
 After construction phase completes (100% pass or good-enough plateau), enter **Refinement Phase**:
 
-1. Read committed guidelines from \`${committedPath}\`
+1. Read current guidelines from \`${workingGuidelinesPath}\`
 2. Propose ONE refinement:
    - Remove a guideline you suspect is unnecessary
    - Combine overlapping guidelines
