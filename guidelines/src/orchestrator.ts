@@ -140,22 +140,28 @@ export async function runOrchestrator(options: OrchestratorOptions): Promise<voi
 
       if (msg.type === 'assistant') {
         type ContentBlock = { type: string; text?: string; name?: string; input?: unknown };
-        type Usage = { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number };
+        type Usage = {
+          input_tokens?: number;
+          output_tokens?: number;
+          cache_read_input_tokens?: number;
+          cache_creation_input_tokens?: number;
+        };
         const assistantMsg = msg as SDKMessage & {
           message: { content: ContentBlock[]; usage?: Usage };
         };
 
         // Log token usage if available
+        // Note: input_tokens is just the non-cached portion, cache_read_input_tokens and
+        // cache_creation_input_tokens contain the actual cached context tokens
         const usage = assistantMsg.message.usage;
         if (usage) {
           const inputTokens = usage.input_tokens ?? 0;
-          const cacheTokens = usage.cache_read_input_tokens ?? 0;
+          const cacheReadTokens = usage.cache_read_input_tokens ?? 0;
+          const cacheCreationTokens = usage.cache_creation_input_tokens ?? 0;
           const outputTokens = usage.output_tokens ?? 0;
-          // Claude Opus context window is 200K tokens
-          const contextWindow = 200000;
-          const totalContext = inputTokens + outputTokens;
-          const contextPercent = ((totalContext / contextWindow) * 100).toFixed(1);
-          logger.tokens(inputTokens, outputTokens, cacheTokens, contextWindow);
+          // Total context = non-cached input + cache read + cache creation + output
+          const totalContextInput = inputTokens + cacheReadTokens + cacheCreationTokens;
+          logger.tokens(totalContextInput, outputTokens, cacheReadTokens, cacheCreationTokens);
         }
 
         // Extract and log text content

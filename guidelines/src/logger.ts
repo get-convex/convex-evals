@@ -97,13 +97,25 @@ export class Logger {
 
   /**
    * Log token usage (shown in console)
+   * @param totalInputTokens - Total input tokens (non-cached + cache read + cache creation)
+   * @param outputTokens - Output tokens generated
+   * @param cacheReadTokens - Tokens read from cache
+   * @param cacheCreationTokens - Tokens written to cache
    */
-  tokens(inputTokens: number, outputTokens: number, cacheTokens: number, contextWindow: number) {
-    const totalContext = inputTokens + outputTokens;
+  tokens(
+    totalInputTokens: number,
+    outputTokens: number,
+    cacheReadTokens: number,
+    cacheCreationTokens: number
+  ) {
+    // Claude Opus context window is 200K tokens
+    const contextWindow = 200000;
+    const totalContext = totalInputTokens + outputTokens;
     const contextPercent = ((totalContext / contextWindow) * 100).toFixed(1);
-    const cachePercent = inputTokens > 0 ? ((cacheTokens / inputTokens) * 100).toFixed(0) : '0';
+    const cacheHitPercent =
+      totalInputTokens > 0 ? ((cacheReadTokens / totalInputTokens) * 100).toFixed(0) : '0';
 
-    const line = `  📊 Tokens: ${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out | Context: ${contextPercent}% (${totalContext.toLocaleString()}/${contextWindow.toLocaleString()}) | Cache: ${cachePercent}%`;
+    const line = `  📊 Context: ${totalContext.toLocaleString()}/${contextWindow.toLocaleString()} (${contextPercent}%) | In: ${totalInputTokens.toLocaleString()} Out: ${outputTokens.toLocaleString()} | Cache hit: ${cacheHitPercent}%`;
     console.log(line);
     this.detailed(line);
   }
