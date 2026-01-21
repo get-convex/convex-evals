@@ -138,7 +138,23 @@ export async function runOrchestrator(options: OrchestratorOptions): Promise<voi
       prompt,
       options: {
         model: 'claude-opus-4-5',
-        allowedTools: ['Read', 'Write', 'Bash', 'Glob', 'Grep', 'Task'],
+        allowedTools: [
+          // Built-in tools
+          'Read',
+          'Write',
+          'Bash',
+          'Glob',
+          'Grep',
+          'Task',
+          // MCP orchestrator tools (must be explicitly allowed)
+          'mcp__orchestrator-tools__GetEvalSummary',
+          'mcp__orchestrator-tools__GetFailedEvalDetails',
+          'mcp__orchestrator-tools__GetRunLogError',
+          'mcp__orchestrator-tools__GroupFailuresByPattern',
+          'mcp__orchestrator-tools__SaveCheckpoint',
+          'mcp__orchestrator-tools__RevertToCheckpoint',
+          'mcp__orchestrator-tools__GetLegacyGuidelines',
+        ],
         mcpServers: {
           'orchestrator-tools': orchestratorTools,
         },
