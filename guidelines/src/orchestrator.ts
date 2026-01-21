@@ -260,6 +260,18 @@ function setupLogger(provider: string, model: string, runId: string): Logger {
 }
 
 /**
+ * Convert Windows path to Git Bash path format
+ * C:\dev\foo -> /c/dev/foo
+ */
+function toGitBashPath(windowsPath: string): string {
+  // Replace backslashes with forward slashes
+  let path = windowsPath.replace(/\\/g, '/');
+  // Convert C: to /c (case-insensitive drive letter)
+  path = path.replace(/^([A-Za-z]):/, (_, drive) => `/${drive.toLowerCase()}`);
+  return path;
+}
+
+/**
  * Build the comprehensive orchestrator prompt with all context and instructions
  */
 function buildOrchestratorPrompt(
@@ -278,6 +290,12 @@ function buildOrchestratorPrompt(
   const resultsPath = join(runDir, 'results.jsonl');
   const outputDir = join(runDir, 'eval_output');
   const legacyGuidelinesPath = join(workspaceRoot, 'runner', 'models', 'guidelines.py');
+
+  // Convert to Git Bash paths for Bash tool (SDK runs in Git Bash on Windows)
+  const bashWorkspaceRoot = toGitBashPath(workspaceRoot);
+  const bashWorkingGuidelinesPath = toGitBashPath(workingGuidelinesPath);
+  const bashOutputDir = toGitBashPath(outputDir);
+  const bashResultsPath = toGitBashPath(resultsPath);
 
   // Read current state
   const workingGuidelines = readWorkingGuidelines(options.provider, options.model);
@@ -330,14 +348,15 @@ You are in the **Construction Phase**. Follow this algorithm:
 
 ### 1. Run Evals
 
-Use Bash to run the eval runner from the workspace root directory (${workspaceRoot}):
+Use Bash to run the eval runner. IMPORTANT: The Bash tool runs in Git Bash on Windows, so use Unix-style paths.
 
 \`\`\`bash
-cd ${workspaceRoot}
-MODELS=${options.model} TEST_FILTER=${options.filter || ''} CUSTOM_GUIDELINES_PATH=${workingGuidelinesPath} OUTPUT_TEMPDIR=${outputDir} LOCAL_RESULTS=${resultsPath} DISABLE_BRAINTRUST=1 VERBOSE_INFO_LOGS=1 pdm run python -m runner.eval_convex_coding
+cd ${bashWorkspaceRoot} && MODELS=${options.model} TEST_FILTER=${options.filter || ''} CUSTOM_GUIDELINES_PATH=${bashWorkingGuidelinesPath} OUTPUT_TEMPDIR=${bashOutputDir} LOCAL_RESULTS=${bashResultsPath} DISABLE_BRAINTRUST=1 VERBOSE_INFO_LOGS=1 pdm run python -m runner.eval_convex_coding
 \`\`\`
 
-After the command completes, read the results from \`${resultsPath}\`. The file is JSONL format - read the LAST line (most recent run).
+This command will take 20-60 minutes to complete. Just wait for it - do NOT use Task/TaskOutput for this.
+
+After the command completes, read the results from \`${resultsPath}\` (use Windows path for Read tool). The file is JSONL format - read the LAST line (most recent run).
 
 Parse the results to get:
 - \`passed\`: number of passing evals
@@ -535,12 +554,14 @@ Read and update this file to track progress.
 
 - Always update the lock file after significant state changes
 - Use Read/Write tools for all file operations
-- Use Bash tool to run the eval runner
-- Use Task tool to invoke subagents (failure-analyser, incorporator)
+- Use Bash tool to run the eval runner - it will block until completion (can take 5-10 minutes)
+- Do NOT use Task/TaskOutput to run evals in the background - just use Bash directly and wait
+- Use Task tool ONLY to invoke subagents (failure-analyser, incorporator)
 - The eval runner writes results to JSONL - always read the LAST line
 - Guidelines must use markdown headers (##) and bullet points (-), NOT numbered lists
 - Keep iteration history limited to last 20 iterations
 - Be methodical and follow the algorithm step by step
+- CONTEXT MANAGEMENT: Be mindful of context usage. Avoid reading large files unnecessarily. When reading results, only read the specific file paths needed (like results.jsonl), not intermediate output files.
 
 ## Your Task
 
