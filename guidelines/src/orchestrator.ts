@@ -22,6 +22,7 @@ import {
   getRecentIterationFeedback,
 } from './iterationHistory.js';
 import { failureAnalyserAgent, incorporatorAgent } from './subagents.js';
+import { createOrchestratorTools } from './tools.js';
 
 // ============================================================================
 // Configuration Constants
@@ -118,7 +119,19 @@ export async function runOrchestrator(options: OrchestratorOptions): Promise<voi
     // Build orchestrator prompt with full context
     const prompt = buildOrchestratorPrompt(options, runId, lockStatus);
 
-    // Create query with subagents using V1 API
+    // Create custom tools for the orchestrator
+    const toolsWorkspaceRoot = join(import.meta.dir, '..', '..');
+    const toolsRunDir = getRunDir(options.provider, options.model, runId);
+    const toolsResultsPath = join(toolsRunDir, 'results.jsonl');
+    const toolsOutputDir = join(toolsRunDir, 'eval_output');
+    const orchestratorTools = createOrchestratorTools(
+      toolsWorkspaceRoot,
+      toolsOutputDir,
+      toolsResultsPath,
+      options.model
+    );
+
+    // Create query with subagents and custom tools using V1 API
     logger.step('Starting orchestrator agent query');
 
     const q = query({
@@ -126,6 +139,9 @@ export async function runOrchestrator(options: OrchestratorOptions): Promise<voi
       options: {
         model: 'claude-opus-4-5',
         allowedTools: ['Read', 'Write', 'Bash', 'Glob', 'Grep', 'Task'],
+        mcpServers: {
+          'orchestrator-tools': orchestratorTools,
+        },
         agents: {
           'failure-analyser': failureAnalyserAgent,
           'incorporator': incorporatorAgent,
@@ -313,6 +329,19 @@ function buildOrchestratorPrompt(
 
 Generate and refine guidelines that help AI models generate correct Convex code. You will iterate through a construction phase (building guidelines) and a refinement phase (simplifying guidelines).
 
+## CRITICAL CONTEXT MANAGEMENT RULES
+
+To conserve your context window (you have 200K tokens), follow these rules STRICTLY:
+
+1. **DO NOT read results.jsonl** - Use the GetEvalSummary tool from orchestrator-tools MCP server instead
+2. **DO NOT read run.log files** - Use GetRunLogError tool, or pass paths to failure-analyser subagent
+3. **DO NOT read generated code or expected answers** - Pass paths to failure-analyser, let it read
+4. **DO NOT read working_guidelines.txt** - It's already included in this prompt below
+5. **DO NOT search for "legacy guidelines"** - There are none, the path in the prompt is just a placeholder
+
+Use the custom tools (GetEvalSummary, GroupFailuresByPattern, GetFailedEvalDetails, GetRunLogError) for eval operations.
+Delegate all file reading to subagents when analyzing failures.
+
 ## Current Context
 
 - **Target Model**: ${options.provider}/${options.model}
@@ -356,21 +385,18 @@ cd ${bashWorkspaceRoot} && MODELS=${options.model} TEST_FILTER=${options.filter 
 
 This command will take 20-60 minutes to complete. Just wait for it - do NOT use Task/TaskOutput for this.
 
-After the command completes, read the results from \`${resultsPath}\` (use Windows path for Read tool). The file is JSONL format - read the LAST line (most recent run).
+After the command completes, use Bash to extract just the summary from results:
 
-Parse the results to get:
-- \`passed\`: number of passing evals
-- \`failed\`: number of failing evals
-- \`total\`: total evals
-- \`results\`: array of individual eval results
+\`\`\`bash
+tail -1 ${bashResultsPath} | jq '{passed, failed, total, failures: [.results[] | select(.passed == false) | .evalName]}'
+\`\`\`
 
-Each eval result has:
-- \`evalName\`: name like "category/name"
-- \`passed\`: boolean
-- \`taskPath\`: path to TASK.txt
-- \`expectedFiles\`: array of expected file paths
-- \`outputFiles\`: array of actual output file paths
-- \`runLogPath\`: path to run.log
+This gives you just the counts and list of failed eval names - NOT the full results which would waste context.
+
+Only if you need details for a specific failure, extract just that one:
+\`\`\`bash
+tail -1 ${bashResultsPath} | jq '.results[] | select(.evalName == "category/name")'
+\`\`\`
 
 ### 2. Check for 100% Pass Rate
 
@@ -428,34 +454,35 @@ If \`iteration >= ${MAX_CONSTRUCTION_ITERATIONS}\`:
 
 ### 7. Analyze Failures
 
+**IMPORTANT: To conserve context, do NOT read failure files yourself. Delegate to subagents.**
+
 If there are failures (\`failed > 0\`):
-- For each failed eval, invoke the \`failure-analyser\` subagent using the Task tool
-- Provide the eval context:
-  - Read \`taskPath\` (TASK.txt)
-  - Read expected files from \`expectedFiles\`
-  - Read output files from \`outputFiles\`
-  - Read \`runLogPath\` (run.log)
-  - Optionally read legacy guidelines from \`${legacyGuidelinesPath}\` if it exists
+- Group failures by error pattern (e.g., all "v.json() doesn't exist" failures together)
+- For each failure pattern, invoke the \`failure-analyser\` subagent using the Task tool
+- Pass only FILE PATHS to the subagent - let the subagent read the files
+- DO NOT read run.log, generated code, or expected answers yourself - this wastes orchestrator context
 
-Example Task invocation:
+Example Task invocation (pass paths, not content):
 \`\`\`
-Use the failure-analyser agent to analyze this failed eval:
+Analyze this failed Convex eval:
 
-Eval: category/name
-Task: [content of TASK.txt]
-Expected: [content of expected files]
-Actual: [content of output files]
-Run Log: [content of run.log]
-Legacy Guidelines: [if available]
+Eval Name: category/name
+Task File: ${bashWorkspaceRoot}/evals/category/name/TASK.txt
+Expected Answer: ${bashWorkspaceRoot}/evals/category/name/answer/convex/
+Generated Output: ${bashOutputDir}/output/${options.model}/category/name/convex/
+Run Log: ${bashOutputDir}/output/${options.model}/category/name/run.log
+
+Read these files, analyze why the generated code failed, and suggest a guideline fix.
 \`\`\`
 
-The failure-analyser will return analysis in this format:
+The failure-analyser will read the files itself and return a concise analysis:
 \`\`\`
-ANALYSIS: [explanation]
+ANALYSIS: [1-2 sentence explanation]
 SUGGESTED_GUIDELINE: [guideline text]
 CONFIDENCE: [high|medium|low]
-RELATED_LEGACY: [related snippets or None]
 \`\`\`
+
+**Batch similar failures**: If 5 evals fail with "v.json() doesn't exist", analyze ONE representative case, not all 5.
 
 ### 8. Filter and Group Analyses
 
@@ -554,14 +581,61 @@ Read and update this file to track progress.
 
 - Always update the lock file after significant state changes
 - Use Read/Write tools for all file operations
-- Use Bash tool to run the eval runner - it will block until completion (can take 5-10 minutes)
+- Use Bash tool to run the eval runner - it will block until completion (can take 20-60 minutes)
 - Do NOT use Task/TaskOutput to run evals in the background - just use Bash directly and wait
 - Use Task tool ONLY to invoke subagents (failure-analyser, incorporator)
-- The eval runner writes results to JSONL - always read the LAST line
 - Guidelines must use markdown headers (##) and bullet points (-), NOT numbered lists
 - Keep iteration history limited to last 20 iterations
 - Be methodical and follow the algorithm step by step
-- CONTEXT MANAGEMENT: Be mindful of context usage. Avoid reading large files unnecessarily. When reading results, only read the specific file paths needed (like results.jsonl), not intermediate output files.
+
+## CRITICAL: Context Management
+
+You have 200K tokens of context. Conserve it aggressively by using the custom tools below.
+
+## Custom Tools (Use These!)
+
+You have access to these specialized tools via the \`orchestrator-tools\` MCP server. **PREFER these over raw Bash/Read for eval operations:**
+
+### GetEvalSummary
+Returns just the pass/fail counts and list of failed eval names. Use this instead of reading results.jsonl directly.
+- Returns: \`{passed, failed, total, failures: [evalName, ...]}\`
+
+### GroupFailuresByPattern
+Analyzes all failures and groups them by error pattern. Returns representative eval for each pattern.
+- Returns: \`[{pattern, count, representative, allEvals, sampleError}, ...]\`
+- Use this to identify which failure patterns to analyze (pick 1 representative per pattern)
+
+### GetFailedEvalDetails
+Get paths for a specific failed eval to pass to failure-analyser subagent.
+- Input: \`{evalName: "002-queries/009-text_search"}\`
+- Returns: paths to task, expected answer, generated output, run log
+
+### GetRunLogError
+Extract just the error lines from a run.log (not the full log).
+- Input: \`{evalName: "002-queries/009-text_search"}\`
+- Returns: grep'd error lines (max 20 lines)
+
+### SaveCheckpoint / RevertToCheckpoint
+Manage checkpoints without reading/writing files manually.
+
+### GetLegacyGuidelines
+Get reference guidelines from the original Convex eval system. Use this when analyzing failures to see if there's existing guidance on a topic.
+- Input: \`{section: "pagination"}\` (optional filter) 
+- Returns: Array of \`{section, guideline}\` objects
+- Example sections: "function_guidelines", "pagination", "cron_guidelines", "file_storage_guidelines", "schema_guidelines"
+
+## Recommended Workflow (FOLLOW THIS EXACTLY)
+
+1. Run evals with Bash (wait 20-60 min for completion)
+2. **USE GetEvalSummary** (not Python/jq) to get pass/fail counts
+3. If failures exist, **USE GroupFailuresByPattern** to cluster by error type  
+4. For each pattern, **USE GetFailedEvalDetails** to get file paths
+5. Invoke failure-analyser Task with the paths (let subagent read files)
+6. Collect all suggested guidelines from subagents
+7. Invoke incorporator Task with current guidelines + suggestions
+8. Write updated guidelines and repeat from step 1
+
+**DO NOT**: Use Python scripts, jq, or read files directly for eval results
 
 ## Your Task
 
