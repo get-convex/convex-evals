@@ -1,0 +1,73 @@
+# Convex Code Generation Guidelines
+
+## Function Types
+
+- Use `query()` for read-only operations that fetch data from the database. Use `mutation()` only for operations that modify data (insert, update, delete). Never define a read-only get/list/fetch function as a mutation.
+
+## Function Handlers
+
+- When defining Convex function handlers (queries, mutations, or actions), always include both the `ctx` and `args` parameters in the handler signature, even when `args: {}` is empty. Write `handler: async (ctx, args) => { ... }` not `handler: async (ctx) => { ... }`. This prevents TypeScript circular type inference errors when functions reference themselves through the `api` or `internal` objects.
+
+- When calling a function in the same file with `ctx.runQuery`, `ctx.runMutation`, or `ctx.runAction`, add a type annotation on the return value to work around TypeScript circularity:
+  ```typescript
+  const result: string = await ctx.runQuery(api.example.f, { name: "Bob" });
+  ```
+
+## Validators
+
+- **IMPORTANT**: `v.literal()` only accepts string, number, or boolean values. NEVER use `v.literal(undefined)` - it will cause a runtime error. If a field should be undefined/omitted from a returned object, simply exclude that field from the `v.object()` validator definition entirely.
+
+- Convex validators do not include a `v.tuple()` function. To validate fixed-length arrays with heterogeneous types (tuples), use `v.array(v.union(...))` instead.
+
+- When returning discriminated unions with literal types in the validator (e.g., `v.union(v.object({ kind: v.literal("success"), ... }), ...)`), use `as const` assertions on return values to ensure TypeScript infers the exact literal types:
+  ```typescript
+  return { kind: "success" as const, value: 42 };
+  ```
+
+- `v.bigint()` is deprecated. Use `v.int64()` instead for signed 64-bit integers.
+
+## Node.js Runtime and "use node" Directive
+
+- Only use the `"use node";` directive when you specifically need Node.js built-in modules (fs, path, crypto, etc.). The standard Convex runtime provides `Blob`, `TextEncoder`, `TextDecoder`, `fetch`, and other Web APIs natively without needing Node.js.
+
+- The `"use node";` directive applies to ALL functions in a file and restricts them to the Node.js runtime. Only actions can use the Node.js runtime - mutations and queries cannot. Do not place `"use node";` in a file that contains mutations or queries.
+
+- If you need Node.js APIs for an action while also defining mutations or queries, place the action in a separate file with its own `"use node";` directive.
+
+- When importing Node.js built-in modules in actions with the `"use node";` directive, use default imports rather than namespace imports:
+  ```typescript
+  // Correct
+  import crypto from "crypto";
+  import path from "path";
+
+  // Incorrect - may cause module resolution issues
+  import * as crypto from "crypto";
+  ```
+
+## Query Indexes and Multi-Table Joins
+
+- When using index range queries, call `withIndex()` only once per query. Include any range constraints (e.g., `q.gt()`, `q.gte()`, `q.lt()`, `q.lte()`, `q.eq()`) within that single `withIndex()` call. Do not call `withIndex()` multiple times on the same query.
+  ```typescript
+  // Correct - single withIndex call with all constraints
+  ctx.db.query("table")
+    .withIndex("by_field", (q) => q.gt("field", minValue).lt("field", maxValue))
+  ```
+
+- When performing multi-table joins, query tables in the correct order following foreign key relationships. Start with the table that has the field you're filtering on, then use the results to query related tables. Always verify that the index you use with `withIndex()` is actually defined on the table you're querying.
+
+## Pagination
+
+- When defining returns validators for paginated queries using `.paginate()`, include all fields returned by the Convex pagination API:
+  - Required fields: `page` (array of documents), `isDone` (boolean), `continueCursor` (string)
+  - Optional fields: `splitCursor` and `pageStatus`
+
+  Example:
+  ```typescript
+  returns: v.object({
+    page: v.array(v.object({ /* your document fields */ })),
+    isDone: v.boolean(),
+    continueCursor: v.string(),
+    splitCursor: v.optional(v.union(v.string(), v.null())),
+    pageStatus: v.optional(v.union(v.literal("SplitRecommended"), v.literal("SplitRequired"), v.null())),
+  })
+  ```

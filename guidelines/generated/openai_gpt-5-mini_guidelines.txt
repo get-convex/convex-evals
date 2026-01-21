@@ -1,0 +1,205 @@
+# Convex Code Generation Guidelines
+
+## Imports and Type Definitions
+
+- Import `Id` and `Doc` types from `./_generated/dataModel`, NEVER from `convex` or `convex/server`. Example: `import type { Id, Doc } from "./_generated/dataModel";`
+
+- When importing from Convex's generated API file (`./_generated/api`), ALWAYS use named imports with curly braces: `import { api } from "./_generated/api"` and `import { internal } from "./_generated/api"`. NEVER use default imports like `import api from "./_generated/api"` as the generated API file does not export a default value.
+
+- Import function definition helpers (`query`, `mutation`, `action`, `internalQuery`, `internalMutation`, `internalAction`, `httpAction`) from `./_generated/server`. NEVER import `httpAction` from `convex/server` - it must come from the generated server file.
+
+- Import `httpRouter`, `cronJobs`, and `paginationOptsValidator` from `convex/server`. NEVER import `paginationOptsValidator` from `./_generated/server` - it must come from `convex/server`.
+
+- When importing Node.js built-in modules in `"use node"` files, use default imports: `import crypto from "crypto"` and `import path from "path"`. Avoid namespace imports (`import * as path`) which cause ESM loader issues.
+
+## Validators
+
+- There is NO `v.json()` validator. For arbitrary JSON data, use `v.any()` instead.
+
+- There is NO `v.dict()` validator. For objects with string keys (Record<string, T>), use `v.record(keyValidator, valueValidator)`. Example: `v.record(v.string(), v.number())` for `Record<string, number>`.
+
+- For storage IDs, use `v.id("_storage")`, NOT `v.string()`.
+
+- Common validators: `v.string()`, `v.number()`, `v.boolean()`, `v.null()`, `v.id("tableName")`, `v.array()`, `v.object()`, `v.optional()`, `v.union()`, `v.literal()`, `v.any()`, `v.record()`.
+
+## Function Definitions
+
+- Use the new function syntax with `args`, `returns`, and `handler` properties for ALL Convex functions:
+```typescript
+export const myFunction = query({
+  args: { name: v.string() },
+  returns: v.string(),
+  handler: async (ctx, args) => {
+    return `Hello ${args.name}`;
+  },
+});
+```
+
+- ALWAYS include `args` and `returns` validators. Use `returns: v.null()` if nothing is returned, and explicitly `return null;` in the handler.
+
+- The `returns` field must use required validators only. NEVER use `v.optional()` in the `returns` field. For functions that may return null, use `v.union(v.id("tableName"), v.null())` or omit `returns` and specify the return type via TypeScript annotation on the handler (e.g., `handler: async (ctx, args): Promise<Id<"table"> | null> => ...`).
+
+- When a query returns documents directly from the database (via `.collect()`, `.first()`, etc.), the return validator must include system fields. Always include `_id: v.id("tableName")` and `_creationTime: v.number()` in the validator. Example: `returns: v.array(v.object({ _id: v.id("users"), _creationTime: v.number(), name: v.string() }))`.
+
+- When returning discriminated union objects with `v.literal()` validators, add `as const` to return statements. Example: `return { success: false, error: "..." } as const;`
+
+- When a mutation needs to be called ONLY from an action using `ctx.runMutation(internal.file.func, ...)`, define it as `internalMutation`. However, when a mutation needs to be accessible from external clients (tests, frontend), use `mutation` not `internalMutation`.
+
+- Use `internalAction` (not `action`) for background jobs, cleanup tasks, or admin operations that should NOT be callable by regular clients. Functions defined with `action` and `mutation` are public by default. Use `internalAction` and `internalMutation` for functions that should only be callable by admin clients, scheduled jobs, or other Convex functions.
+
+- When writing Convex functions with `returns` validators, always add explicit type annotations to variables that store results from `ctx.runQuery()`, `ctx.runMutation()`, or `ctx.runAction()` calls. Example: `const result: number = await ctx.runQuery(...)` instead of `const result = await ctx.runQuery(...)`. This prevents TypeScript's circular type inference errors (TS7022).
+
+- When defining mutation arguments that accept document data, pass the document fields directly at the top level of the args object. Do not wrap them in an extra nested field like `document`. The args structure should match what the caller sends: `args: { field1, field2 }` not `args: { document: { field1, field2 } }`.
+
+- When implementing mutations that insert documents, do NOT return the inserted document ID unless explicitly specified in the requirements. Use `returns: v.null()` and do not return the result of `ctx.db.insert()`. Only return IDs when the task explicitly asks for them.
+
+## Node.js Runtime and "use node" Directive
+
+- Files with `"use node";` can ONLY contain actions. Mutations and queries CANNOT be defined in Node.js files. When an action needs to call a mutation, place the mutation in a separate file without the directive.
+
+- Only use `"use node"` directive when you specifically need Node.js APIs (like crypto, fs, or Node-only packages). For standard Convex operations including storage APIs, the default Convex runtime is sufficient. Never use `"use node"` in files containing mutations or queries.
+
+- Do NOT use `"use node"` directive for Convex storage operations (ctx.storage.store, ctx.storage.get, ctx.storage.getUrl). These work in the default Convex runtime.
+
+- NEVER add `"use node";` directive to cron definition files.
+
+- When using Node.js `path` module in Convex actions with the "use node" directive, always use `path.posix.normalize()` instead of `path.normalize()` to ensure consistent forward-slash paths across all operating systems. Platform-specific path handling (Windows backslashes) can cause ESM loader failures.
+
+## HTTP Endpoints
+
+- When creating HTTP routes in Convex, ALWAYS use the `http.route({ path, method, handler })` API pattern. Do NOT use chained methods like `.get()` or `.post()` - these do not exist. Example:
+```typescript
+import { httpRouter } from "convex/server";
+import { httpAction } from "./_generated/server";
+
+const http = httpRouter();
+http.route({
+  path: "/api/hello",
+  method: "GET",
+  handler: httpAction(async (ctx, req) => {
+    return new Response("Hello");
+  }),
+});
+export default http;
+```
+
+- For HTTP wildcard routes, use `pathPrefix` instead of `path` in the route configuration. The `pathPrefix` value MUST end with a trailing slash (e.g., `pathPrefix: "/api/"` not `pathPrefix: "/api"`). Convex enforces this requirement.
+
+## Cron Jobs
+
+- Define cron jobs using the `cronJobs()` helper from `convex/server`. The correct parameter order for `crons.interval()` is: (name: string, intervalConfig: object, functionReference, args). The name comes first as a string parameter. Example:
+```typescript
+const crons = cronJobs();
+crons.interval("job name", { seconds: 30 }, internal.file.func, {});
+export default crons;
+```
+
+- When scheduling cron jobs with `crons.interval()` or `crons.cron()`, ALWAYS pass a 4th argument for the function's arguments (use `{}` if no args needed).
+
+- When defining Convex cron jobs with `crons.interval()`, use the appropriate time unit keys (`seconds`, `minutes`, `hours`, `days`) rather than converting everything to seconds. Use `{ minutes: 1 }` instead of `{ seconds: 60 }`.
+
+## Actions
+
+- Actions CANNOT access the database directly. Never use `ctx.db` inside an action. Instead, use `ctx.runMutation()` to modify data or `ctx.runQuery()` to read data.
+
+## Queries and Database Operations
+
+- ALWAYS call a terminal method on Convex queries to execute them.
+
+- Convex mutations are inherently atomic and transactional. There is NO `ctx.db.transaction()` method.
+
+- When modifying existing documents in Convex, use `ctx.db.patch(documentId, fields)` for partial updates or `ctx.db.replace(documentId, document)` for full replacement. There is NO `ctx.db.update()` method.
+
+- Convex queries are async iterables. Use `for await (const item of ctx.db.query("table"))` directly. Do NOT call `.iterate()` - this method does not exist.
+
+- When batching database lookups by ID, preserve the ID type as `Id<"tableName">[]`, not `string[]`. The `ctx.db.get()` method requires typed IDs.
+
+- Do not add input validation to query or mutation functions unless explicitly required. Allow functions to process edge cases like negative numbers naturally. Do NOT throw errors for unusual input values that the database can handle. Schema validators handle type checking; only add additional validation when the task specifically requires it.
+
+- When creating helper functions that perform database queries, pass the entire `ctx: QueryCtx` parameter instead of just `ctx.db`. This ensures TypeScript can properly infer types for query builder methods like `.withIndex()`. Type the helper parameter as `ctx: QueryCtx` (or `ctx: MutationCtx` for mutations), not `db: any`.
+
+- When implementing delete mutations, always validate that the entity exists first using `ctx.db.get()`. Throw a descriptive error if the entity is not found (e.g., `throw new Error("User not found")`). Do NOT silently succeed when deleting non-existent entities.
+
+## Index Range Queries
+
+- For range queries on indexes, chain individual comparison methods: `.eq()`, `.gt()`, `.gte()`, `.lt()`, `.lte()`. There is NO `.range()` method with tuple syntax.
+
+- To specify sort order, chain `.order("asc")` or `.order("desc")` AFTER `.withIndex()` on the query itself, NOT inside the withIndex callback. Example: `ctx.db.query("table").withIndex("by_field").order("desc")`.
+
+- When using `.paginate()` with `.withIndex()`, do NOT add an `.order()` method call in the index callback. Pagination queries use the natural order of the index. Use `.withIndex("indexName")` without additional ordering methods, or use `.withIndex("indexName", (q) => q.eq("field", value))` only for equality constraints.
+
+## Text Search
+
+- Text search uses `.withSearchIndex()` on a query builder. There is NO `ctx.db.search()` method.
+
+- When using `.withSearchIndex()`, the `.search()` method requires exactly two arguments: first the search field name (as a string literal matching the `searchField` in your schema's search index definition), then the search query string. Example: `q.search("content", searchTerm)` not `q.search(searchTerm)`. Use `.eq()` method for exact filter matches on filterFields, not `.filter()`.
+
+## Pagination
+
+- Use `paginationOptsValidator` from `convex/server` for pagination arguments. Example: `import { paginationOptsValidator } from "convex/server";`
+
+- For paginated queries using `.paginate()`, OMIT the `returns` validator entirely. The pagination result includes additional fields that are difficult to validate correctly.
+
+- The pagination result structure is `{ page: Document[], isDone: boolean, continueCursor: string }`.
+
+- When using `.paginate()` with a nullable cursor, pass cursor directly to options even if null: `{cursor: args.cursor, numItems: args.numItems}`. Don't conditionally add the cursor property.
+
+## File Storage
+
+- When storing data in Convex storage, ALWAYS pass a Blob to `ctx.storage.store()`. Use `new Blob([data], { type: "content/type" })` to create a Blob from strings or binary data. Do NOT pass Uint8Array, ArrayBuffer, or other raw binary types directly - wrap them in a Blob first. For text content, use `new Blob([text], { type: "text/plain" })`.
+
+- `ctx.storage.store()` is ONLY available in actions, NOT in mutations. When implementing file upload functionality that calls `ctx.storage.store()`, use `action` not `mutation`. Mutations can only reference existing storage IDs, not upload new files.
+
+- `ctx.storage.generateUploadUrl()` returns a string URL directly, NOT an object. Do not attempt to access properties like `.uploadUrl` on the result. Simply use: `const url = await ctx.storage.generateUploadUrl(); return url;`
+
+- In actions, use `ctx.storage.store(blob)`, `ctx.storage.getUrl(storageId)`, `ctx.storage.get(storageId)`.
+
+- In queries and mutations, use `ctx.storage.getUrl(storageId)` and `ctx.db.system.get(storageId)`.
+
+- In mutations, `ctx.storage.generateUploadUrl()`, `ctx.storage.getUrl()`, and `ctx.storage.delete()` are directly available. When returning storage metadata, preserve `contentType` as `string | undefined` (don't convert to null).
+
+- `ctx.storage.getUrl(storageId)` returns `string | null`.
+
+- When accessing system storage metadata using `ctx.db.system.get(storageId)`, do NOT use `Doc<"_storage">` type annotation. The `Doc` type only accepts user-defined table names from your schema. Let TypeScript infer the type automatically.
+
+- When typing storage IDs, use `Id<"_storage">` directly. NEVER use `Id<typeof "_storage">` - the Id generic requires a plain string literal, not a typeof expression.
+
+## Function Calling and Scheduling
+
+- Use `api` object for public functions and `internal` object for internal functions.
+
+- When calling functions using `api` or `internal`, always include the filename in the path.
+
+- When using `ctx.scheduler.runAfter()` for async database writes, schedule an `internalMutation` directly rather than an action that calls a mutation. This avoids unnecessary indirection.
+
+- When storing scheduler IDs returned from `ctx.scheduler.runAfter()` or `ctx.scheduler.runAt()`, do NOT add explicit type annotations like `const id: string = ...`. Let TypeScript infer the type automatically as the return value is `Id<"_scheduled_functions">`, not a plain string.
+
+## ID Comparison
+
+- When comparing Convex ID types, use direct equality comparison with `===` or `!==`. There is NO `.equals()` method.
+
+## Schema Design
+
+- When designing schemas, only include fields explicitly required. Use indexes to optimize queries rather than denormalizing data unless explicitly required.
+
+- When defining foreign key relationships in Convex schemas, always suffix the field name with "Id" to clearly indicate it stores an ID reference (e.g., use `managerId: v.id("employees")` instead of `manager: v.id("employees")`). This naming convention improves code clarity and consistency.
+
+- For many-to-many relationship tables (join tables), only include the fields explicitly specified: foreign key IDs and any relationship-specific metadata. Do NOT add denormalized copies of related table data (like copying names from related tables) unless explicitly requested.
+
+## TypeScript and ESLint
+
+- When handling `v.any()` typed data, do NOT use explicit `: any` type annotations. Instead, let TypeScript infer the type and add `// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment` on the line BEFORE each assignment, destructuring, or usage of the any-typed value.
+
+- When using Promise.all with array.map(), mark arrow functions that call async methods (like ctx.db.get()) as async: `Promise.all(ids.map(async (id) => await ctx.db.get(id)))`.
+
+## React Integration
+
+- When using Convex React hooks like `useMutation`, `useQuery`, or `useAction`, always import and use the generated `api` object from `"../convex/_generated/api"` instead of string literals. Example: `useMutation(api.messages.sendMessage)` not `useMutation("messages.sendMessage")`.
+
+- When using async operations in React event handlers, wrap with void: `onSubmit={(e) => void handleAsyncSubmit(e)}` to prevent returning a Promise.
+
+## Joins and Related Data
+
+- When joining data in queries (e.g., looking up related records), use clear field names without redundant suffixes (e.g., `author` not `authorName` when the field contains the author's name).
+
+- Always throw an error when required related data is missing (e.g., `if (!author) throw new Error("Author not found")`) rather than returning null, to catch data integrity issues early.
