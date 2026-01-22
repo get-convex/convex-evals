@@ -13,6 +13,10 @@
   const result: string = await ctx.runQuery(api.example.f, { name: "Bob" });
   ```
 
+## Internal Functions
+
+- When a mutation or query needs to be called from an action using `ctx.runMutation(internal.module.func, ...)` or `ctx.runQuery(internal.module.func, ...)`, it must be defined using `internalMutation()` or `internalQuery()` from "./_generated/server", not `mutation()` or `query()`. Regular public functions are not available in the `internal` API namespace and will cause TypeScript errors when referenced from actions.
+
 ## Validators
 
 - **IMPORTANT**: `v.literal()` only accepts string, number, or boolean values. NEVER use `v.literal(undefined)` - it will cause a runtime error. If a field should be undefined/omitted from a returned object, simply exclude that field from the `v.object()` validator definition entirely.
@@ -25,6 +29,19 @@
   ```
 
 - `v.bigint()` is deprecated. Use `v.int64()` instead for signed 64-bit integers.
+
+## Document IDs and Type Preservation
+
+- When collecting Convex document IDs for later retrieval, preserve the typed `Id<"tableName">` rather than converting to plain strings. Use `Set<Id<"users">>` or `Array<Id<"tableName">>` instead of `Set<string>` or `Array<string>`. The `ctx.db.get()` method relies on the Id type parameter to infer which table is being queried and return the correct document type.
+
+- To use the `Id` type in TypeScript annotations, import it from `"./_generated/dataModel"`:
+  ```typescript
+  import { Id } from "./_generated/dataModel";
+
+  // Use in function parameters or variables
+  function processUser(userId: Id<"users">) { ... }
+  ```
+  Do NOT try to import `Id` from `"./_generated/server"` - it's not exported there.
 
 ## Node.js Runtime and "use node" Directive
 
@@ -44,7 +61,9 @@
   import * as crypto from "crypto";
   ```
 
-## Query Indexes and Multi-Table Joins
+- When creating a Convex project, do not add `@types/node` or `typescript` as devDependencies in package.json unless explicitly required. Convex handles TypeScript compilation and Node.js types internally.
+
+## Query Indexes and Filters
 
 - When using index range queries, call `withIndex()` only once per query. Include any range constraints (e.g., `q.gt()`, `q.gte()`, `q.lt()`, `q.lte()`, `q.eq()`) within that single `withIndex()` call. Do not call `withIndex()` multiple times on the same query.
   ```typescript
@@ -53,7 +72,16 @@
     .withIndex("by_field", (q) => q.gt("field", minValue).lt("field", maxValue))
   ```
 
-- When performing multi-table joins, query tables in the correct order following foreign key relationships. Start with the table that has the field you're filtering on, then use the results to query related tables. Always verify that the index you use with `withIndex()` is actually defined on the table you're querying.
+- When performing multi-table joins, query each table separately in the correct order following foreign key relationships. Each index is defined on a specific table and can only be used when querying that table. For a chain like `organizations → teams → teamMembers → users`:
+  1. First query `teams` using its index (e.g., `by_org`) to get team IDs
+  2. Then query `teamMembers` using its index (e.g., `by_team`) with the team IDs from step 1
+  3. Finally query `users` with the user IDs from step 2
+
+  Do NOT try to skip intermediate tables or use an index from one table when querying another table.
+
+- When building Convex queries with index range filters (`.gt()`, `.gte()`, `.lt()`, `.lte()`), ensure the filter value is non-null. Use explicit type narrowing before constructing the query, or use the non-null assertion operator when you can guarantee the value exists within a loop or conditional block.
+
+- Do not create indexes with reserved names in Convex schemas. The names "by_id" and "by_creation_time" are reserved and cannot be used as custom index names. When you need to sort by creation time, use the default table ordering without specifying an index, or choose a different name like "by_createdAt".
 
 ## Pagination
 
@@ -71,3 +99,18 @@
     pageStatus: v.optional(v.union(v.literal("SplitRecommended"), v.literal("SplitRequired"), v.null())),
   })
   ```
+
+## React Integration
+
+- For React form `onSubmit` handlers that call Convex mutations, do not use async functions directly. Instead, wrap the async call without making the handler async:
+  ```typescript
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    void sendMessage({ body });
+  };
+  ```
+  The mutation call returns a Promise but the handler itself should not be async, as React event handlers should not return Promises.
+
+## Configuration Files
+
+- When creating JSON configuration files (tsconfig.json, package.json, convex.json), write only the raw JSON content without any markdown formatting, comments explaining the filename, or code fence delimiters. These files must be valid JSON that can be parsed by package managers and build tools.

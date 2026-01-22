@@ -35,17 +35,17 @@ export const myFunction = query({
 });
 ```
 
-- ALWAYS include `args` and `returns` validators. Use `returns: v.null()` if nothing is returned, and explicitly `return null;` in the handler.
+- ALWAYS include `args` validators. Only include `returns` validators when the task explicitly requires them or specifies the return type. When you do include a `returns` validator, use `returns: v.null()` if nothing is returned and explicitly `return null;` in the handler.
 
-- The `returns` field must use required validators only. NEVER use `v.optional()` in the `returns` field. For functions that may return null, use `v.union(v.id("tableName"), v.null())` or omit `returns` and specify the return type via TypeScript annotation on the handler (e.g., `handler: async (ctx, args): Promise<Id<"table"> | null> => ...`).
+- When using `returns` validators, the field must use required validators only. NEVER use `v.optional()` in the `returns` field. For functions that may return null, use `v.union(v.id("tableName"), v.null())` or omit `returns` and specify the return type via TypeScript annotation on the handler (e.g., `handler: async (ctx, args): Promise<Id<"table"> | null> => ...`).
 
-- When a query returns documents directly from the database (via `.collect()`, `.first()`, etc.), the return validator must include system fields. Always include `_id: v.id("tableName")` and `_creationTime: v.number()` in the validator. Example: `returns: v.array(v.object({ _id: v.id("users"), _creationTime: v.number(), name: v.string() }))`.
+- When defining query return types, only include fields that are explicitly requested or needed by the client. Do NOT automatically include Convex system fields (`_id`, `_creationTime`) unless they are specifically required. If the task specifies returning certain fields (e.g., "return title, author, and preview"), use `.map()` to project documents to exactly those fields. Only include system fields in the return validator when returning full documents or when the task explicitly requires them.
 
-- When returning discriminated union objects with `v.literal()` validators, add `as const` to return statements. Example: `return { success: false, error: "..." } as const;`
+- When returning discriminated union objects with `v.literal()` validators, add `as const` to return statements. Example: `return { success: false, error: "..." } as const;` However, do NOT use `as const` when you have a `returns` validator that expects mutable types (like arrays), as readonly types are incompatible with validator types.
 
 - When a mutation needs to be called ONLY from an action using `ctx.runMutation(internal.file.func, ...)`, define it as `internalMutation`. However, when a mutation needs to be accessible from external clients (tests, frontend), use `mutation` not `internalMutation`.
 
-- Use `internalAction` (not `action`) for background jobs, cleanup tasks, or admin operations that should NOT be callable by regular clients. Functions defined with `action` and `mutation` are public by default. Use `internalAction` and `internalMutation` for functions that should only be callable by admin clients, scheduled jobs, or other Convex functions.
+- When building actions that coordinate queries and mutations, define helper queries/mutations as `internalQuery` and `internalMutation`, and call them via `internal.*` from within the action. The action itself should be defined using `action` (not `internalAction`) if it needs to be called by client code. Use `internalAction` only for actions that should exclusively be called by other Convex functions, scheduled jobs, or admin clients.
 
 - When writing Convex functions with `returns` validators, always add explicit type annotations to variables that store results from `ctx.runQuery()`, `ctx.runMutation()`, or `ctx.runAction()` calls. Example: `const result: number = await ctx.runQuery(...)` instead of `const result = await ctx.runQuery(...)`. This prevents TypeScript's circular type inference errors (TS7022).
 
@@ -57,13 +57,13 @@ export const myFunction = query({
 
 - Files with `"use node";` can ONLY contain actions. Mutations and queries CANNOT be defined in Node.js files. When an action needs to call a mutation, place the mutation in a separate file without the directive.
 
-- Only use `"use node"` directive when you specifically need Node.js APIs (like crypto, fs, or Node-only packages). For standard Convex operations including storage APIs, the default Convex runtime is sufficient. Never use `"use node"` in files containing mutations or queries.
+- Only use `"use node"` directive when you specifically need Node.js APIs (like crypto, fs, or Node-only packages). For standard Convex operations including storage APIs (ctx.storage.store, ctx.storage.get, ctx.storage.getUrl), the default Convex runtime is sufficient and preferred. Never use `"use node"` in files containing mutations or queries.
 
-- Do NOT use `"use node"` directive for Convex storage operations (ctx.storage.store, ctx.storage.get, ctx.storage.getUrl). These work in the default Convex runtime.
+- Do NOT add `"use node"` directive for Convex storage operations. Storage APIs work in the default Convex runtime without Node.js. Adding `"use node"` unnecessarily can cause platform-specific errors, particularly on Windows.
 
 - NEVER add `"use node";` directive to cron definition files.
 
-- When using Node.js `path` module in Convex actions with the "use node" directive, always use `path.posix.normalize()` instead of `path.normalize()` to ensure consistent forward-slash paths across all operating systems. Platform-specific path handling (Windows backslashes) can cause ESM loader failures.
+- When using Node.js `path` module in Convex actions with the "use node" directive, use `path.normalize()` and always add `.replace(/\\+/g, "/")` afterward to convert any Windows backslashes to forward slashes. This ensures consistent forward-slash paths across all operating systems. Example: `const normalized = path.normalize(inputPath).replace(/\\+/g, "/");`
 
 ## HTTP Endpoints
 
@@ -98,6 +98,8 @@ export default crons;
 
 - When defining Convex cron jobs with `crons.interval()`, use the appropriate time unit keys (`seconds`, `minutes`, `hours`, `days`) rather than converting everything to seconds. Use `{ minutes: 1 }` instead of `{ seconds: 60 }`.
 
+- Do not create a schema.ts file in the convex directory unless you need to define database tables. The schema.ts file is optional in Convex - omit it for projects that only use crons, actions, or HTTP endpoints without database access. Creating unnecessary files can interfere with cron job registration.
+
 ## Actions
 
 - Actions CANNOT access the database directly. Never use `ctx.db` inside an action. Instead, use `ctx.runMutation()` to modify data or `ctx.runQuery()` to read data.
@@ -109,6 +111,8 @@ export default crons;
 - Convex mutations are inherently atomic and transactional. There is NO `ctx.db.transaction()` method.
 
 - When modifying existing documents in Convex, use `ctx.db.patch(documentId, fields)` for partial updates or `ctx.db.replace(documentId, document)` for full replacement. There is NO `ctx.db.update()` method.
+
+- When using `ctx.db.patch()` to update a nested field within an object, you cannot provide a partial nested object. You must spread the existing parent object and override only the specific field you want to change. Example: `ctx.db.patch(id, { metadata: { ...document.metadata, author: newAuthor } })`. Otherwise, TypeScript will require all fields of the nested object to be present.
 
 - Convex queries are async iterables. Use `for await (const item of ctx.db.query("table"))` directly. Do NOT call `.iterate()` - this method does not exist.
 
