@@ -165,6 +165,7 @@ ALL_MODELS = [
         requires_chain_of_thought=True,
         uses_system_prompt=True,
         provider=ModelProvider.TOGETHER,
+        override_proxy="https://api.together.xyz/v1",
         ci_run_frequency="daily",
     ),
     ModelTemplate(
@@ -174,6 +175,7 @@ ALL_MODELS = [
         requires_chain_of_thought=False,
         uses_system_prompt=False,
         provider=ModelProvider.TOGETHER,
+        override_proxy="https://api.together.xyz/v1",
         supports_temperature=False,
         ci_run_frequency="daily",
     ),
@@ -184,6 +186,7 @@ ALL_MODELS = [
         requires_chain_of_thought=False,
         uses_system_prompt=True,
         provider=ModelProvider.TOGETHER,
+        override_proxy="https://api.together.xyz/v1",
         ci_run_frequency="daily",
     ),
     ModelTemplate(
@@ -203,6 +206,7 @@ ALL_MODELS = [
         requires_chain_of_thought=False,
         uses_system_prompt=True,
         provider=ModelProvider.TOGETHER,
+        override_proxy="https://api.together.xyz/v1",
         ci_run_frequency="daily",
     ),
     ModelTemplate(
@@ -212,6 +216,7 @@ ALL_MODELS = [
         requires_chain_of_thought=False,
         uses_system_prompt=True,
         provider=ModelProvider.TOGETHER,
+        override_proxy="https://api.together.xyz/v1",
         ci_run_frequency="daily",
     ),
     # Google models
