@@ -2,6 +2,9 @@ name: Test GLM Model
 
 on:
   workflow_dispatch: # Manual triggering only
+  push:
+    branches:
+      - 'test-glm-*'  # Push to any branch starting with test-glm- to trigger
 
 jobs:
   run-evals:
