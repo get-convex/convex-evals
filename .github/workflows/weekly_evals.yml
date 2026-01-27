@@ -46,8 +46,6 @@ jobs:
       XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
       CONVEX_EVAL_ENDPOINT: ${{ secrets.CONVEX_EVAL_ENDPOINT }}
       CONVEX_AUTH_TOKEN: ${{ secrets.CONVEX_AUTH_TOKEN }}
-      DISABLE_BRAINTRUST: 1
-      POST_TO_CONVEX: 1
 
     steps:
       - uses: actions/checkout@v4
