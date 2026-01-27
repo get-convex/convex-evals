@@ -193,6 +193,7 @@ ALL_MODELS = [
         requires_chain_of_thought=False,
         uses_system_prompt=True,
         provider=ModelProvider.TOGETHER,
+        override_proxy="https://api.together.xyz/v1",
         ci_run_frequency="daily",
     ),
     ModelTemplate(
