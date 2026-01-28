@@ -10,7 +10,10 @@
 
 import type * as auth from "../auth.js";
 import type * as evalScores from "../evalScores.js";
+import type * as evals from "../evals.js";
 import type * as http from "../http.js";
+import type * as runs from "../runs.js";
+import type * as steps from "../steps.js";
 
 import type {
   ApiFromModules,
@@ -21,7 +24,10 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   evalScores: typeof evalScores;
+  evals: typeof evals;
   http: typeof http;
+  runs: typeof runs;
+  steps: typeof steps;
 }>;
 
 /**

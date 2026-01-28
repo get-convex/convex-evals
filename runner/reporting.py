@@ -13,6 +13,115 @@ CONVEX_AUTH_TOKEN = os.getenv("CONVEX_AUTH_TOKEN")
 EVALS_EXPERIMENT = os.getenv("EVALS_EXPERIMENT")
 
 
+def _make_convex_request(endpoint_suffix: str, payload: dict) -> dict | None:
+    """Make a request to Convex endpoint. Returns response JSON or None on error."""
+    if CONVEX_EVAL_ENDPOINT is None or CONVEX_AUTH_TOKEN is None:
+        log_info(f"Skipping {endpoint_suffix}: CONVEX_EVAL_ENDPOINT or CONVEX_AUTH_TOKEN not set")
+        return None
+    
+    base_url = CONVEX_EVAL_ENDPOINT.rstrip("/")
+    if not base_url.endswith("/updateScores"):
+        # If endpoint doesn't end with /updateScores, assume it's a base URL
+        url = f"{base_url}/{endpoint_suffix}"
+    else:
+        # Replace /updateScores with the new endpoint
+        url = base_url.replace("/updateScores", f"/{endpoint_suffix}")
+    
+    log_info(f"POST {url} with payload keys: {list(payload.keys())}")
+    try:
+        response = requests.post(
+            url,
+            json=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {CONVEX_AUTH_TOKEN}",
+            },
+        )
+        if response.status_code == 200:
+            result = response.json()
+            log_info(f"Successfully posted to {endpoint_suffix}")
+            return result
+        else:
+            log_info(f"Failed to post to {endpoint_suffix}: HTTP {response.status_code}")
+            log_info(f"Response: {response.text}")
+            return None
+    except Exception as e:
+        log_info(f"Error posting to {endpoint_suffix}: {str(e)}")
+        return None
+
+
+def start_run(model: str, planned_evals: list[str], provider: str | None = None, run_id: str | None = None, experiment: str | None = None) -> str | None:
+    """Start a new run. Returns the Convex run ID (not the external run_id)."""
+    payload = {
+        "model": model,
+        "plannedEvals": planned_evals,
+    }
+    if provider:
+        payload["provider"] = provider
+    if run_id:
+        payload["runId"] = run_id
+    if experiment:
+        payload["experiment"] = experiment
+    elif EVALS_EXPERIMENT:
+        payload["experiment"] = EVALS_EXPERIMENT
+    
+    result = _make_convex_request("startRun", payload)
+    if result and result.get("success") and "runId" in result:
+        return result["runId"]
+    return None
+
+
+def start_eval(run_id: str, eval_path: str, category: str, name: str) -> str | None:
+    """Start a new eval. Returns the Convex eval ID."""
+    payload = {
+        "runId": run_id,
+        "evalPath": eval_path,
+        "category": category,
+        "name": name,
+    }
+    
+    result = _make_convex_request("startEval", payload)
+    if result and result.get("success") and "evalId" in result:
+        return result["evalId"]
+    return None
+
+
+def record_step(eval_id: str, step_name: str, status: dict) -> str | None:
+    """Record a step result. Returns the Convex step ID."""
+    payload = {
+        "evalId": eval_id,
+        "name": step_name,
+        "status": status,
+    }
+    
+    result = _make_convex_request("recordStep", payload)
+    if result and result.get("success") and "stepId" in result:
+        return result["stepId"]
+    return None
+
+
+def complete_eval(eval_id: str, status: dict) -> bool:
+    """Mark an eval as complete."""
+    payload = {
+        "evalId": eval_id,
+        "status": status,
+    }
+    
+    result = _make_convex_request("completeEval", payload)
+    return result is not None and result.get("success", False)
+
+
+def complete_run(run_id: str, status: dict) -> bool:
+    """Mark a run as complete."""
+    payload = {
+        "runId": run_id,
+        "status": status,
+    }
+    
+    result = _make_convex_request("completeRun", payload)
+    return result is not None and result.get("success", False)
+
+
 def post_scores_to_convex(model_name: str, category_scores: dict, total_score: float) -> None:
     # Skip posting unless explicitly enabled or Braintrust is enabled
     post_to_convex = os.getenv("POST_TO_CONVEX") == "1"

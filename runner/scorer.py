@@ -4,15 +4,18 @@ import subprocess
 import re
 import json
 import tempfile
+import time
 from braintrust import traced, Score
 from runner.convex_backend import convex_backend, admin_key
 from runner.logging import append_log, append_log_block, log_cmd_results, log_info, log_vitest_results, run_command_step
+from runner.reporting import record_step, complete_eval
 
 
 def convex_scorer(model, tempdir, *, input, expected, metadata, output):
     model = metadata["model"]
     category = metadata["category"]
     name = metadata["eval_name"]
+    eval_id = metadata.get("eval_id")  # Optional eval_id for incremental reporting
 
     output_project_dir = f"{tempdir}/output/{model}/{category}/{name}"
     os.makedirs(output_project_dir, exist_ok=True)
@@ -27,30 +30,46 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
     passed_eslint = False
     passed_deploy = False
 
+    eval_start_time = time.time()
+
     log_info(f"[{category}/{name}] Writing generated filesystem")
     run_log_path = os.path.join(output_project_dir_abs, "run.log")
     append_log(run_log_path, f"=== Eval: {category}/{name} ===")
+    
+    # Record filesystem step
+    step_start = time.time()
     try:
         write_filesystem(output_project_dir_abs, output)
         scores.append(Score("Valid filesystem output", 1))
         passed_filesystem = True
         append_log(run_log_path, "[ok] write_filesystem")
+        if eval_id:
+            record_step(eval_id, "filesystem", {"kind": "passed", "durationMs": int((time.time() - step_start) * 1000)})
     except Exception as e:
         scores.append(Score("Valid filesystem output", 0))
         append_log(run_log_path, f"[error] write_filesystem: {e}")
         status = "❌"
         log_info(f"[eval] Result {status} {category}/{name} – filesystem fail – dir: {output_project_dir_abs}")
+        if eval_id:
+            record_step(eval_id, "filesystem", {"kind": "failed", "failureReason": str(e), "durationMs": int((time.time() - step_start) * 1000)})
+            complete_eval(eval_id, {"kind": "failed", "failureReason": "filesystem fail", "durationMs": int((time.time() - eval_start_time) * 1000)})
         return scores
 
     # run_command_step moved to runner.logging for reuse across modules
 
     log_info(f"[{category}/{name}] Installing dependencies (bun install)")
+    step_start = time.time()
     if run_command_step(run_log_path, lambda: install_dependencies(output_project_dir_abs), "bun", "bun install"):
         scores.append(Score("`bun install` succeeds", 1))
         passed_install = True
+        if eval_id:
+            record_step(eval_id, "install", {"kind": "passed", "durationMs": int((time.time() - step_start) * 1000)})
     else:
         scores.append(Score("`bun install` succeeds", 0))
         log_info(f"Result ❌ – bun install fail – dir: {output_project_dir_abs}")
+        if eval_id:
+            record_step(eval_id, "install", {"kind": "failed", "failureReason": "bun install failed", "durationMs": int((time.time() - step_start) * 1000)})
+            complete_eval(eval_id, {"kind": "failed", "failureReason": "install fail", "durationMs": int((time.time() - eval_start_time) * 1000)})
         return scores
 
     output_backend_dir = f"{tempdir}/backends/output/{model}/{category}/{name}"
@@ -58,28 +77,44 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
 
     with convex_backend(output_backend_dir) as output_backend:
         log_info(f"[{category}/{name}] Deploying generated backend on port {output_backend['port']}")
+        step_start = time.time()
         if run_command_step(run_log_path, lambda: deploy(output_backend, output_project_dir_abs), "convex-dev", "convex dev"):
             scores.append(Score("`convex dev` succeeds", 1))
             passed_deploy = True
             passed_codegen = True  # convex dev also generates code
+            if eval_id:
+                record_step(eval_id, "deploy", {"kind": "passed", "durationMs": int((time.time() - step_start) * 1000)})
         else:
             scores.append(Score("`convex dev` succeeds", 0))
             log_info(f"Result ❌ – convex dev fail – dir: {output_project_dir_abs}")
+            if eval_id:
+                record_step(eval_id, "deploy", {"kind": "failed", "failureReason": "convex dev failed", "durationMs": int((time.time() - step_start) * 1000)})
+                complete_eval(eval_id, {"kind": "failed", "failureReason": "convex dev fail", "durationMs": int((time.time() - eval_start_time) * 1000)})
             return scores
 
         log_info(f"[{category}/{name}] Typechecking (tsc)")
+        step_start = time.time()
         if run_command_step(run_log_path, lambda: typecheck_code(output_project_dir_abs), "tsc", "tsc"):
             scores.append(Score("Passes tsc", 1))
             passed_tsc = True
+            if eval_id:
+                record_step(eval_id, "tsc", {"kind": "passed", "durationMs": int((time.time() - step_start) * 1000)})
         else:
             scores.append(Score("Passes tsc", 0))
+            if eval_id:
+                record_step(eval_id, "tsc", {"kind": "failed", "failureReason": "tsc failed", "durationMs": int((time.time() - step_start) * 1000)})
 
         log_info(f"[{category}/{name}] Linting (eslint)")
+        step_start = time.time()
         if run_command_step(run_log_path, lambda: lint_code(output_project_dir_abs), "eslint", "eslint"):
             scores.append(Score("Passes eslint", 1))
             passed_eslint = True
+            if eval_id:
+                record_step(eval_id, "eslint", {"kind": "passed", "durationMs": int((time.time() - step_start) * 1000)})
         else:
             scores.append(Score("Passes eslint", 0))
+            if eval_id:
+                record_step(eval_id, "eslint", {"kind": "failed", "failureReason": "eslint failed", "durationMs": int((time.time() - step_start) * 1000)})
 
         eval_path = f"evals/{category}/{name}"
         answer_project_dir, answer_backend_dir = setup_answer_backend(
@@ -96,20 +131,30 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
             tests_ratio = 0.0
             vitest_stdout = None
             test_cmd = None
+            step_start = time.time()
             try:
                 log_info(f"[{category}/{name}] Running tests")
                 pass_rate, vitest_stdout, test_cmd = run_tests(output_backend, answer_backend, test_file)
                 scores.append(Score("Tests pass", pass_rate))
                 tests_ratio = pass_rate
+                if eval_id:
+                    if pass_rate == 1.0:
+                        record_step(eval_id, "tests", {"kind": "passed", "durationMs": int((time.time() - step_start) * 1000)})
+                    else:
+                        record_step(eval_id, "tests", {"kind": "failed", "failureReason": f"tests failed ({pass_rate:.0%})", "durationMs": int((time.time() - step_start) * 1000)})
             except Exception as e:
                 if isinstance(e, TestsFailedException):
                     scores.append(Score("Tests pass", e.ratio))
                     tests_ratio = e.ratio
                     vitest_stdout = e.vitest_stdout
                     test_cmd = e.test_cmd
+                    if eval_id:
+                        record_step(eval_id, "tests", {"kind": "failed", "failureReason": f"tests failed ({e.ratio:.0%})", "durationMs": int((time.time() - step_start) * 1000)})
                 else:
                     scores.append(Score("Tests pass", 0))
                     tests_ratio = 0.0
+                    if eval_id:
+                        record_step(eval_id, "tests", {"kind": "failed", "failureReason": str(e), "durationMs": int((time.time() - step_start) * 1000)})
                 append_log(run_log_path, f"[error] vitest: {e}")
             
             if test_cmd and vitest_stdout:
@@ -141,6 +186,15 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
 
             details = "ok" if len(failures) == 0 else ", ".join(failures)
             log_info(f"Result {status} – {details} – dir: {output_project_dir_abs}")
+
+            # Complete the eval
+            if eval_id:
+                eval_duration = int((time.time() - eval_start_time) * 1000)
+                if status == "✅":
+                    complete_eval(eval_id, {"kind": "passed", "durationMs": eval_duration})
+                else:
+                    failure_reason = failures[0] if failures else "unknown fail"
+                    complete_eval(eval_id, {"kind": "failed", "failureReason": failure_reason, "durationMs": eval_duration})
 
     return scores
 

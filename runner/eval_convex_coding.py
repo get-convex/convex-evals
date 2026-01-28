@@ -7,6 +7,9 @@ from runner.reporting import (
     convex_reporter,
     file_reporter,
     combined_reporter,
+    start_run,
+    start_eval,
+    complete_run,
 )
 import tempfile
 from dotenv import load_dotenv
@@ -15,6 +18,7 @@ import os
 import re
 import json
 import requests
+import time
 
 PROJECT = "Convex Coding"
 
@@ -42,9 +46,6 @@ CONVEX_EVAL_ENDPOINT = os.getenv("CONVEX_EVAL_ENDPOINT")
 CONVEX_AUTH_TOKEN = os.getenv("CONVEX_AUTH_TOKEN")
 
 
-CONVEX_EVAL_ENDPOINT = os.getenv("CONVEX_EVAL_ENDPOINT")
-CONVEX_AUTH_TOKEN = os.getenv("CONVEX_AUTH_TOKEN")
-
 
 def convex_coding_evals(model: ModelTemplate):
     eval_paths = [
@@ -54,11 +55,35 @@ def convex_coding_evals(model: ModelTemplate):
         for name in os.listdir(f"evals/{category}")
         if os.path.isdir(f"evals/{category}/{name}")
     ]
+    
+    # Filter evals
+    filtered_eval_paths = [
+        (category, name, eval_path)
+        for category, name, eval_path in eval_paths
+        if test_filter is None or test_filter.search(f"{category}/{name}")
+    ]
+    
+    # Start run if Convex endpoint is configured
+    run_id = None
+    run_start_time = None
+    if CONVEX_EVAL_ENDPOINT and CONVEX_AUTH_TOKEN:
+        planned_evals = [f"{cat}/{n}" for cat, n, _ in filtered_eval_paths]
+        provider_name = model.provider.value if hasattr(model.provider, 'value') else str(model.provider)
+        experiment = os.getenv("EVALS_EXPERIMENT")
+        run_id = start_run(
+            model=model.name,
+            planned_evals=planned_evals,
+            provider=provider_name,
+            experiment=experiment,
+        )
+        if run_id:
+            run_start_time = time.time()
+            log_info(f"Started run {run_id} for model {model.name} with {len(planned_evals)} evals")
+        else:
+            log_info("Failed to start run in Convex (endpoint may not be configured)")
+    
     data = []
-    for category, name, eval_path in eval_paths:
-        if test_filter is not None and not test_filter.search(f"{category}/{name}"):
-            continue
-
+    for category, name, eval_path in filtered_eval_paths:
         with open(f"{eval_path}/TASK.txt", "r") as f:
             task_description = f.read()
 
@@ -73,24 +98,57 @@ def convex_coding_evals(model: ModelTemplate):
                 file_content = f.read().strip()
                 expected[relative_path] = file_content
 
+        eval_path_str = f"{category}/{name}"
+        
+        # Start eval if run_id is available
+        eval_id = None
+        if run_id:
+            eval_id = start_eval(run_id, eval_path_str, category, name)
+            if eval_id:
+                log_info(f"Started eval {eval_id} for {eval_path_str}")
+
         data.append(
             {
                 "input": task_description,
                 "expected": expected,
-                "name": f"{category}/{name}",
+                "name": eval_path_str,
                 "metadata": {
-                    "name": f"{category}/{name}",
+                    "name": eval_path_str,
                     "category": category,
                     "eval_name": name,
                     "model": model.name,
                     "model_name": model.formatted_name,
                     "tempdir": tempdir,
+                    "eval_id": eval_id,  # Add eval_id to metadata
+                    "run_id": run_id,  # Also store run_id for completion
                 },
-                "id": f"{category}/{name}",
+                "id": eval_path_str,
             }
         )
 
     disable_braintrust = os.getenv("DISABLE_BRAINTRUST") == "1"
+    
+    # Create a custom reporter that completes the run
+    from braintrust import Reporter
+    original_reporter = file_reporter if disable_braintrust else combined_reporter
+    
+    def report_run_wrapper(eval_reports, verbose, jsonl):
+        result = original_reporter.report_run(eval_reports, verbose, jsonl)
+        
+        # Complete the run if it was started
+        if run_id and run_start_time:
+            run_duration = int((time.time() - run_start_time) * 1000)
+            complete_run(run_id, {"kind": "completed", "durationMs": run_duration})
+            log_info(f"Completed run {run_id}")
+        
+        return result
+    
+    custom_reporter = Reporter(
+        name=original_reporter.name,
+        report_eval=original_reporter.report_eval,
+        report_run=report_run_wrapper,
+    )
+    
     return Eval(
         PROJECT,
         data=data,
@@ -104,7 +162,7 @@ def convex_coding_evals(model: ModelTemplate):
             "environment": environment,
         },
         max_concurrency=model.max_concurrency,
-        reporter=file_reporter if disable_braintrust else combined_reporter,
+        reporter=custom_reporter,
         no_send_logs=disable_braintrust,
     )
 
