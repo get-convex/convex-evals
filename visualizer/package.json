@@ -17,6 +17,7 @@
     "@tanstack/react-start": "^1.132.0",
     "@tanstack/router-plugin": "^1.132.0",
     "convex": "^1.31.7",
+    "jszip": "^3.10.1",
     "nitro": "latest",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

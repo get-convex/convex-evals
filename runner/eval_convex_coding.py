@@ -10,6 +10,7 @@ from runner.reporting import (
     start_run,
     start_eval,
     complete_run,
+    get_or_upload_eval_source,
 )
 import tempfile
 from dotenv import load_dotenv
@@ -113,7 +114,17 @@ def convex_coding_evals(model: ModelTemplate):
         # Start eval if run_id is available
         eval_id = None
         if run_id:
-            eval_id = start_eval(run_id, eval_path_str, category, name)
+            # Get or upload eval source files with deduplication
+            task_content, eval_source_storage_id = get_or_upload_eval_source(eval_path)
+            
+            eval_id = start_eval(
+                run_id, 
+                eval_path_str, 
+                category, 
+                name,
+                task=task_content,
+                eval_source_storage_id=eval_source_storage_id,
+            )
             if eval_id:
                 log_info(f"Started eval {eval_id} for {eval_path_str}")
 

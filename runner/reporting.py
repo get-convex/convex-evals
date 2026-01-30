@@ -1,6 +1,9 @@
 import os
 import json
+import hashlib
 import requests
+import zipfile
+import tempfile
 from braintrust import Reporter
 from runner.logging import log_info
 from braintrust.framework import report_failures, EvalResultWithSummary
@@ -11,6 +14,9 @@ OUTPUT_RESULTS_FILE = os.getenv("LOCAL_RESULTS", "local_results.jsonl")
 CONVEX_EVAL_ENDPOINT = os.getenv("CONVEX_EVAL_ENDPOINT")
 CONVEX_AUTH_TOKEN = os.getenv("CONVEX_AUTH_TOKEN")
 EVALS_EXPERIMENT = os.getenv("EVALS_EXPERIMENT")
+
+# Cache for eval source hashes to avoid re-uploading
+_eval_source_cache: dict[str, str] = {}  # hash -> storageId
 
 
 def _make_convex_request(endpoint_suffix: str, payload: dict) -> dict | None:
@@ -71,7 +77,145 @@ def start_run(model: str, planned_evals: list[str], provider: str | None = None,
     return None
 
 
-def start_eval(run_id: str, eval_path: str, category: str, name: str) -> str | None:
+def _compute_directory_hash(dir_path: str, exclude_dirs: list[str] | None = None) -> str:
+    """Compute MD5 hash of a directory's contents (excluding certain directories)."""
+    if exclude_dirs is None:
+        exclude_dirs = ["node_modules", "_generated", "__pycache__"]
+    
+    hasher = hashlib.md5()
+    
+    for root, dirs, files in sorted(os.walk(dir_path)):
+        # Filter out excluded directories
+        dirs[:] = sorted([d for d in dirs if d not in exclude_dirs])
+        
+        for filename in sorted(files):
+            file_path = os.path.join(root, filename)
+            rel_path = os.path.relpath(file_path, dir_path)
+            
+            # Add the relative path to the hash
+            hasher.update(rel_path.encode("utf-8"))
+            
+            # Add the file contents to the hash
+            try:
+                with open(file_path, "rb") as f:
+                    hasher.update(f.read())
+            except Exception:
+                pass  # Skip files that can't be read
+    
+    return hasher.hexdigest()
+
+
+def _check_asset_hash(hash_value: str) -> str | None:
+    """Check if an asset with this hash already exists. Returns storageId if exists."""
+    # Check local cache first
+    if hash_value in _eval_source_cache:
+        return _eval_source_cache[hash_value]
+    
+    result = _make_convex_request("checkAssetHash", {"hash": hash_value})
+    if result and result.get("exists") and "storageId" in result:
+        storage_id = result["storageId"]
+        _eval_source_cache[hash_value] = storage_id
+        return storage_id
+    return None
+
+
+def _register_asset(hash_value: str, asset_type: str, storage_id: str) -> bool:
+    """Register a new asset in the evalAssets table."""
+    result = _make_convex_request("registerAsset", {
+        "hash": hash_value,
+        "assetType": asset_type,
+        "storageId": storage_id,
+    })
+    if result and result.get("success"):
+        _eval_source_cache[hash_value] = storage_id
+        return True
+    return False
+
+
+def _zip_eval_source(eval_path: str) -> str | None:
+    """Zip the eval source directory (excluding node_modules, _generated).
+    Returns path to the zip file."""
+    if not os.path.exists(eval_path):
+        log_info(f"Eval path does not exist: {eval_path}")
+        return None
+    
+    try:
+        fd, zip_path = tempfile.mkstemp(suffix=".zip")
+        os.close(fd)
+        
+        exclude_dirs = {"node_modules", "_generated", "__pycache__"}
+        
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for root, dirs, files in os.walk(eval_path):
+                # Skip excluded directories
+                dirs[:] = [d for d in dirs if d not in exclude_dirs]
+                
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, eval_path)
+                    zf.write(file_path, arcname)
+        
+        return zip_path
+    except Exception as e:
+        log_info(f"Error creating eval source zip: {str(e)}")
+        return None
+
+
+def _get_task_content(eval_path: str) -> str | None:
+    """Read the TASK.txt content from the eval directory."""
+    task_file = os.path.join(eval_path, "TASK.txt")
+    if os.path.exists(task_file):
+        try:
+            with open(task_file, "r", encoding="utf-8") as f:
+                return f.read()
+        except Exception as e:
+            log_info(f"Error reading TASK.txt: {str(e)}")
+    return None
+
+
+def get_or_upload_eval_source(eval_path: str) -> tuple[str | None, str | None]:
+    """Get or upload eval source files with deduplication.
+    Returns (task_content, storage_id) tuple."""
+    if CONVEX_EVAL_ENDPOINT is None or CONVEX_AUTH_TOKEN is None:
+        return None, None
+    
+    # Get task content
+    task_content = _get_task_content(eval_path)
+    
+    # Compute hash of the eval directory
+    dir_hash = _compute_directory_hash(eval_path)
+    
+    # Check if already uploaded
+    existing_storage_id = _check_asset_hash(dir_hash)
+    if existing_storage_id:
+        log_info(f"Eval source already uploaded (hash: {dir_hash[:8]}...)")
+        return task_content, existing_storage_id
+    
+    # Zip and upload
+    zip_path = _zip_eval_source(eval_path)
+    if not zip_path:
+        return task_content, None
+    
+    try:
+        storage_id = upload_to_convex_storage(zip_path)
+        if storage_id:
+            # Register the asset
+            if _register_asset(dir_hash, "evalSource", storage_id):
+                log_info(f"Uploaded and registered eval source (hash: {dir_hash[:8]}...)")
+                return task_content, storage_id
+            else:
+                log_info("Failed to register eval source asset")
+                return task_content, storage_id  # Still return storage_id even if registration failed
+    finally:
+        try:
+            os.unlink(zip_path)
+        except Exception:
+            pass
+    
+    return task_content, None
+
+
+def start_eval(run_id: str, eval_path: str, category: str, name: str, task: str | None = None, eval_source_storage_id: str | None = None) -> str | None:
     """Start a new eval. Returns the Convex eval ID."""
     payload = {
         "runId": run_id,
@@ -79,6 +223,10 @@ def start_eval(run_id: str, eval_path: str, category: str, name: str) -> str | N
         "category": category,
         "name": name,
     }
+    if task:
+        payload["task"] = task
+    if eval_source_storage_id:
+        payload["evalSourceStorageId"] = eval_source_storage_id
     
     result = _make_convex_request("startEval", payload)
     if result and result.get("success") and "evalId" in result:
@@ -100,8 +248,95 @@ def record_step(eval_id: str, step_name: str, status: dict) -> str | None:
     return None
 
 
-def complete_eval(eval_id: str, status: dict) -> bool:
-    """Mark an eval as complete."""
+def zip_output_directory(output_dir: str) -> str | None:
+    """Zip the output directory, excluding node_modules and _generated folders.
+    Returns the path to the zip file, or None on error."""
+    if not os.path.exists(output_dir):
+        log_info(f"Output directory does not exist: {output_dir}")
+        return None
+    
+    try:
+        # Create a temp file for the zip
+        fd, zip_path = tempfile.mkstemp(suffix=".zip")
+        os.close(fd)
+        
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for root, dirs, files in os.walk(output_dir):
+                # Skip node_modules and _generated directories
+                dirs[:] = [d for d in dirs if d not in ('node_modules', '_generated')]
+                
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, output_dir)
+                    zf.write(file_path, arcname)
+        
+        return zip_path
+    except Exception as e:
+        log_info(f"Error creating zip file: {str(e)}")
+        return None
+
+
+def upload_to_convex_storage(zip_path: str) -> str | None:
+    """Upload a zip file to Convex storage. Returns the storage ID, or None on error."""
+    if CONVEX_EVAL_ENDPOINT is None or CONVEX_AUTH_TOKEN is None:
+        log_info("Skipping upload: CONVEX_EVAL_ENDPOINT or CONVEX_AUTH_TOKEN not set")
+        return None
+    
+    # First, get an upload URL
+    result = _make_convex_request("generateUploadUrl", {})
+    if not result or not result.get("success") or "uploadUrl" not in result:
+        log_info("Failed to get upload URL")
+        return None
+    
+    upload_url = result["uploadUrl"]
+    
+    # Upload the file
+    try:
+        with open(zip_path, 'rb') as f:
+            response = requests.post(
+                upload_url,
+                data=f,
+                headers={
+                    "Content-Type": "application/zip",
+                },
+            )
+        
+        if response.status_code == 200:
+            result = response.json()
+            storage_id = result.get("storageId")
+            if storage_id:
+                log_info(f"Successfully uploaded to Convex storage: {storage_id}")
+                return storage_id
+            else:
+                log_info(f"Upload succeeded but no storageId in response: {result}")
+                return None
+        else:
+            log_info(f"Failed to upload: HTTP {response.status_code}")
+            log_info(f"Response: {response.text}")
+            return None
+    except Exception as e:
+        log_info(f"Error uploading to Convex storage: {str(e)}")
+        return None
+
+
+def complete_eval(eval_id: str, status: dict, output_dir: str | None = None) -> bool:
+    """Mark an eval as complete. Optionally zips and uploads the output directory."""
+    # If output_dir is provided, zip and upload it
+    storage_id = None
+    if output_dir:
+        zip_path = zip_output_directory(output_dir)
+        if zip_path:
+            try:
+                storage_id = upload_to_convex_storage(zip_path)
+                if storage_id:
+                    status["outputStorageId"] = storage_id
+            finally:
+                # Clean up the temp zip file
+                try:
+                    os.unlink(zip_path)
+                except Exception:
+                    pass
+    
     payload = {
         "evalId": eval_id,
         "status": status,

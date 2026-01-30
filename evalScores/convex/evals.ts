@@ -4,8 +4,8 @@ import { v } from "convex/values";
 const evalStatus = v.union(
   v.object({ kind: v.literal("pending") }),
   v.object({ kind: v.literal("running") }),
-  v.object({ kind: v.literal("passed"), durationMs: v.number() }),
-  v.object({ kind: v.literal("failed"), failureReason: v.string(), durationMs: v.number() }),
+  v.object({ kind: v.literal("passed"), durationMs: v.number(), outputStorageId: v.optional(v.id("_storage")) }),
+  v.object({ kind: v.literal("failed"), failureReason: v.string(), durationMs: v.number(), outputStorageId: v.optional(v.id("_storage")) }),
 );
 
 export const createEval = internalMutation({
@@ -14,6 +14,8 @@ export const createEval = internalMutation({
     evalPath: v.string(),
     category: v.string(),
     name: v.string(),
+    task: v.optional(v.string()),
+    evalSourceStorageId: v.optional(v.id("_storage")),
   },
   returns: v.id("evals"),
   handler: async (ctx, args) => {
@@ -23,6 +25,8 @@ export const createEval = internalMutation({
       category: args.category,
       name: args.name,
       status: { kind: "pending" },
+      task: args.task,
+      evalSourceStorageId: args.evalSourceStorageId,
     });
     return id;
   },
@@ -46,8 +50,8 @@ export const completeEval = internalMutation({
   args: {
     evalId: v.id("evals"),
     status: v.union(
-      v.object({ kind: v.literal("passed"), durationMs: v.number() }),
-      v.object({ kind: v.literal("failed"), failureReason: v.string(), durationMs: v.number() }),
+      v.object({ kind: v.literal("passed"), durationMs: v.number(), outputStorageId: v.optional(v.id("_storage")) }),
+      v.object({ kind: v.literal("failed"), failureReason: v.string(), durationMs: v.number(), outputStorageId: v.optional(v.id("_storage")) }),
     ),
   },
   returns: v.null(),

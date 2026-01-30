@@ -13,8 +13,8 @@ export type RunStatus =
 export type EvalStatus =
   | { kind: "pending" }
   | { kind: "running" }
-  | { kind: "passed"; durationMs: number }
-  | { kind: "failed"; failureReason: string; durationMs: number };
+  | { kind: "passed"; durationMs: number; outputStorageId?: string }
+  | { kind: "failed"; failureReason: string; durationMs: number; outputStorageId?: string };
 
 export type StepStatus =
   | { kind: "running" }
@@ -39,6 +39,8 @@ export interface Eval {
   category: string;
   name: string;
   status: EvalStatus;
+  task?: string;
+  evalSourceStorageId?: string;
   _creationTime: number;
   steps?: Step[];
 }

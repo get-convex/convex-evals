@@ -4,8 +4,9 @@ import {
   Link,
   useSearch,
 } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "convex/react";
+import JSZip from "jszip";
 import { api } from "../../../evalScores/convex/_generated/api";
 import type { Id } from "../../../evalScores/convex/_generated/dataModel";
 import {
@@ -21,7 +22,16 @@ import {
   formatStepName,
   type Step,
   type FileEntry,
+  type EvalStatus,
 } from "../lib/types";
+
+// Types for zip file entries
+interface ZipFileEntry {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  content?: string;
+}
 
 export const Route = createFileRoute("/run/$runId/$category/$evalId")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -119,6 +129,15 @@ function EvalDetailsPage() {
           📊 Steps
         </TabButton>
         <TabButton
+          tab="output"
+          currentTab={tab}
+          runId={runId}
+          category={category}
+          evalId={evalId}
+        >
+          📦 Output
+        </TabButton>
+        <TabButton
           tab="task"
           currentTab={tab}
           runId={runId}
@@ -126,6 +145,15 @@ function EvalDetailsPage() {
           evalId={evalId}
         >
           📋 Task
+        </TabButton>
+        <TabButton
+          tab="evalSource"
+          currentTab={tab}
+          runId={runId}
+          category={category}
+          evalId={evalId}
+        >
+          📁 Eval Source
         </TabButton>
         <TabButton
           tab="answer"
@@ -141,8 +169,16 @@ function EvalDetailsPage() {
       <div className="flex-1 overflow-hidden">
         {tab === "steps" ? (
           <StepsTab steps={evalItem.steps || []} evalStatus={evalItem.status} />
+        ) : tab === "output" ? (
+          <OutputTab evalStatus={evalItem.status} />
         ) : tab === "task" ? (
-          <TaskTab category={category} evalName={evalItem.name} />
+          <TaskTab 
+            category={category} 
+            evalName={evalItem.name} 
+            taskFromDb={evalItem.task}
+          />
+        ) : tab === "evalSource" ? (
+          <EvalSourceTab evalSourceStorageId={evalItem.evalSourceStorageId} />
         ) : tab === "answer" ? (
           <AnswerTab category={category} evalName={evalItem.name} />
         ) : null}
@@ -261,21 +297,371 @@ function StepsTab({
   );
 }
 
+function OutputTab({ evalStatus }: { evalStatus: EvalStatus }) {
+  const [files, setFiles] = useState<ZipFileEntry[]>([]);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Get the storage ID from the status
+  const storageId = useMemo(() => {
+    if (evalStatus.kind === "passed" || evalStatus.kind === "failed") {
+      return evalStatus.outputStorageId;
+    }
+    return undefined;
+  }, [evalStatus]);
+
+  // Query for the download URL
+  const downloadUrl = useQuery(
+    api.runs.getOutputUrl,
+    storageId ? { storageId: storageId as Id<"_storage"> } : "skip"
+  );
+
+  // Fetch and extract zip when URL is available
+  useEffect(() => {
+    if (!downloadUrl) {
+      setLoading(false);
+      return;
+    }
+
+    const fetchAndExtract = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const response = await fetch(downloadUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch zip: ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        const zip = await JSZip.loadAsync(blob);
+
+        const extractedFiles: ZipFileEntry[] = [];
+
+        // Extract all files from the zip
+        for (const [path, zipEntry] of Object.entries(zip.files)) {
+          if (zipEntry.dir) {
+            extractedFiles.push({
+              name: path.split("/").filter(Boolean).pop() || path,
+              path,
+              isDirectory: true,
+            });
+          } else {
+            // Read text content for text files
+            let content: string | undefined;
+            const ext = path.split(".").pop()?.toLowerCase();
+            const isTextFile = [
+              "ts", "tsx", "js", "jsx", "json", "md", "txt", "html", "css",
+              "yaml", "yml", "toml", "env", "log", "gitignore", "npmrc"
+            ].includes(ext || "");
+
+            if (isTextFile) {
+              content = await zipEntry.async("string");
+            }
+
+            extractedFiles.push({
+              name: path.split("/").filter(Boolean).pop() || path,
+              path,
+              isDirectory: false,
+              content,
+            });
+          }
+        }
+
+        // Sort files: directories first, then alphabetically
+        extractedFiles.sort((a, b) => {
+          if (a.isDirectory !== b.isDirectory) {
+            return a.isDirectory ? -1 : 1;
+          }
+          return a.path.localeCompare(b.path);
+        });
+
+        setFiles(extractedFiles);
+        setLoading(false);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to extract zip");
+        setLoading(false);
+      }
+    };
+
+    fetchAndExtract();
+  }, [downloadUrl]);
+
+  // Build file tree structure with implicit directories
+  const fileTree = useMemo(() => {
+    const tree: Map<string, ZipFileEntry[]> = new Map();
+    tree.set("", []); // Root level
+    const directoriesAdded = new Set<string>();
+
+    // Helper to ensure all parent directories exist
+    const ensureDirectories = (filePath: string) => {
+      const parts = filePath.split("/").filter(Boolean);
+      for (let i = 1; i < parts.length; i++) {
+        const dirPath = parts.slice(0, i).join("/") + "/";
+        if (!directoriesAdded.has(dirPath)) {
+          directoriesAdded.add(dirPath);
+          // Add directory entry
+          const dirEntry: ZipFileEntry = {
+            name: parts[i - 1],
+            path: dirPath,
+            isDirectory: true,
+          };
+          // Add to tree
+          if (!tree.has(dirPath)) {
+            tree.set(dirPath, []);
+          }
+          // Add to parent
+          const parentPath = i === 1 ? "" : parts.slice(0, i - 1).join("/") + "/";
+          if (!tree.has(parentPath)) {
+            tree.set(parentPath, []);
+          }
+          const parentList = tree.get(parentPath)!;
+          if (!parentList.find((f) => f.path === dirPath)) {
+            parentList.push(dirEntry);
+          }
+        }
+      }
+    };
+
+    // Process all files and create implicit directories
+    for (const file of files) {
+      if (file.isDirectory) {
+        // Explicit directory entry
+        const normalizedPath = file.path.endsWith("/") ? file.path : file.path + "/";
+        ensureDirectories(normalizedPath);
+      } else {
+        // File - ensure parent directories exist
+        const parts = file.path.split("/").filter(Boolean);
+        if (parts.length > 1) {
+          ensureDirectories(file.path);
+          // Add file to its parent
+          const parentPath = parts.slice(0, -1).join("/") + "/";
+          if (!tree.has(parentPath)) {
+            tree.set(parentPath, []);
+          }
+          tree.get(parentPath)!.push(file);
+        } else {
+          // Root level file
+          tree.get("")!.push(file);
+        }
+      }
+    }
+
+    // Sort each directory's contents
+    for (const [, children] of tree) {
+      children.sort((a, b) => {
+        // Directories first
+        if (a.isDirectory !== b.isDirectory) {
+          return a.isDirectory ? -1 : 1;
+        }
+        // Then alphabetically
+        return a.name.localeCompare(b.name);
+      });
+    }
+
+    return tree;
+  }, [files]);
+
+  const selectedFileEntry = useMemo(() => {
+    return files.find((f) => f.path === selectedFile);
+  }, [files, selectedFile]);
+
+  if (!storageId) {
+    return (
+      <div className="p-6 text-slate-400">
+        <p>No output files available for this evaluation.</p>
+        <p className="text-sm mt-2">
+          Output files are only available for completed evaluations.
+        </p>
+      </div>
+    );
+  }
+
+  if (downloadUrl === undefined || loading) {
+    return (
+      <div className="p-6 text-slate-400">
+        <p>Loading output files...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6 text-red-400">
+        <p>Error loading output: {error}</p>
+      </div>
+    );
+  }
+
+  if (files.length === 0) {
+    return (
+      <div className="p-6 text-slate-400">
+        <p>No files found in output archive.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full">
+      <div className="file-tree">
+        <div className="file-tree-header">
+          Model Output
+          <span className="text-xs text-slate-500 ml-2">
+            ({files.filter((f) => !f.isDirectory).length} files)
+          </span>
+        </div>
+        <div className="p-2">
+          <ZipFileTree
+            files={fileTree.get("") || []}
+            fileTree={fileTree}
+            onFileClick={setSelectedFile}
+            selectedFile={selectedFile}
+          />
+        </div>
+      </div>
+      <div className="file-viewer">
+        <div className="file-viewer-header">
+          {selectedFile ? selectedFile : "Select a file"}
+        </div>
+        <pre className="file-content">
+          {selectedFileEntry?.content ?? 
+            (selectedFile 
+              ? (selectedFileEntry?.isDirectory 
+                  ? "Select a file to view its contents"
+                  : "Binary file - cannot display")
+              : "Select a file to view its contents")}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
+function ZipFileTree({
+  files,
+  fileTree,
+  onFileClick,
+  selectedFile,
+}: {
+  files: ZipFileEntry[];
+  fileTree: Map<string, ZipFileEntry[]>;
+  onFileClick: (path: string) => void;
+  selectedFile: string | null;
+}) {
+  return (
+    <>
+      {files.map((file) =>
+        file.isDirectory ? (
+          <ZipDirectoryItem
+            key={file.path}
+            file={file}
+            fileTree={fileTree}
+            onFileClick={onFileClick}
+            selectedFile={selectedFile}
+          />
+        ) : (
+          <button
+            key={file.path}
+            className={`file-tree-item file ${selectedFile === file.path ? "active" : ""}`}
+            onClick={() => onFileClick(file.path)}
+          >
+            {getFileIcon(file.name)} {file.name}
+          </button>
+        )
+      )}
+    </>
+  );
+}
+
+function ZipDirectoryItem({
+  file,
+  fileTree,
+  onFileClick,
+  selectedFile,
+}: {
+  file: ZipFileEntry;
+  fileTree: Map<string, ZipFileEntry[]>;
+  onFileClick: (path: string) => void;
+  selectedFile: string | null;
+}) {
+  const [isExpanded, setIsExpanded] = useState(true); // Start expanded
+
+  // Normalize the path for lookup (ensure trailing slash)
+  const lookupPath = file.path.endsWith("/") ? file.path : file.path + "/";
+  const children = fileTree.get(lookupPath) || [];
+
+  return (
+    <div>
+      <button
+        className="file-tree-item directory"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <span>📁 {file.name}</span>
+        <span className={`expand-arrow ${isExpanded ? "expanded" : ""}`}>
+          ▶
+        </span>
+      </button>
+      {isExpanded && children.length > 0 && (
+        <div className="file-tree-children">
+          <ZipFileTree
+            files={children}
+            fileTree={fileTree}
+            onFileClick={onFileClick}
+            selectedFile={selectedFile}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function getFileIcon(filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase();
+  switch (ext) {
+    case "ts":
+    case "tsx":
+      return "📘";
+    case "js":
+    case "jsx":
+      return "📒";
+    case "json":
+      return "📋";
+    case "md":
+      return "📝";
+    case "css":
+      return "🎨";
+    case "html":
+      return "🌐";
+    case "log":
+      return "📜";
+    default:
+      return "📄";
+  }
+}
+
 function TaskTab({
   category,
   evalName,
+  taskFromDb,
 }: {
   category: string;
   evalName: string;
+  taskFromDb?: string;
 }) {
-  const [taskContent, setTaskContent] = useState<string | null>(null);
+  const [taskContent, setTaskContent] = useState<string | null>(taskFromDb ?? null);
   const [error, setError] = useState<string | null>(null);
 
+  // Only fetch from server if not available in DB
   useEffect(() => {
+    if (taskFromDb) {
+      setTaskContent(taskFromDb);
+      return;
+    }
+    
     getTaskContent({ data: { category, evalName } })
       .then(setTaskContent)
       .catch((err: Error) => setError(err.message));
-  }, [category, evalName]);
+  }, [category, evalName, taskFromDb]);
 
   if (error) {
     return (
@@ -292,8 +678,234 @@ function TaskTab({
   return (
     <div className="h-full overflow-auto">
       <div className="p-6">
+        {taskFromDb && (
+          <div className="mb-4 text-xs text-slate-500">
+            📦 Task loaded from database
+          </div>
+        )}
         <pre className="whitespace-pre-wrap text-slate-300 font-mono text-sm">
           {taskContent}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
+function EvalSourceTab({ evalSourceStorageId }: { evalSourceStorageId?: string }) {
+  const [files, setFiles] = useState<ZipFileEntry[]>([]);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Query for the download URL
+  const downloadUrl = useQuery(
+    api.runs.getOutputUrl,
+    evalSourceStorageId ? { storageId: evalSourceStorageId as Id<"_storage"> } : "skip"
+  );
+
+  // Fetch and extract zip when URL is available
+  useEffect(() => {
+    if (!downloadUrl) {
+      setLoading(false);
+      return;
+    }
+
+    const fetchAndExtract = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const response = await fetch(downloadUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch zip: ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        const zip = await JSZip.loadAsync(blob);
+
+        const extractedFiles: ZipFileEntry[] = [];
+
+        // Extract all files from the zip
+        for (const [path, zipEntry] of Object.entries(zip.files)) {
+          if (zipEntry.dir) {
+            extractedFiles.push({
+              name: path.split("/").filter(Boolean).pop() || path,
+              path,
+              isDirectory: true,
+            });
+          } else {
+            // Read text content for text files
+            let content: string | undefined;
+            const ext = path.split(".").pop()?.toLowerCase();
+            const isTextFile = [
+              "ts", "tsx", "js", "jsx", "json", "md", "txt", "html", "css",
+              "yaml", "yml", "toml", "env", "log", "gitignore", "npmrc"
+            ].includes(ext || "");
+
+            if (isTextFile) {
+              content = await zipEntry.async("string");
+            }
+
+            extractedFiles.push({
+              name: path.split("/").filter(Boolean).pop() || path,
+              path,
+              isDirectory: false,
+              content,
+            });
+          }
+        }
+
+        // Sort files: directories first, then alphabetically
+        extractedFiles.sort((a, b) => {
+          if (a.isDirectory !== b.isDirectory) {
+            return a.isDirectory ? -1 : 1;
+          }
+          return a.path.localeCompare(b.path);
+        });
+
+        setFiles(extractedFiles);
+        setLoading(false);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to extract zip");
+        setLoading(false);
+      }
+    };
+
+    fetchAndExtract();
+  }, [downloadUrl]);
+
+  // Build file tree structure with implicit directories
+  const fileTree = useMemo(() => {
+    const tree: Map<string, ZipFileEntry[]> = new Map();
+    tree.set("", []); // Root level
+    const directoriesAdded = new Set<string>();
+
+    // Helper to ensure all parent directories exist
+    const ensureDirectories = (filePath: string) => {
+      const parts = filePath.split("/").filter(Boolean);
+      for (let i = 1; i < parts.length; i++) {
+        const dirPath = parts.slice(0, i).join("/") + "/";
+        if (!directoriesAdded.has(dirPath)) {
+          directoriesAdded.add(dirPath);
+          const dirEntry: ZipFileEntry = {
+            name: parts[i - 1],
+            path: dirPath,
+            isDirectory: true,
+          };
+          if (!tree.has(dirPath)) {
+            tree.set(dirPath, []);
+          }
+          const parentPath = i === 1 ? "" : parts.slice(0, i - 1).join("/") + "/";
+          if (!tree.has(parentPath)) {
+            tree.set(parentPath, []);
+          }
+          const parentList = tree.get(parentPath)!;
+          if (!parentList.find((f) => f.path === dirPath)) {
+            parentList.push(dirEntry);
+          }
+        }
+      }
+    };
+
+    for (const file of files) {
+      if (file.isDirectory) {
+        const normalizedPath = file.path.endsWith("/") ? file.path : file.path + "/";
+        ensureDirectories(normalizedPath);
+      } else {
+        const parts = file.path.split("/").filter(Boolean);
+        if (parts.length > 1) {
+          ensureDirectories(file.path);
+          const parentPath = parts.slice(0, -1).join("/") + "/";
+          if (!tree.has(parentPath)) {
+            tree.set(parentPath, []);
+          }
+          tree.get(parentPath)!.push(file);
+        } else {
+          tree.get("")!.push(file);
+        }
+      }
+    }
+
+    for (const [, children] of tree) {
+      children.sort((a, b) => {
+        if (a.isDirectory !== b.isDirectory) {
+          return a.isDirectory ? -1 : 1;
+        }
+        return a.name.localeCompare(b.name);
+      });
+    }
+
+    return tree;
+  }, [files]);
+
+  const selectedFileEntry = useMemo(() => {
+    return files.find((f) => f.path === selectedFile);
+  }, [files, selectedFile]);
+
+  if (!evalSourceStorageId) {
+    return (
+      <div className="p-6 text-slate-400">
+        <p>No eval source files available.</p>
+        <p className="text-sm mt-2">
+          Eval source files are stored for newer evaluations.
+        </p>
+      </div>
+    );
+  }
+
+  if (downloadUrl === undefined || loading) {
+    return (
+      <div className="p-6 text-slate-400">
+        <p>Loading eval source files...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6 text-red-400">
+        <p>Error loading eval source: {error}</p>
+      </div>
+    );
+  }
+
+  if (files.length === 0) {
+    return (
+      <div className="p-6 text-slate-400">
+        <p>No files found in eval source archive.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full">
+      <div className="file-tree">
+        <div className="file-tree-header">
+          Eval Source
+          <span className="text-xs text-slate-500 ml-2">
+            ({files.filter((f) => !f.isDirectory).length} files)
+          </span>
+        </div>
+        <div className="p-2">
+          <ZipFileTree
+            files={fileTree.get("") || []}
+            fileTree={fileTree}
+            onFileClick={setSelectedFile}
+            selectedFile={selectedFile}
+          />
+        </div>
+      </div>
+      <div className="file-viewer">
+        <div className="file-viewer-header">
+          {selectedFile ? selectedFile : "Select a file"}
+        </div>
+        <pre className="file-content">
+          {selectedFileEntry?.content ?? 
+            (selectedFile 
+              ? (selectedFileEntry?.isDirectory 
+                  ? "Select a file to view its contents"
+                  : "Binary file - cannot display")
+              : "Select a file to view its contents")}
         </pre>
       </div>
     </div>

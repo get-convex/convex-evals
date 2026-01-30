@@ -279,6 +279,110 @@ http.route({
   }),
 });
 
+// Check if an asset with this hash exists (for deduplication)
+http.route({
+  path: "/checkAssetHash",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const tokenValue = await validateAuth(ctx, request);
+      if (!tokenValue) {
+        return new Response(JSON.stringify({ error: "Invalid authentication token" }), {
+          status: 401,
+          headers: corsHeaders,
+        });
+      }
+
+      const body: unknown = await request.json();
+      const CheckHashBody = z.object({
+        hash: z.string(),
+      });
+
+      const parsed = CheckHashBody.safeParse(body);
+      if (!parsed.success) {
+        return new Response(JSON.stringify({ error: parsed.error.issues[0].message }), {
+          status: 400,
+          headers: corsHeaders,
+        });
+      }
+
+      const existing = await ctx.runQuery(internal.evalAssets.getByHash, {
+        hash: parsed.data.hash,
+      });
+
+      if (existing) {
+        return new Response(JSON.stringify({ 
+          exists: true, 
+          storageId: existing.storageId,
+        }), {
+          status: 200,
+          headers: corsHeaders,
+        });
+      }
+
+      return new Response(JSON.stringify({ exists: false }), {
+        status: 200,
+        headers: corsHeaders,
+      });
+    } catch (error) {
+      console.error("Error checking asset hash:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: corsHeaders,
+      });
+    }
+  }),
+});
+
+// Register a new asset after upload
+http.route({
+  path: "/registerAsset",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const tokenValue = await validateAuth(ctx, request);
+      if (!tokenValue) {
+        return new Response(JSON.stringify({ error: "Invalid authentication token" }), {
+          status: 401,
+          headers: corsHeaders,
+        });
+      }
+
+      const body: unknown = await request.json();
+      const RegisterAssetBody = z.object({
+        hash: z.string(),
+        assetType: z.enum(["evalSource", "output"]),
+        storageId: z.string(),
+      });
+
+      const parsed = RegisterAssetBody.safeParse(body);
+      if (!parsed.success) {
+        return new Response(JSON.stringify({ error: parsed.error.issues[0].message }), {
+          status: 400,
+          headers: corsHeaders,
+        });
+      }
+
+      const result = await ctx.runMutation(internal.evalAssets.create, {
+        hash: parsed.data.hash,
+        assetType: parsed.data.assetType,
+        storageId: parsed.data.storageId as any,
+      });
+
+      return new Response(JSON.stringify({ success: true, assetId: result }), {
+        status: 200,
+        headers: corsHeaders,
+      });
+    } catch (error) {
+      console.error("Error registering asset:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: corsHeaders,
+      });
+    }
+  }),
+});
+
 http.route({
   path: "/startEval",
   method: "POST",
@@ -298,6 +402,8 @@ http.route({
         evalPath: z.string(),
         category: z.string(),
         name: z.string(),
+        task: z.string().optional(),
+        evalSourceStorageId: z.string().optional(),
       });
 
       const parsed = StartEvalBody.safeParse(body);
@@ -313,6 +419,8 @@ http.route({
         evalPath: parsed.data.evalPath,
         category: parsed.data.category,
         name: parsed.data.name,
+        task: parsed.data.task,
+        evalSourceStorageId: parsed.data.evalSourceStorageId as any,
       });
 
       return new Response(JSON.stringify({ success: true, evalId: result }), {
@@ -403,8 +511,8 @@ http.route({
       const CompleteEvalBody = z.object({
         evalId: z.string(),
         status: z.union([
-          z.object({ kind: z.literal("passed"), durationMs: z.number() }),
-          z.object({ kind: z.literal("failed"), failureReason: z.string(), durationMs: z.number() }),
+          z.object({ kind: z.literal("passed"), durationMs: z.number(), outputStorageId: z.string().optional() }),
+          z.object({ kind: z.literal("failed"), failureReason: z.string(), durationMs: z.number(), outputStorageId: z.string().optional() }),
         ]),
       });
 
@@ -418,9 +526,7 @@ http.route({
 
       await ctx.runMutation(internal.evals.completeEval, {
         evalId: parsed.data.evalId as any,
-        status: parsed.data.status as
-          | { kind: "passed"; durationMs: number }
-          | { kind: "failed"; failureReason: string; durationMs: number },
+        status: parsed.data.status as any,
       });
 
       return new Response(JSON.stringify({ success: true }), {
@@ -480,6 +586,36 @@ http.route({
       });
     } catch (error) {
       console.error("Error completing run:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: corsHeaders,
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/generateUploadUrl",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const tokenValue = await validateAuth(ctx, request);
+      if (!tokenValue) {
+        return new Response(JSON.stringify({ error: "Invalid authentication token" }), {
+          status: 401,
+          headers: corsHeaders,
+        });
+      }
+
+      // Generate an upload URL for file storage
+      const uploadUrl = await ctx.storage.generateUploadUrl();
+
+      return new Response(JSON.stringify({ success: true, uploadUrl }), {
+        status: 200,
+        headers: corsHeaders,
+      });
+    } catch (error) {
+      console.error("Error generating upload URL:", error);
       return new Response(JSON.stringify({ error: "Internal server error" }), {
         status: 500,
         headers: corsHeaders,

@@ -52,7 +52,7 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
         log_info(f"[eval] Result {status} {category}/{name} – filesystem fail – dir: {output_project_dir_abs}")
         if eval_id:
             record_step(eval_id, "filesystem", {"kind": "failed", "failureReason": str(e), "durationMs": int((time.time() - step_start) * 1000)})
-            complete_eval(eval_id, {"kind": "failed", "failureReason": "filesystem fail", "durationMs": int((time.time() - eval_start_time) * 1000)})
+            complete_eval(eval_id, {"kind": "failed", "failureReason": "filesystem fail", "durationMs": int((time.time() - eval_start_time) * 1000)}, output_project_dir_abs)
         return scores
 
     # run_command_step moved to runner.logging for reuse across modules
@@ -69,7 +69,7 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
         log_info(f"Result ❌ – bun install fail – dir: {output_project_dir_abs}")
         if eval_id:
             record_step(eval_id, "install", {"kind": "failed", "failureReason": "bun install failed", "durationMs": int((time.time() - step_start) * 1000)})
-            complete_eval(eval_id, {"kind": "failed", "failureReason": "install fail", "durationMs": int((time.time() - eval_start_time) * 1000)})
+            complete_eval(eval_id, {"kind": "failed", "failureReason": "install fail", "durationMs": int((time.time() - eval_start_time) * 1000)}, output_project_dir_abs)
         return scores
 
     output_backend_dir = f"{tempdir}/backends/output/{model}/{category}/{name}"
@@ -89,7 +89,7 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
             log_info(f"Result ❌ – convex dev fail – dir: {output_project_dir_abs}")
             if eval_id:
                 record_step(eval_id, "deploy", {"kind": "failed", "failureReason": "convex dev failed", "durationMs": int((time.time() - step_start) * 1000)})
-                complete_eval(eval_id, {"kind": "failed", "failureReason": "convex dev fail", "durationMs": int((time.time() - eval_start_time) * 1000)})
+                complete_eval(eval_id, {"kind": "failed", "failureReason": "convex dev fail", "durationMs": int((time.time() - eval_start_time) * 1000)}, output_project_dir_abs)
             return scores
 
         log_info(f"[{category}/{name}] Typechecking (tsc)")
@@ -187,14 +187,14 @@ def convex_scorer(model, tempdir, *, input, expected, metadata, output):
             details = "ok" if len(failures) == 0 else ", ".join(failures)
             log_info(f"Result {status} – {details} – dir: {output_project_dir_abs}")
 
-            # Complete the eval
+            # Complete the eval (with output directory for zipping)
             if eval_id:
                 eval_duration = int((time.time() - eval_start_time) * 1000)
                 if status == "✅":
-                    complete_eval(eval_id, {"kind": "passed", "durationMs": eval_duration})
+                    complete_eval(eval_id, {"kind": "passed", "durationMs": eval_duration}, output_project_dir_abs)
                 else:
                     failure_reason = failures[0] if failures else "unknown fail"
-                    complete_eval(eval_id, {"kind": "failed", "failureReason": failure_reason, "durationMs": eval_duration})
+                    complete_eval(eval_id, {"kind": "failed", "failureReason": failure_reason, "durationMs": eval_duration}, output_project_dir_abs)
 
     return scores
 

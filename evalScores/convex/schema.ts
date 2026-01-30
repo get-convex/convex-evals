@@ -24,8 +24,8 @@ const runStatus = v.union(
 const evalStatus = v.union(
   v.object({ kind: v.literal("pending") }),
   v.object({ kind: v.literal("running") }),
-  v.object({ kind: v.literal("passed"), durationMs: v.number() }),
-  v.object({ kind: v.literal("failed"), failureReason: v.string(), durationMs: v.number() }),
+  v.object({ kind: v.literal("passed"), durationMs: v.number(), outputStorageId: v.optional(v.id("_storage")) }),
+  v.object({ kind: v.literal("failed"), failureReason: v.string(), durationMs: v.number(), outputStorageId: v.optional(v.id("_storage")) }),
 );
 
 const stepStatus = v.union(
@@ -75,9 +75,24 @@ export default defineSchema({
     category: v.string(),
     name: v.string(),
     status: evalStatus,
+    // Task description (from TASK.txt)
+    task: v.optional(v.string()),
+    // Reference to eval source files (answer dir, grader, etc.)
+    evalSourceStorageId: v.optional(v.id("_storage")),
   })
     .index("by_runId", ["runId"])
     .index("by_evalPath", ["evalPath"]),
+
+  // Stores hash -> storageId mapping for deduplication of eval assets
+  evalAssets: defineTable({
+    // MD5 hash of the content
+    hash: v.string(),
+    // Type of asset: "evalSource" for eval directory, "output" for model output
+    assetType: v.union(v.literal("evalSource"), v.literal("output")),
+    // Reference to the stored file
+    storageId: v.id("_storage"),
+  })
+    .index("by_hash", ["hash"]),
 
   steps: defineTable({
     evalId: v.id("evals"),

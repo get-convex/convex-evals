@@ -13,8 +13,8 @@ const runStatus = v.union(
 const evalStatus = v.union(
   v.object({ kind: v.literal("pending") }),
   v.object({ kind: v.literal("running") }),
-  v.object({ kind: v.literal("passed"), durationMs: v.number() }),
-  v.object({ kind: v.literal("failed"), failureReason: v.string(), durationMs: v.number() }),
+  v.object({ kind: v.literal("passed"), durationMs: v.number(), outputStorageId: v.optional(v.id("_storage")) }),
+  v.object({ kind: v.literal("failed"), failureReason: v.string(), durationMs: v.number(), outputStorageId: v.optional(v.id("_storage")) }),
 );
 
 export const createRun = internalMutation({
@@ -92,6 +92,8 @@ export const getRunDetails = query({
           category: v.string(),
           name: v.string(),
           status: evalStatus,
+          task: v.optional(v.string()),
+          evalSourceStorageId: v.optional(v.id("_storage")),
           _creationTime: v.number(),
           steps: v.array(
             v.object({
@@ -135,7 +137,15 @@ export const getRunDetails = query({
           .withIndex("by_evalId", (q) => q.eq("evalId", evalItem._id))
           .collect();
         return {
-          ...evalItem,
+          _id: evalItem._id,
+          runId: evalItem.runId,
+          evalPath: evalItem.evalPath,
+          category: evalItem.category,
+          name: evalItem.name,
+          status: evalItem.status,
+          task: evalItem.task,
+          evalSourceStorageId: evalItem.evalSourceStorageId,
+          _creationTime: evalItem._creationTime,
           steps: steps.map((step) => ({
             _id: step._id,
             evalId: step.evalId,
@@ -158,6 +168,18 @@ export const getRunDetails = query({
       _creationTime: run._creationTime,
       evals: evalsWithSteps,
     };
+  },
+});
+
+// Get a download URL for an output file
+export const getOutputUrl = query({
+  args: {
+    storageId: v.id("_storage"),
+  },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args) => {
+    const url = await ctx.storage.getUrl(args.storageId);
+    return url;
   },
 });
 
