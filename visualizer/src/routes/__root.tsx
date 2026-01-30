@@ -4,6 +4,8 @@ import {
   Scripts,
   createRootRoute,
 } from "@tanstack/react-router";
+import { ConvexProvider } from "convex/react";
+import { convex } from "../lib/convex";
 
 import appCss from "../styles.css?url";
 
@@ -26,7 +28,9 @@ function RootComponent() {
         <HeadContent />
       </head>
       <body className="bg-slate-900 text-slate-100 min-h-screen">
-        <Outlet />
+        <ConvexProvider client={convex}>
+          <Outlet />
+        </ConvexProvider>
         <Scripts />
       </body>
     </html>

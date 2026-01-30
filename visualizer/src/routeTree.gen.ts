@@ -9,121 +9,99 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as ScoresRouteImport } from './routes/scores'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as RunRunIndexRouteImport } from './routes/run.$runIndex'
-import { Route as RunRunIndexIndexRouteImport } from './routes/run.$runIndex.index'
-import { Route as RunRunIndexCategoryRouteImport } from './routes/run.$runIndex.$category'
-import { Route as RunRunIndexCategoryIndexRouteImport } from './routes/run.$runIndex.$category.index'
-import { Route as RunRunIndexCategoryEvalNameRouteImport } from './routes/run.$runIndex.$category.$evalName'
+import { Route as RunRunIdRouteImport } from './routes/run.$runId'
+import { Route as RunRunIdIndexRouteImport } from './routes/run.$runId.index'
+import { Route as RunRunIdCategoryRouteImport } from './routes/run.$runId.$category'
+import { Route as RunRunIdCategoryIndexRouteImport } from './routes/run.$runId.$category.index'
+import { Route as RunRunIdCategoryEvalIdRouteImport } from './routes/run.$runId.$category.$evalId'
 
-const ScoresRoute = ScoresRouteImport.update({
-  id: '/scores',
-  path: '/scores',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const RunRunIndexRoute = RunRunIndexRouteImport.update({
-  id: '/run/$runIndex',
-  path: '/run/$runIndex',
+const RunRunIdRoute = RunRunIdRouteImport.update({
+  id: '/run/$runId',
+  path: '/run/$runId',
   getParentRoute: () => rootRouteImport,
 } as any)
-const RunRunIndexIndexRoute = RunRunIndexIndexRouteImport.update({
+const RunRunIdIndexRoute = RunRunIdIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => RunRunIndexRoute,
+  getParentRoute: () => RunRunIdRoute,
 } as any)
-const RunRunIndexCategoryRoute = RunRunIndexCategoryRouteImport.update({
+const RunRunIdCategoryRoute = RunRunIdCategoryRouteImport.update({
   id: '/$category',
   path: '/$category',
-  getParentRoute: () => RunRunIndexRoute,
+  getParentRoute: () => RunRunIdRoute,
 } as any)
-const RunRunIndexCategoryIndexRoute =
-  RunRunIndexCategoryIndexRouteImport.update({
-    id: '/',
-    path: '/',
-    getParentRoute: () => RunRunIndexCategoryRoute,
-  } as any)
-const RunRunIndexCategoryEvalNameRoute =
-  RunRunIndexCategoryEvalNameRouteImport.update({
-    id: '/$evalName',
-    path: '/$evalName',
-    getParentRoute: () => RunRunIndexCategoryRoute,
-  } as any)
+const RunRunIdCategoryIndexRoute = RunRunIdCategoryIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => RunRunIdCategoryRoute,
+} as any)
+const RunRunIdCategoryEvalIdRoute = RunRunIdCategoryEvalIdRouteImport.update({
+  id: '/$evalId',
+  path: '/$evalId',
+  getParentRoute: () => RunRunIdCategoryRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/scores': typeof ScoresRoute
-  '/run/$runIndex': typeof RunRunIndexRouteWithChildren
-  '/run/$runIndex/$category': typeof RunRunIndexCategoryRouteWithChildren
-  '/run/$runIndex/': typeof RunRunIndexIndexRoute
-  '/run/$runIndex/$category/$evalName': typeof RunRunIndexCategoryEvalNameRoute
-  '/run/$runIndex/$category/': typeof RunRunIndexCategoryIndexRoute
+  '/run/$runId': typeof RunRunIdRouteWithChildren
+  '/run/$runId/$category': typeof RunRunIdCategoryRouteWithChildren
+  '/run/$runId/': typeof RunRunIdIndexRoute
+  '/run/$runId/$category/$evalId': typeof RunRunIdCategoryEvalIdRoute
+  '/run/$runId/$category/': typeof RunRunIdCategoryIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/scores': typeof ScoresRoute
-  '/run/$runIndex': typeof RunRunIndexIndexRoute
-  '/run/$runIndex/$category/$evalName': typeof RunRunIndexCategoryEvalNameRoute
-  '/run/$runIndex/$category': typeof RunRunIndexCategoryIndexRoute
+  '/run/$runId': typeof RunRunIdIndexRoute
+  '/run/$runId/$category/$evalId': typeof RunRunIdCategoryEvalIdRoute
+  '/run/$runId/$category': typeof RunRunIdCategoryIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/scores': typeof ScoresRoute
-  '/run/$runIndex': typeof RunRunIndexRouteWithChildren
-  '/run/$runIndex/$category': typeof RunRunIndexCategoryRouteWithChildren
-  '/run/$runIndex/': typeof RunRunIndexIndexRoute
-  '/run/$runIndex/$category/$evalName': typeof RunRunIndexCategoryEvalNameRoute
-  '/run/$runIndex/$category/': typeof RunRunIndexCategoryIndexRoute
+  '/run/$runId': typeof RunRunIdRouteWithChildren
+  '/run/$runId/$category': typeof RunRunIdCategoryRouteWithChildren
+  '/run/$runId/': typeof RunRunIdIndexRoute
+  '/run/$runId/$category/$evalId': typeof RunRunIdCategoryEvalIdRoute
+  '/run/$runId/$category/': typeof RunRunIdCategoryIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/scores'
-    | '/run/$runIndex'
-    | '/run/$runIndex/$category'
-    | '/run/$runIndex/'
-    | '/run/$runIndex/$category/$evalName'
-    | '/run/$runIndex/$category/'
+    | '/run/$runId'
+    | '/run/$runId/$category'
+    | '/run/$runId/'
+    | '/run/$runId/$category/$evalId'
+    | '/run/$runId/$category/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/scores'
-    | '/run/$runIndex'
-    | '/run/$runIndex/$category/$evalName'
-    | '/run/$runIndex/$category'
+    | '/run/$runId'
+    | '/run/$runId/$category/$evalId'
+    | '/run/$runId/$category'
   id:
     | '__root__'
     | '/'
-    | '/scores'
-    | '/run/$runIndex'
-    | '/run/$runIndex/$category'
-    | '/run/$runIndex/'
-    | '/run/$runIndex/$category/$evalName'
-    | '/run/$runIndex/$category/'
+    | '/run/$runId'
+    | '/run/$runId/$category'
+    | '/run/$runId/'
+    | '/run/$runId/$category/$evalId'
+    | '/run/$runId/$category/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ScoresRoute: typeof ScoresRoute
-  RunRunIndexRoute: typeof RunRunIndexRouteWithChildren
+  RunRunIdRoute: typeof RunRunIdRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/scores': {
-      id: '/scores'
-      path: '/scores'
-      fullPath: '/scores'
-      preLoaderRoute: typeof ScoresRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
@@ -131,75 +109,74 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/run/$runIndex': {
-      id: '/run/$runIndex'
-      path: '/run/$runIndex'
-      fullPath: '/run/$runIndex'
-      preLoaderRoute: typeof RunRunIndexRouteImport
+    '/run/$runId': {
+      id: '/run/$runId'
+      path: '/run/$runId'
+      fullPath: '/run/$runId'
+      preLoaderRoute: typeof RunRunIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/run/$runIndex/': {
-      id: '/run/$runIndex/'
+    '/run/$runId/': {
+      id: '/run/$runId/'
       path: '/'
-      fullPath: '/run/$runIndex/'
-      preLoaderRoute: typeof RunRunIndexIndexRouteImport
-      parentRoute: typeof RunRunIndexRoute
+      fullPath: '/run/$runId/'
+      preLoaderRoute: typeof RunRunIdIndexRouteImport
+      parentRoute: typeof RunRunIdRoute
     }
-    '/run/$runIndex/$category': {
-      id: '/run/$runIndex/$category'
+    '/run/$runId/$category': {
+      id: '/run/$runId/$category'
       path: '/$category'
-      fullPath: '/run/$runIndex/$category'
-      preLoaderRoute: typeof RunRunIndexCategoryRouteImport
-      parentRoute: typeof RunRunIndexRoute
+      fullPath: '/run/$runId/$category'
+      preLoaderRoute: typeof RunRunIdCategoryRouteImport
+      parentRoute: typeof RunRunIdRoute
     }
-    '/run/$runIndex/$category/': {
-      id: '/run/$runIndex/$category/'
+    '/run/$runId/$category/': {
+      id: '/run/$runId/$category/'
       path: '/'
-      fullPath: '/run/$runIndex/$category/'
-      preLoaderRoute: typeof RunRunIndexCategoryIndexRouteImport
-      parentRoute: typeof RunRunIndexCategoryRoute
+      fullPath: '/run/$runId/$category/'
+      preLoaderRoute: typeof RunRunIdCategoryIndexRouteImport
+      parentRoute: typeof RunRunIdCategoryRoute
     }
-    '/run/$runIndex/$category/$evalName': {
-      id: '/run/$runIndex/$category/$evalName'
-      path: '/$evalName'
-      fullPath: '/run/$runIndex/$category/$evalName'
-      preLoaderRoute: typeof RunRunIndexCategoryEvalNameRouteImport
-      parentRoute: typeof RunRunIndexCategoryRoute
+    '/run/$runId/$category/$evalId': {
+      id: '/run/$runId/$category/$evalId'
+      path: '/$evalId'
+      fullPath: '/run/$runId/$category/$evalId'
+      preLoaderRoute: typeof RunRunIdCategoryEvalIdRouteImport
+      parentRoute: typeof RunRunIdCategoryRoute
     }
   }
 }
 
-interface RunRunIndexCategoryRouteChildren {
-  RunRunIndexCategoryEvalNameRoute: typeof RunRunIndexCategoryEvalNameRoute
-  RunRunIndexCategoryIndexRoute: typeof RunRunIndexCategoryIndexRoute
+interface RunRunIdCategoryRouteChildren {
+  RunRunIdCategoryEvalIdRoute: typeof RunRunIdCategoryEvalIdRoute
+  RunRunIdCategoryIndexRoute: typeof RunRunIdCategoryIndexRoute
 }
 
-const RunRunIndexCategoryRouteChildren: RunRunIndexCategoryRouteChildren = {
-  RunRunIndexCategoryEvalNameRoute: RunRunIndexCategoryEvalNameRoute,
-  RunRunIndexCategoryIndexRoute: RunRunIndexCategoryIndexRoute,
+const RunRunIdCategoryRouteChildren: RunRunIdCategoryRouteChildren = {
+  RunRunIdCategoryEvalIdRoute: RunRunIdCategoryEvalIdRoute,
+  RunRunIdCategoryIndexRoute: RunRunIdCategoryIndexRoute,
 }
 
-const RunRunIndexCategoryRouteWithChildren =
-  RunRunIndexCategoryRoute._addFileChildren(RunRunIndexCategoryRouteChildren)
+const RunRunIdCategoryRouteWithChildren =
+  RunRunIdCategoryRoute._addFileChildren(RunRunIdCategoryRouteChildren)
 
-interface RunRunIndexRouteChildren {
-  RunRunIndexCategoryRoute: typeof RunRunIndexCategoryRouteWithChildren
-  RunRunIndexIndexRoute: typeof RunRunIndexIndexRoute
+interface RunRunIdRouteChildren {
+  RunRunIdCategoryRoute: typeof RunRunIdCategoryRouteWithChildren
+  RunRunIdIndexRoute: typeof RunRunIdIndexRoute
 }
 
-const RunRunIndexRouteChildren: RunRunIndexRouteChildren = {
-  RunRunIndexCategoryRoute: RunRunIndexCategoryRouteWithChildren,
-  RunRunIndexIndexRoute: RunRunIndexIndexRoute,
+const RunRunIdRouteChildren: RunRunIdRouteChildren = {
+  RunRunIdCategoryRoute: RunRunIdCategoryRouteWithChildren,
+  RunRunIdIndexRoute: RunRunIdIndexRoute,
 }
 
-const RunRunIndexRouteWithChildren = RunRunIndexRoute._addFileChildren(
-  RunRunIndexRouteChildren,
+const RunRunIdRouteWithChildren = RunRunIdRoute._addFileChildren(
+  RunRunIdRouteChildren,
 )
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ScoresRoute: ScoresRoute,
-  RunRunIndexRoute: RunRunIndexRouteWithChildren,
+  RunRunIdRoute: RunRunIdRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

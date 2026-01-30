@@ -31,6 +31,7 @@
     "vitest": "^3.0.2"
   },
   "scripts": {
+    
     "typecheck": "tsc --noEmit",
     "evals": "bun run scripts/runEvals.ts",
     "evalScores": "cd evalScores && bun run",

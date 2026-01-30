@@ -160,3 +160,58 @@ export const getRunDetails = query({
     };
   },
 });
+
+// List all runs with optional filtering
+export const listRuns = query({
+  args: {
+    experiment: v.optional(experimentLiteral),
+    model: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    let runsQuery = ctx.db.query("runs").order("desc");
+    
+    // Apply filters if provided
+    if (args.experiment) {
+      runsQuery = ctx.db
+        .query("runs")
+        .withIndex("by_experiment", (q) => q.eq("experiment", args.experiment))
+        .order("desc");
+    } else if (args.model) {
+      const model = args.model;
+      runsQuery = ctx.db
+        .query("runs")
+        .withIndex("by_model", (q) => q.eq("model", model))
+        .order("desc");
+    }
+    
+    const limit = args.limit ?? 100;
+    const runs = await runsQuery.take(limit);
+    
+    // Fetch eval counts for each run
+    const runsWithCounts = await Promise.all(
+      runs.map(async (run) => {
+        const evals = await ctx.db
+          .query("evals")
+          .withIndex("by_runId", (q) => q.eq("runId", run._id))
+          .collect();
+        
+        const passedCount = evals.filter((e) => e.status.kind === "passed").length;
+        const failedCount = evals.filter((e) => e.status.kind === "failed").length;
+        const totalCount = evals.length;
+        
+        return {
+          ...run,
+          evalCounts: {
+            total: totalCount,
+            passed: passedCount,
+            failed: failedCount,
+            pending: totalCount - passedCount - failedCount,
+          },
+        };
+      }),
+    );
+    
+    return runsWithCounts;
+  },
+});

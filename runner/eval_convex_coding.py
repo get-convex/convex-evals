@@ -19,6 +19,7 @@ import re
 import json
 import requests
 import time
+import atexit
 
 PROJECT = "Convex Coding"
 
@@ -79,6 +80,15 @@ def convex_coding_evals(model: ModelTemplate):
         if run_id:
             run_start_time = time.time()
             log_info(f"Started run {run_id} for model {model.name} with {len(planned_evals)} evals")
+            
+            # Register atexit handler to complete run when script exits
+            def complete_run_on_exit():
+                if run_id and run_start_time:
+                    run_duration = int((time.time() - run_start_time) * 1000)
+                    complete_run(run_id, {"kind": "completed", "durationMs": run_duration})
+                    log_info(f"Completed run {run_id}")
+            
+            atexit.register(complete_run_on_exit)
         else:
             log_info("Failed to start run in Convex (endpoint may not be configured)")
     
@@ -127,27 +137,7 @@ def convex_coding_evals(model: ModelTemplate):
         )
 
     disable_braintrust = os.getenv("DISABLE_BRAINTRUST") == "1"
-    
-    # Create a custom reporter that completes the run
-    from braintrust import Reporter
-    original_reporter = file_reporter if disable_braintrust else combined_reporter
-    
-    def report_run_wrapper(eval_reports, verbose, jsonl):
-        result = original_reporter.report_run(eval_reports, verbose, jsonl)
-        
-        # Complete the run if it was started
-        if run_id and run_start_time:
-            run_duration = int((time.time() - run_start_time) * 1000)
-            complete_run(run_id, {"kind": "completed", "durationMs": run_duration})
-            log_info(f"Completed run {run_id}")
-        
-        return result
-    
-    custom_reporter = Reporter(
-        name=original_reporter.name,
-        report_eval=original_reporter.report_eval,
-        report_run=report_run_wrapper,
-    )
+    reporter = file_reporter if disable_braintrust else combined_reporter
     
     return Eval(
         PROJECT,
@@ -162,7 +152,7 @@ def convex_coding_evals(model: ModelTemplate):
             "environment": environment,
         },
         max_concurrency=model.max_concurrency,
-        reporter=custom_reporter,
+        reporter=reporter,
         no_send_logs=disable_braintrust,
     )
 

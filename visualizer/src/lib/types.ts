@@ -1,84 +1,75 @@
-export interface EvalScore {
-  name: string;
-  score: number;
-  improvements: number;
-  regressions: number;
-  diff: unknown;
-  _longest_score_name?: number;
+import type { Id } from "../../../evalScores/convex/_generated/dataModel";
+
+// Step name literals
+export type StepName = "filesystem" | "install" | "deploy" | "tsc" | "eslint" | "tests";
+
+// Status discriminated unions
+export type RunStatus =
+  | { kind: "pending" }
+  | { kind: "running" }
+  | { kind: "completed"; durationMs: number }
+  | { kind: "failed"; failureReason: string; durationMs: number };
+
+export type EvalStatus =
+  | { kind: "pending" }
+  | { kind: "running" }
+  | { kind: "passed"; durationMs: number }
+  | { kind: "failed"; failureReason: string; durationMs: number };
+
+export type StepStatus =
+  | { kind: "running" }
+  | { kind: "passed"; durationMs: number }
+  | { kind: "failed"; failureReason: string; durationMs: number }
+  | { kind: "skipped" };
+
+// Step type
+export interface Step {
+  _id: Id<"steps">;
+  evalId: Id<"evals">;
+  name: StepName;
+  status: StepStatus;
+  _creationTime: number;
 }
 
-export interface EvalSummary {
-  project_name: string;
-  project_id: string | null;
-  experiment_id: string | null;
-  experiment_name: string | null;
-  project_url: string | null;
-  experiment_url: string | null;
-  comparison_experiment_name: string | null;
-  scores: Record<string, EvalScore>;
-  metrics: Record<string, unknown>;
-}
-
-export interface IndividualResult {
+// Eval type
+export interface Eval {
+  _id: Id<"evals">;
+  runId: Id<"runs">;
+  evalPath: string;
   category: string;
   name: string;
-  passed: boolean;
-  tests_pass_score: number;
-  failure_reason: string | null;
-  directory_path: string | null;
-  scores: Record<string, number>;
+  status: EvalStatus;
+  _creationTime: number;
+  steps?: Step[];
 }
 
-export interface CategorySummary {
-  total: number;
-  passed: number;
-  failed: number;
+// Run type
+export interface Run {
+  _id: Id<"runs">;
+  model: string;
+  provider?: string;
+  runId?: string;
+  plannedEvals: string[];
+  status: RunStatus;
+  experiment?: "no_guidelines";
+  _creationTime: number;
+  evalCounts?: {
+    total: number;
+    passed: number;
+    failed: number;
+    pending: number;
+  };
+  evals?: Eval[];
 }
 
-export interface RunStats {
-  total_tests: number;
-  total_passed: number;
-  total_failed: number;
-  overall_score: number;
-}
-
-export interface EvalResult {
-  summary: EvalSummary;
-  tempdir: string;
-  model_name?: string;
-  individual_results?: IndividualResult[];
-  category_summaries?: Record<string, CategorySummary>;
-  run_stats?: RunStats;
-}
-
+// File entry for file browsing
 export interface FileEntry {
   name: string;
   isDirectory: boolean;
   path: string;
 }
 
-// Types for Convex evalScores database
-export interface ConvexModelScore {
-  model: string;
-  totalScore: number;
-  totalScoreErrorBar: number;
-  scores: Record<string, number>;
-  scoreErrorBars: Record<string, number>;
-  runCount: number;
-  latestRunId?: string;
-  latestRunTime: number;
-}
-
-export interface ConvexRun {
-  _id: string;
-  model: string;
-  totalScore: number;
-  scores: Record<string, number>;
-  runId?: string;
-  experiment?: "no_guidelines";
-  _creationTime: number;
-}
-
+// Helper functions
 export function getScoreStatus(
   score: number,
 ): "excellent" | "good" | "fair" | "poor" {
@@ -99,43 +90,41 @@ export function getPassFailIcon(passed: boolean): string {
   return passed ? "✅" : "❌";
 }
 
-export function parseFailureReasons(result: IndividualResult): string[] {
-  const failureReasons: string[] = [];
+export function getRunStatusIcon(status: RunStatus): string {
+  if (status.kind === "pending") return "⏳";
+  if (status.kind === "running") return "🔄";
+  if (status.kind === "completed") return "✅";
+  return "❌";
+}
 
-  if (result.passed) return failureReasons;
+export function getEvalStatusIcon(status: EvalStatus): string {
+  if (status.kind === "pending") return "⏳";
+  if (status.kind === "running") return "🔄";
+  if (status.kind === "passed") return "✅";
+  return "❌";
+}
 
-  if (result.scores) {
-    Object.entries(result.scores).forEach(([key, value]) => {
-      if (value === 0) {
-        const keyLower = key.toLowerCase();
-        if (keyLower.includes("test")) failureReasons.push("Tests");
-        if (keyLower.includes("lint")) failureReasons.push("Linting");
-        if (keyLower.includes("compile")) failureReasons.push("Compile");
-        if (keyLower.includes("tsc")) failureReasons.push("TypeScript");
-        if (keyLower.includes("filesystem")) failureReasons.push("Files");
-        if (keyLower.includes("valid")) failureReasons.push("Validation");
-      }
-    });
-  }
+export function getStepStatusIcon(status: StepStatus): string {
+  if (status.kind === "running") return "🔄";
+  if (status.kind === "passed") return "✅";
+  if (status.kind === "skipped") return "⏭️";
+  return "❌";
+}
 
-  if (result.failure_reason) {
-    const reason = result.failure_reason.toLowerCase();
-    if (reason.includes("tsc") && !failureReasons.includes("TypeScript")) {
-      failureReasons.push("TypeScript");
-    }
-    if (reason.includes("lint") && !failureReasons.includes("Linting")) {
-      failureReasons.push("Linting");
-    }
-    if (reason.includes("test") && !failureReasons.includes("Tests")) {
-      failureReasons.push("Tests");
-    }
-    if (
-      reason.includes("convex dev") &&
-      !failureReasons.includes("Convex Dev")
-    ) {
-      failureReasons.push("Convex Dev");
-    }
-  }
+export function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${(ms / 60000).toFixed(1)}m`;
+}
 
-  return failureReasons;
+export function formatStepName(name: StepName): string {
+  const names: Record<StepName, string> = {
+    filesystem: "Filesystem",
+    install: "Install",
+    deploy: "Deploy",
+    tsc: "TypeScript",
+    eslint: "ESLint",
+    tests: "Tests",
+  };
+  return names[name];
 }
