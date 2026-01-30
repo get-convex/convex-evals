@@ -10,6 +10,7 @@ class ModelProvider(Enum):
     TOGETHER = "together"
     GOOGLE = "google"
     XAI = "xai"
+    MOONSHOT = "moonshot"
 
 
 CIRunFrequency = Literal["daily", "weekly", "monthly", "never"]
@@ -25,6 +26,7 @@ class ModelTemplate(BaseModel):
     override_proxy: str | None = None
     supports_temperature: bool = True  # Some reasoning models (o1, o3, gpt-5) don't support temperature
     ci_run_frequency: CIRunFrequency = "weekly"
+    uses_responses_api: bool = False  # Some models (e.g., gpt-5.2-codex) require the Responses API instead of Chat Completions
 
 
 ALL_MODELS = [
@@ -128,6 +130,17 @@ ALL_MODELS = [
         ci_run_frequency="daily",
     ),
     ModelTemplate(
+        name="gpt-5.2-codex",
+        formatted_name="GPT-5.2 Codex",
+        max_concurrency=int(os.getenv("OPENAI_CONCURRENCY", "4")),
+        requires_chain_of_thought=False,
+        uses_system_prompt=False,
+        provider=ModelProvider.OPENAI,
+        supports_temperature=False,
+        ci_run_frequency="daily",
+        uses_responses_api=True,
+    ),
+    ModelTemplate(
         name="gpt-5",
         formatted_name="GPT-5",
         max_concurrency=int(os.getenv("OPENAI_CONCURRENCY", "4")),
@@ -199,25 +212,27 @@ ALL_MODELS = [
         override_proxy="https://api.together.xyz/v1",
         ci_run_frequency="daily",
     ),
+    # Moonshot AI (Kimi) models
     ModelTemplate(
-        name="moonshotai/Kimi-K2-Instruct-0905",
+        name="kimi-k2-0905-preview",
         formatted_name="Kimi K2",
-        max_concurrency=int(os.getenv("TOGETHER_CONCURRENCY", "4")),
+        max_concurrency=int(os.getenv("MOONSHOT_CONCURRENCY", "4")),
         requires_chain_of_thought=False,
         uses_system_prompt=True,
-        provider=ModelProvider.TOGETHER,
-        override_proxy="https://api.together.xyz/v1",
-        ci_run_frequency="daily",
+        provider=ModelProvider.MOONSHOT,
+        override_proxy="https://api.moonshot.ai/v1",
+        ci_run_frequency="never",
     ),
     ModelTemplate(
-        name="moonshotai/Kimi-K2.5",
+        name="kimi-k2.5",
         formatted_name="Kimi K2.5",
-        max_concurrency=int(os.getenv("TOGETHER_CONCURRENCY", "4")),
+        max_concurrency=int(os.getenv("MOONSHOT_CONCURRENCY", "4")),
         requires_chain_of_thought=False,
         uses_system_prompt=True,
-        provider=ModelProvider.TOGETHER,
-        override_proxy="https://api.together.xyz/v1",
-        ci_run_frequency="daily",
+        provider=ModelProvider.MOONSHOT,
+        override_proxy="https://api.moonshot.ai/v1",
+        supports_temperature=False,
+        ci_run_frequency="never",
     ),
     ModelTemplate(
         name="Qwen/Qwen3-235B-A22B-Instruct-2507-tput",

@@ -1,49 +1,23 @@
-name: Daily Convex Evaluations
+name: Manual Model Evaluations
 
 on:
-  schedule:
-    - cron: "0 0 * * 1,3,5" # Run at midnight UTC on Monday, Wednesday, and Friday
-  workflow_dispatch: # Allow manual triggering
+  workflow_dispatch: # Manual trigger only
 
 jobs:
-  setup:
-    runs-on: ubuntu-latest
-    outputs:
-      models: ${{ steps.set-models.outputs.models }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install PDM
-        run: curl -sSL https://pdm.fming.dev/install-pdm.py | python3 -
-      - name: Install Python dependencies
-        run: pdm install
-      - id: set-models
-        run: |
-          models=$(pdm run python -m runner.list_models --frequency daily --format json)
-          echo "models=$models" >> $GITHUB_OUTPUT
-
   run-evals:
-    needs: setup
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
-        model: ${{ fromJson(needs.setup.outputs.models) }}
+        model:
+          - "gpt-5.2-codex"
 
     env:
       ENVIRONMENT: ci
       BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
-      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-      XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
-      MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
       CONVEX_EVAL_ENDPOINT: ${{ secrets.CONVEX_EVAL_ENDPOINT }}
       CONVEX_AUTH_TOKEN: ${{ secrets.CONVEX_AUTH_TOKEN }}
 

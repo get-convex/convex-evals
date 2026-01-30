@@ -193,6 +193,11 @@ def convex_coding_task(model: ModelTemplate, input: str):
         if not api_key:
             raise ValueError("XAI_API_KEY is not set")
         model_impl = Model(api_key, model)
+    elif model.provider == ModelProvider.MOONSHOT:
+        api_key = os.getenv("MOONSHOT_API_KEY")
+        if not api_key:
+            raise ValueError("MOONSHOT_API_KEY is not set")
+        model_impl = Model(api_key, model)
     else:
         raise ValueError(f"Unknown model provider: {model.provider}")
     return model_impl.generate(input)
