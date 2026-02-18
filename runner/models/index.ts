@@ -321,6 +321,18 @@ export const ALL_MODELS: ModelTemplate[] = [
     ciRunFrequency: "daily",
     usesResponsesApi: false,
   },
+  // MiniMax models – via OpenRouter
+  {
+    name: "minimax/minimax-m2.5",
+    formattedName: "MiniMax M2.5",
+    maxConcurrency: envInt("OPENROUTER_CONCURRENCY", 8),
+    requiresChainOfThought: false,
+    usesSystemPrompt: true,
+    provider: ModelProvider.OPENROUTER,
+    supportsTemperature: false,
+    ciRunFrequency: "daily",
+    usesResponsesApi: false,
+  },
   // Google models – via OpenRouter
   {
     name: "google/gemini-2.5-flash",
