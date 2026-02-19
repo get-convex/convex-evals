@@ -14,13 +14,11 @@ Determine the following (ask the user if not provided):
 1. **Model identifier** - the OpenRouter-style name, e.g. `anthropic/claude-opus-4.6`. If the user gives a marketing name or URL, look up the OpenRouter model id.
 2. **Formatted name** - human-readable, e.g. `Claude 4.6 Opus`.
 3. **Provider family & version** - needed to find older siblings (e.g. `claude-opus-4.5` is the predecessor of `claude-opus-4.6`).
-4. **Model capabilities** (infer from the provider/family or ask):
-   - `requiresChainOfThought` - typically `true` for Anthropic, `false` for reasoning models (OpenAI o-series, DeepSeek R1, etc.)
-   - `usesSystemPrompt` - typically `true` for Anthropic, varies for others
-   - `supportsTemperature` - typically `true` for Anthropic/Google, `false` for reasoning models
-   - `usesResponsesApi` - only `true` for OpenAI Codex models
+4. **API kind requirement** - choose `apiKind` based on how the model is accessed:
+   - Use `≈` for models that require the Responses API.
+   - For non-Responses models, `apiKind: "chat"` is the default and `apiKind` can be left unset.
 
-If you're unsure about a capability, check how the closest existing model in the same family is configured in `runner/models/index.ts` and match it.
+If unsure about `apiKind`, check the closest existing model in the same family in `runner/models/index.ts` and match it.
 
 ## Step 1: Add the Model to `runner/models/index.ts`
 
@@ -34,13 +32,9 @@ Set `ciRunFrequency: "daily"` for the new model (it's the latest and should run 
 {
   name: "<provider>/<model-id>",
   formattedName: "<Human Name>",
-  maxConcurrency: envInt("OPENROUTER_CONCURRENCY", 8),
-  requiresChainOfThought: <boolean>,
-  usesSystemPrompt: <boolean>,
-  provider: ModelProvider.OPENROUTER,
-  supportsTemperature: <boolean>,
   ciRunFrequency: "daily",
-  usesResponsesApi: <boolean>,
+  // only when needed:
+  apiKind: "responses",
 },
 ```
 
