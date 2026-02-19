@@ -15,7 +15,7 @@ Determine the following (ask the user if not provided):
 2. **Formatted name** - human-readable, e.g. `Claude 4.6 Opus`.
 3. **Provider family & version** - needed to find older siblings (e.g. `claude-opus-4.5` is the predecessor of `claude-opus-4.6`).
 4. **API kind requirement** - choose `apiKind` based on how the model is accessed:
-   - Use `≈` for models that require the Responses API.
+   - Use `apiKind: "responses"` for models that require the Responses API.
    - For non-Responses models, `apiKind: "chat"` is the default and `apiKind` can be left unset.
 
 If unsure about `apiKind`, check the closest existing model in the same family in `runner/models/index.ts` and match it.
