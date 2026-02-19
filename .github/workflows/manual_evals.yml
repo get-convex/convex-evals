@@ -14,6 +14,7 @@ jobs:
         model:
           - "openai/gpt-5.2-codex"
           - "anthropic/claude-sonnet-4.6"
+          - "google/gemini-3-flash-preview"
           - "qwen/qwen3.5-plus-02-15"
           - "minimax/minimax-m2.5"
 
