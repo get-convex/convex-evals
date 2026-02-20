@@ -215,7 +215,7 @@ ${FILE_FORMAT_EXAMPLE}`,
   }
 
   sections.push(`# File Structure
-- You can write to \`package.json\`, \`tsconfig.json\`, and any files within the \`convex/\` folder.
+- You can write to \`package.json\`, \`tsconfig.json\`, and any files within the \`convex/\` folder. Only write additional files (e.g. \`src/\`) if explicitly requested by the task description. Do NOT add extra files that were not asked for.
 - Do NOT write to the \`convex/_generated\` folder. You can assume that \`npx convex dev\` will populate this folder.
 - It's VERY IMPORTANT to output files to the correct paths, as specified in the task description.
 - Always start with \`package.json\` and \`tsconfig.json\` files.
