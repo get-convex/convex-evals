@@ -12,6 +12,7 @@ jobs:
       max-parallel: 2
       matrix:
         model:
+          - "google/gemini-3-flash-preview"
           - "google/gemini-3.1-pro-preview"
 
     env:
