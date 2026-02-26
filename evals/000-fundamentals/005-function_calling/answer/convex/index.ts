@@ -10,7 +10,6 @@ import { internal } from "./_generated/api";
 
 export const calleeQuery = internalQuery({
   args: { x: v.number(), y: v.number() },
-  returns: v.number(),
   handler: async (ctx, args) => {
     return args.x + args.y;
   },
@@ -18,7 +17,6 @@ export const calleeQuery = internalQuery({
 
 export const calleeMutation = internalMutation({
   args: { x: v.number(), y: v.number() },
-  returns: v.number(),
   handler: async (ctx, args) => {
     return args.x - args.y;
   },
@@ -26,7 +24,6 @@ export const calleeMutation = internalMutation({
 
 export const calleeAction = internalAction({
   args: { x: v.number(), y: v.number() },
-  returns: v.number(),
   handler: async (ctx, args) => {
     return args.x * args.y;
   },
@@ -34,7 +31,6 @@ export const calleeAction = internalAction({
 
 export const callerMutation = mutation({
   args: {},
-  returns: v.number(),
   handler: async (ctx, args) => {
     const r1: number = await ctx.runQuery(internal.index.calleeQuery, {
       x: 1,
@@ -50,7 +46,6 @@ export const callerMutation = mutation({
 
 export const callerAction = action({
   args: {},
-  returns: v.number(),
   handler: async (ctx, args) => {
     const r1: number = await ctx.runQuery(internal.index.calleeQuery, {
       x: 1,

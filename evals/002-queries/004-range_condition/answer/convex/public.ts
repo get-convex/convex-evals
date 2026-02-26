@@ -7,15 +7,6 @@ export const getSensorReadingsInRange = query({
     startTime: v.number(),
     endTime: v.number(),
   },
-  returns: v.array(
-    v.object({
-      _id: v.id("temperatures"),
-      _creationTime: v.number(),
-      sensorId: v.string(),
-      timestamp: v.number(), // Unix timestamp in seconds
-      value: v.number(),
-    })
-  ),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("temperatures")

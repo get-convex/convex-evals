@@ -3,7 +3,6 @@ import { v } from "convex/values";
 
 export const deleteUser = mutation({
   args: { userId: v.id("users") },
-  returns: v.null(),
   handler: async (ctx, args) => {
     // Verify user exists
     const user = await ctx.db.get(args.userId);

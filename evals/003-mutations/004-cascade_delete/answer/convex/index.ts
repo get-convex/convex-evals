@@ -5,7 +5,6 @@ export const deleteUserAndDocuments = mutation({
   args: {
     userId: v.id("users"),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     // First, verify the user exists
     const user = await ctx.db.get(args.userId);

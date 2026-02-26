@@ -36,7 +36,6 @@ import { query } from "./_generated/server";
 import { v } from "convex/values";
 export const f = query({
     args: {},
-    returns: v.null(),
     handler: async (ctx, args) => {
     // Function body
     },
@@ -97,20 +96,6 @@ export default defineSchema({
     )
 });
 \`\`\``),
-      guideline(`Always use the \`v.null()\` validator when returning a null value. Below is an example query that returns a null value:
-\`\`\`typescript
-import { query } from "./_generated/server";
-import { v } from "convex/values";
-
-export const exampleQuery = query({
-  args: {},
-  returns: v.null(),
-  handler: async (ctx, args) => {
-      console.log("This query returns a null value");
-      return null;
-  },
-});
-\`\`\``),
       guideline(`Here are the valid Convex types along with their respective validators:
 Convex Type  | TS/JS type  |  Example Usage         | Validator for argument validation and schemas  | Notes                                                                                                                                                                                                 |
 | ----------- | ------------| -----------------------| -----------------------------------------------| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -136,7 +121,7 @@ Convex Type  | TS/JS type  |  Example Usage         | Validator for argument val
         "You CANNOT register a function through the `api` or `internal` objects.",
       ),
       guideline(
-        "ALWAYS include argument and return validators for all Convex functions. This includes all of `query`, `internalQuery`, `mutation`, `internalMutation`, `action`, and `internalAction`. If a function doesn't return anything, include `returns: v.null()` as its output validator.",
+        "ALWAYS include argument validators for all Convex functions. This includes all of `query`, `internalQuery`, `mutation`, `internalMutation`, `action`, and `internalAction`.",
       ),
       guideline(
         "If the JavaScript implementation of a Convex function doesn't have a return value, it implicitly returns `null`.",
@@ -159,7 +144,6 @@ Convex Type  | TS/JS type  |  Example Usage         | Validator for argument val
 \`\`\`
 export const f = query({
   args: { name: v.string() },
-  returns: v.string(),
   handler: async (ctx, args) => {
     return "Hello " + args.name;
   },
@@ -167,7 +151,6 @@ export const f = query({
 
 export const g = query({
   args: {},
-  returns: v.null(),
   handler: async (ctx, args) => {
     const result: string = await ctx.runQuery(api.example.f, { name: "Bob" });
     return null;
@@ -262,7 +245,6 @@ import { Doc, Id } from "./_generated/dataModel";
 
 export const exampleQuery = query({
     args: { userIds: v.array(v.id("users")) },
-    returns: v.record(v.id("users"), v.string()),
     handler: async (ctx, args) => {
         const idToUsername: Record<Id<"users">, string> = {};
         for (const userId of args.userIds) {
@@ -344,7 +326,6 @@ import { action } from "./_generated/server";
 
 export const exampleAction = action({
     args: {},
-    returns: v.null(),
     handler: async (ctx, args) => {
         console.log("This action does not return anything");
         return null;
@@ -368,7 +349,6 @@ import { internalAction } from "./_generated/server";
 
 const empty = internalAction({
   args: {},
-  returns: v.null(),
   handler: async (ctx, args) => {
     console.log("empty");
   },
@@ -413,7 +393,6 @@ type FileMetadata = {
 
 export const exampleQuery = query({
     args: { fileId: v.id("_storage") },
-    returns: v.null(),
     handler: async (ctx, args) => {
         const metadata: FileMetadata | null = await ctx.db.system.get("_storage", args.fileId);
         console.log(metadata);
@@ -460,9 +439,6 @@ http.route({
       ]),
       section("validators", [
         guideline(
-          "Use `v.null()` when a function returns null. JavaScript `undefined` is not valid; use `null` instead.",
-        ),
-        guideline(
           "Use `v.array(validator)` for arrays, `v.union(...)` for unions, and `v.object({ ... })` for objects. Discriminated unions: use `v.literal(\"kind\")` with `v.object({ kind: v.literal(\"a\"), ... })`.",
         ),
         guideline(
@@ -477,7 +453,7 @@ http.route({
           "Use `internalQuery`, `internalMutation`, `internalAction` for private functions (from `./_generated/server`). Use `query`, `mutation`, `action` for public API. Do not register via `api` or `internal` objects.",
         ),
         guideline(
-          "ALWAYS include `args` and `returns` validators for every function. Use `returns: v.null()` when a function returns nothing.",
+          "ALWAYS include `args` validators for every function.",
         ),
       ]),
       section("function_calling", [
@@ -509,7 +485,7 @@ http.route({
           "Import `paginationOptsValidator` from `convex/server` and use `args: { paginationOpts: paginationOptsValidator, ... }`.",
         ),
         guideline(
-          "Paginated return object has `page`, `isDone`, and `continueCursor` (NOT `results`). If you add a returns validator for paginated results, use `paginationResultValidator(itemValidator)` from `convex/server`.",
+          "Paginated return object has `page`, `isDone`, and `continueCursor` (NOT `results`).",
         ),
         guideline(`Example: \`args: { paginationOpts: paginationOptsValidator, ... }\`, then \`ctx.db.query(\"table\").withIndex(\"by_x\", q => q.eq(\"x\", args.x)).order(\"desc\").paginate(args.paginationOpts)\`.`),
       ]),
@@ -538,7 +514,6 @@ import { Doc, Id } from "./_generated/dataModel";
 
 export const exampleQuery = query({
     args: { userIds: v.array(v.id("users")) },
-    returns: v.record(v.id("users"), v.string()),
     handler: async (ctx, args) => {
         const idToUsername: Record<Id<"users">, string> = {};
         for (const userId of args.userIds) {
@@ -615,7 +590,6 @@ import { action } from "./_generated/server";
 
 export const exampleAction = action({
     args: {},
-    returns: v.null(),
     handler: async (ctx, args) => {
         console.log("This action does not return anything");
         return null;
@@ -639,7 +613,6 @@ import { internalAction } from "./_generated/server";
 
 const empty = internalAction({
   args: {},
-  returns: v.null(),
   handler: async (ctx, args) => {
     console.log("empty");
   },
@@ -684,7 +657,6 @@ type FileMetadata = {
 
 export const exampleQuery = query({
     args: { fileId: v.id("_storage") },
-    returns: v.null(),
     handler: async (ctx, args) => {
         const metadata: FileMetadata | null = await ctx.db.system.get("_storage", args.fileId);
         console.log(metadata);

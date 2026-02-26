@@ -5,7 +5,6 @@ import schema from "./schema";
 
 export const initiateRequest = mutation({
   args: { url: v.string() },
-  returns: v.id("requests"),
   handler: async (ctx, args) => {
     // Check if URL already exists
     const existing = await ctx.db
@@ -39,7 +38,6 @@ export const performHttpbinFetch = internalAction({
     url: v.string(),
     requestId: v.id("requests"),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     try {
       // Perform the HTTP POST request
@@ -75,7 +73,6 @@ export const updateRequest = internalMutation({
     status: schema.tables.requests.validator.fields.status,
     completedAt: v.number(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.patch(args.requestId, {
       status: args.status,

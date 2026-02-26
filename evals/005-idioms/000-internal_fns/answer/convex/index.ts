@@ -7,10 +7,6 @@ import { v } from "convex/values";
  */
 export const getPublicStats = query({
   args: {},
-  returns: v.object({
-    totalUsers: v.number(),
-    version: v.string(),
-  }),
   handler: async (ctx) => {
     return {
       totalUsers: 100,
@@ -28,7 +24,6 @@ export const logClientEvent = mutation({
     eventName: v.string(),
     data: v.any(),
   },
-  returns: v.number(),
   handler: async (ctx, args) => {
     console.log(`Event: ${args.eventName}`, args.data);
     return Date.now();
@@ -41,7 +36,6 @@ export const logClientEvent = mutation({
  */
 export const dailyCleanup = internalAction({
   args: {},
-  returns: v.null(),
   handler: async (ctx) => {
     console.log("Running daily cleanup");
     return null;
@@ -54,7 +48,6 @@ export const dailyCleanup = internalAction({
  */
 export const resetCounter = internalMutation({
   args: {},
-  returns: v.null(),
   handler: async (ctx) => {
     console.log("Resetting counter");
     return null;

@@ -3,7 +3,6 @@ import { v } from "convex/values";
 
 export const getTeamsWithDeletedAdmins = query({
   args: {},
-  returns: v.array(v.id("teams")),
   handler: async (ctx) => {
     const teamsWithDeletedAdmins = [];
 

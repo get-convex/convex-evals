@@ -9,10 +9,6 @@ export const paginateDogsByOwnerAge = query({
     cursor: v.union(v.string(), v.null()),
     numItems: v.number(),
   },
-  returns: v.object({
-    dogs: v.array(v.object({ name: v.string(), breed: v.string() })),
-    continueCursor: v.string(),
-  }),
   handler: async (ctx, args) => {
     // Query dogs sorted by owner age
     const results = await ctx.db

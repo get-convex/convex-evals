@@ -6,17 +6,6 @@ export const getProjectTasksByStatus = query({
     projectId: v.string(),
     status: v.string(),
   },
-  returns: v.array(
-    v.object({
-      _id: v.id("tasks"),
-      _creationTime: v.number(),
-      projectId: v.string(),
-      status: v.string(),
-      priority: v.number(),
-      title: v.string(),
-      assignee: v.string(),
-    }),
-  ),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("tasks")

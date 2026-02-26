@@ -26,7 +26,6 @@ export const migrateProduct = mutation({
   args: {
     productId: v.id("products"),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const product = await ctx.db.get(args.productId);
     if (!product) {
@@ -45,13 +44,6 @@ export const getProduct = query({
   args: {
     productId: v.id("products"),
   },
-  returns: v.object({
-    _id: v.id("products"),
-    _creationTime: v.number(),
-    name: v.string(),
-    description: v.string(),
-    active: v.union(v.literal("active"), v.literal("inactive"), v.literal("banned")),
-  }),
   handler: async (ctx, args) => {
     const product = await ctx.db.get(args.productId);
     if (!product) {

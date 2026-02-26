@@ -22,7 +22,6 @@ const metadataValidator = v.object({
 
 export const createDocument = mutation({
   args: schema.tables.documents.validator.fields,
-  returns: v.id("documents"),
   handler: async (ctx, args) => {
     return await ctx.db.insert("documents", args);
   },
@@ -33,7 +32,6 @@ export const patchDocumentMetadata = mutation({
     documentId: v.id("documents"),
     metadata: schema.tables.documents.validator.fields.metadata,
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const document = await ctx.db.get(args.documentId);
     if (!document) {
@@ -52,7 +50,6 @@ export const patchAuthorInfo = mutation({
     documentId: v.id("documents"),
     author: schema.tables.documents.validator.fields.metadata.fields.author,
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const document = await ctx.db.get(args.documentId);
     if (!document) {
@@ -73,14 +70,6 @@ export const getDocument = query({
   args: {
     documentId: v.id("documents"),
   },
-  returns: v.union(
-    v.null(),
-    v.object({
-      _id: v.id("documents"),
-      _creationTime: v.number(),
-      ...schema.tables.documents.validator.fields,
-    })
-  ),
   handler: async (ctx, args) => {
     const document = await ctx.db.get(args.documentId);
     return document;

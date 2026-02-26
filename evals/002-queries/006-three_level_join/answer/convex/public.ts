@@ -6,7 +6,6 @@ export const getProAdminsByOrg = query({
   args: {
     organizationId: v.id("organizations"),
   },
-  returns: v.record(v.id("users"), v.string()),
   handler: async (ctx, args) => {
     // First get all teams in the organization
     const teams = await ctx.db

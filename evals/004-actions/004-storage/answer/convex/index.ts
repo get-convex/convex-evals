@@ -8,10 +8,6 @@ export const writeTextToStorage = action({
   args: {
     text: v.string(),
   },
-  returns: v.object({
-    storageId: v.id("_storage"),
-    url: v.string(),
-  }),
   handler: async (ctx, args) => {
     // Store the text as a blob
     const storageId = await ctx.storage.store(new Blob([args.text], {
@@ -38,7 +34,6 @@ export const readTextFromStorage = action({
   args: {
     storageId: v.id("_storage"),
   },
-  returns: v.string(),
   handler: async (ctx, args) => {
     // Get the blob from storage
     const blob = await ctx.storage.get(args.storageId);

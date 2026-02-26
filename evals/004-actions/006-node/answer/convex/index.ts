@@ -7,10 +7,6 @@ import path from "path";
 // Define the action using Node runtime
 export const processWithNode = action({
   args: { data: v.string() },
-  returns: v.object({
-    hash: v.string(),
-    normalizedPath: v.string(),
-  }),
   handler: async (ctx, args) => {
     // Specify Node runtime to access Node.js built-in modules
 

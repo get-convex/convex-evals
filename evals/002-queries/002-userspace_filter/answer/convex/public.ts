@@ -6,16 +6,6 @@ export const getPopularPinnedMessages = query({
     author: v.string(),
     minLikes: v.number(),
   },
-  returns: v.array(
-    v.object({
-      _id: v.id("messages"),
-      _creationTime: v.number(),
-      author: v.string(),
-      text: v.string(),
-      likes: v.number(),
-      isPinned: v.boolean(),
-    }),
-  ),
   handler: async (ctx, args) => {
     const messages = await ctx.db
       .query("messages")

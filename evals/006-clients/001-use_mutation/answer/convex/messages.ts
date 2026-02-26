@@ -9,7 +9,6 @@ export const sendMessage = mutation({
     author: v.string(),
     body: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.insert("messages", {
       author: args.author,

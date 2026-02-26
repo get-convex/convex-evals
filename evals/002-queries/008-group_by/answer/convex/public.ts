@@ -6,14 +6,6 @@ export const getMonthlySalesByCategory = query({
     region: v.string(),
     date: v.string(),
   },
-  returns: v.array(
-    v.object({
-      category: v.string(),
-      totalSales: v.number(),
-      averageSaleAmount: v.number(),
-      numberOfSales: v.number(),
-    }),
-  ),
   handler: async (ctx, args) => {
     const sales = await ctx.db
       .query("sales")
