@@ -1,0 +1,307 @@
+{
+  "timestamp": "2026-02-25T06:58:34.944Z",
+  "beforePath": "guideline-validation/before.md",
+  "afterPath": "guideline-validation/after.md",
+  "filter": "004-actions",
+  "models": [
+    {
+      "model": "openai/gpt-5.3-codex",
+      "before": {
+        "passed": 6,
+        "failed": 2,
+        "results": [
+          {
+            "eval": "004-actions/001-run_mutation",
+            "passed": false,
+            "failure_reason": "convex dev fail"
+          },
+          {
+            "eval": "004-actions/004-storage",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/007-http_action_routing",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/005-storage_http_action",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/006-node",
+            "passed": false,
+            "failure_reason": "tests fail"
+          },
+          {
+            "eval": "004-actions/000-fetch",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/002-run_query_mutation",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/003-mutation_schedule_action",
+            "passed": true,
+            "failure_reason": null
+          }
+        ]
+      },
+      "after": {
+        "passed": 7,
+        "failed": 1,
+        "results": [
+          {
+            "eval": "004-actions/006-node",
+            "passed": false,
+            "failure_reason": "tests fail"
+          },
+          {
+            "eval": "004-actions/001-run_mutation",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/004-storage",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/007-http_action_routing",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/005-storage_http_action",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/000-fetch",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/002-run_query_mutation",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/003-mutation_schedule_action",
+            "passed": true,
+            "failure_reason": null
+          }
+        ]
+      },
+      "delta": 1,
+      "regressions": [],
+      "improvements": [
+        "004-actions/001-run_mutation"
+      ]
+    },
+    {
+      "model": "anthropic/claude-sonnet-4.6",
+      "before": {
+        "passed": 5,
+        "failed": 3,
+        "results": [
+          {
+            "eval": "004-actions/000-fetch",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/005-storage_http_action",
+            "passed": false,
+            "failure_reason": "tests fail"
+          },
+          {
+            "eval": "004-actions/004-storage",
+            "passed": false,
+            "failure_reason": "tests fail"
+          },
+          {
+            "eval": "004-actions/001-run_mutation",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/006-node",
+            "passed": false,
+            "failure_reason": "tests fail"
+          },
+          {
+            "eval": "004-actions/007-http_action_routing",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/002-run_query_mutation",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/003-mutation_schedule_action",
+            "passed": true,
+            "failure_reason": null
+          }
+        ]
+      },
+      "after": {
+        "passed": 5,
+        "failed": 3,
+        "results": [
+          {
+            "eval": "004-actions/004-storage",
+            "passed": false,
+            "failure_reason": "tests fail"
+          },
+          {
+            "eval": "004-actions/000-fetch",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/007-http_action_routing",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/005-storage_http_action",
+            "passed": false,
+            "failure_reason": "tests fail"
+          },
+          {
+            "eval": "004-actions/006-node",
+            "passed": false,
+            "failure_reason": "tests fail"
+          },
+          {
+            "eval": "004-actions/001-run_mutation",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/002-run_query_mutation",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/003-mutation_schedule_action",
+            "passed": true,
+            "failure_reason": null
+          }
+        ]
+      },
+      "delta": 0,
+      "regressions": [],
+      "improvements": []
+    },
+    {
+      "model": "google/gemini-3.1-pro-preview",
+      "before": {
+        "passed": 7,
+        "failed": 1,
+        "results": [
+          {
+            "eval": "004-actions/000-fetch",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/001-run_mutation",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/005-storage_http_action",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/004-storage",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/003-mutation_schedule_action",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/002-run_query_mutation",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/007-http_action_routing",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/006-node",
+            "passed": false,
+            "failure_reason": "tests fail"
+          }
+        ]
+      },
+      "after": {
+        "passed": 7,
+        "failed": 1,
+        "results": [
+          {
+            "eval": "004-actions/000-fetch",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/001-run_mutation",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/006-node",
+            "passed": false,
+            "failure_reason": "tests fail"
+          },
+          {
+            "eval": "004-actions/004-storage",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/005-storage_http_action",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/007-http_action_routing",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/002-run_query_mutation",
+            "passed": true,
+            "failure_reason": null
+          },
+          {
+            "eval": "004-actions/003-mutation_schedule_action",
+            "passed": true,
+            "failure_reason": null
+          }
+        ]
+      },
+      "delta": 0,
+      "regressions": [],
+      "improvements": []
+    }
+  ],
+  "anyRegressions": false,
+  "totalRegressions": 0,
+  "totalImprovements": 1
+}
