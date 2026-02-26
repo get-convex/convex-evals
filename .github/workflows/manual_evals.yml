@@ -6,7 +6,7 @@ on:
       models:
         description: "Comma-separated model names to evaluate"
         required: false
-        default: "openai/gpt-5.3-codex"
+        default: "google/gemini-3-flash-preview"
       test_filter:
         description: "Regex to filter evals (e.g. '000-fundamentals', '000-fundamentals/000')"
         required: false

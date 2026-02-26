@@ -162,6 +162,11 @@ export const ALL_MODELS: ModelTemplate[] = [
   {
     name: "google/gemini-2.5-flash",
     formattedName: "Gemini 2.5 Flash",
+    ciRunFrequency: "weekly",
+  },
+  {
+    name: "google/gemini-3-flash-preview",
+    formattedName: "Gemini 3 Flash",
     ciRunFrequency: "daily",
   },
   {
