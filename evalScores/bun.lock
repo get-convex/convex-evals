@@ -14,7 +14,7 @@
       "devDependencies": {
         "@edge-runtime/vm": "^5.0.0",
         "@types/bun": "latest",
-        "convex-test": "^0.0.35",
+        "convex-test": "^0.0.41",
         "vitest": "^3.0.0",
       },
       "peerDependencies": {
@@ -167,7 +167,7 @@
 
     "convex": ["convex@1.31.2", "", { "dependencies": { "esbuild": "0.25.4", "prettier": "^3.0.0" }, "peerDependencies": { "@auth0/auth0-react": "^2.0.1", "@clerk/clerk-react": "^4.12.8 || ^5.0.0", "react": "^18.0.0 || ^19.0.0-0 || ^19.0.0" }, "optionalPeers": ["@auth0/auth0-react", "@clerk/clerk-react", "react"], "bin": { "convex": "bin/main.js" } }, "sha512-RFuJOwlL2bM5X63egvBI5ZZZH6wESREpAbHsLjODxzDeJuewTLKrEnbvHV/NWp1uJYpgEFJziuGHmZ0tnAmmJg=="],
 
-    "convex-test": ["convex-test@0.0.35", "", { "peerDependencies": { "convex": "^1.16.4" } }, "sha512-nvhlElyoxrLvLKruVs2qyndHAza8sEAYSWIGGO1K99HAQAnEl1w3zUZJfOafq7t1r688tsf7MsJFjX8IQbH0Dg=="],
+    "convex-test": ["convex-test@0.0.41", "", { "peerDependencies": { "convex": "^1.16.4" } }, "sha512-GPHeYFOi70n7UtW0eCEQFVhzl/+m8PvbWkDCbKpHLybI1MrScf4sVpGeM0cC2qmtxiduxa2nLPbehPalhh9oyQ=="],
 
     "core-util-is": ["core-util-is@1.0.3", "", {}, "sha512-ZQBvi1DcpJ4GDqanjucZ2Hj3wEO5pZDS89BWbkcrvdxksJorwUDDZamX9ldFkp9aw2lmBDLgkObEA4DWNJ9FYQ=="],
 
