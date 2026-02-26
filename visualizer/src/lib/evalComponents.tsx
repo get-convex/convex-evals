@@ -26,8 +26,7 @@ export interface ZipFileEntry {
 }
 
 // Route path type for tabs
-type RoutePath = 
-  | "/run/$runId/$category/$evalId" 
+type RoutePath =
   | "/experiment/$experimentId/run/$runId/$category/$evalId"
   | "/model/$model/experiment/$experimentId/run/$runId/$category/$evalId";
 

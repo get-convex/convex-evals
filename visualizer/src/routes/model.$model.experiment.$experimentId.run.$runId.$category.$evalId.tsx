@@ -13,7 +13,7 @@ import { StepsTab, OutputTab, TaskTab } from "../lib/evalComponents";
 export const Route = createFileRoute(
   "/model/$model/experiment/$experimentId/run/$runId/$category/$evalId"
 )({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (search: Record<string, unknown>): { tab: string; file?: string } => ({
     tab: (search.tab as string) ?? "steps",
     file: (search.file as string) ?? undefined,
   }),

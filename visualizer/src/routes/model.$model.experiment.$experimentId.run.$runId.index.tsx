@@ -241,6 +241,7 @@ function EvalRow({
             category: evalItem.category,
             evalId: evalItem._id,
           },
+          search: { tab: "steps" },
         })
       }
     >

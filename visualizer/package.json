@@ -6,6 +6,7 @@
     "dev": "vite dev --port 3001",
     "build": "vite build",
     "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
