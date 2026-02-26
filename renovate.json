@@ -1,0 +1,39 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "ignorePaths": [
+    "evals/**/answer/**"
+  ],
+  "automerge": false,
+  "packageRules": [
+    {
+      "description": "Group all @ai-sdk/* packages so they update together",
+      "matchPackagePrefixes": ["@ai-sdk/"],
+      "groupName": "AI SDK packages"
+    },
+    {
+      "description": "Group convex-related packages",
+      "matchPackageNames": ["convex", "convex-test", "@convex-dev/migrations"],
+      "groupName": "Convex packages",
+      "labels": ["dependencies", "convex"]
+    },
+    {
+      "description": "Disable major version updates for GitHub Actions - current v4 setup works, avoid disruptive jumps",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "Disable major version updates for core runner dependencies - breaking changes in these can silently break model integrations",
+      "matchPackageNames": ["ai", "convex"],
+      "matchPackagePrefixes": ["@ai-sdk/"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "Ignore rymndhng/release-on-push-action - pinned to @master intentionally",
+      "matchPackageNames": ["rymndhng/release-on-push-action"],
+      "enabled": false
+    }
+  ]
+}
