@@ -65,7 +65,6 @@ export default http;
 // Query to get the site URL
 export const getSiteURL = query({
   args: {},
-  returns: v.string(),
   handler: async (ctx) => {
     return process.env.CONVEX_SITE_URL!;
   },

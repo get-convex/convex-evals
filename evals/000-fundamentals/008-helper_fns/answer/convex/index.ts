@@ -29,11 +29,6 @@ async function getItemData(
 // Query to get an item by ID
 export const getItem = query({
   args: { itemId: v.id("items") },
-  returns: v.object({
-    name: v.string(),
-    quantity: v.number(),
-    lastModified: v.string(),
-  }),
   handler: async (ctx, args) => {
     const formattedItem = await getItemData(ctx, args.itemId);
 
@@ -51,11 +46,6 @@ export const updateItem = mutation({
     itemId: v.id("items"),
     quantity: v.number(),
   },
-  returns: v.object({
-    name: v.string(),
-    quantity: v.number(),
-    lastModified: v.string(),
-  }),
   handler: async (ctx, args) => {
     await ctx.db.patch(args.itemId, {
       quantity: args.quantity,

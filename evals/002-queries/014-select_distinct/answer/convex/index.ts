@@ -3,7 +3,6 @@ import { v } from "convex/values";
 
 export const getDistinctAges = query({
   args: {},
-  returns: v.array(v.number()),
   handler: async (ctx) => {
     const distinctAges: number[] = [];
     let cursor = await ctx.db .query("users") .withIndex("by_age") .first();

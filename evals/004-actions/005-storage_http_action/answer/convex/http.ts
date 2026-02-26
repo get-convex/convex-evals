@@ -45,7 +45,6 @@ http.route({
 
 export const getSiteURL = query({
   args: {},
-  returns: v.string(),
   handler: async (ctx) => {
     return process.env.CONVEX_SITE_URL!;
   },

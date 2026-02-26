@@ -8,11 +8,6 @@ export const uploadFile = action({
     contents: v.string(),
     fileName: v.string(),
   },
-  returns: v.object({
-    fileId: v.id("files"),
-    storageId: v.id("_storage"),
-    url: v.string(),
-  }),
   handler: async (ctx, args): Promise<{
     fileId: Id<"files">;
     storageId: Id<"_storage">;
@@ -52,7 +47,6 @@ export const storeFileMetadata = internalMutation({
     fileName: v.string(),
     size: v.number(),
   },
-  returns: v.id("files"),
   handler: async (ctx, args) => {
     return await ctx.db.insert("files", {
       storageId: args.storageId,

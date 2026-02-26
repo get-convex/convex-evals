@@ -7,7 +7,6 @@ export const createLocation = mutation({
     latitude: v.number(),
     longitude: v.number(),
   },
-  returns: v.id("locations"),
   handler: async (ctx, args) => {
     return await ctx.db.insert("locations", args);
   },
@@ -17,16 +16,6 @@ export const readLocation = query({
   args: {
     id: v.id("locations"),
   },
-  returns: v.union(
-    v.null(),
-    v.object({
-      _id: v.id("locations"),
-      _creationTime: v.number(),
-      name: v.string(),
-      latitude: v.number(),
-      longitude: v.number(),
-    }),
-  ),
   handler: async (ctx, args) => {
     return await ctx.db.get(args.id);
   },
@@ -39,7 +28,6 @@ export const updateLocation = mutation({
     latitude: v.number(),
     longitude: v.number(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const existing = await ctx.db.get(args.id);
     if (!existing) {
@@ -58,7 +46,6 @@ export const patchLocation = mutation({
     id: v.id("locations"),
     name: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.patch(args.id, {
       name: args.name,
@@ -70,7 +57,6 @@ export const deleteLocation = mutation({
   args: {
     id: v.id("locations"),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.delete(args.id);
   },

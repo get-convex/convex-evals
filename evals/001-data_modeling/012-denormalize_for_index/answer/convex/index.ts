@@ -11,7 +11,6 @@ export const createDog = mutation({
     breed: v.string(),
     ownerId: v.id("owners"),
   },
-  returns: v.id("dogs"),
   handler: async (ctx, args) => {
     // Fetch owner to ensure they exist and get their age
     const owner = await ctx.db.get(args.ownerId);
@@ -39,7 +38,6 @@ export const updateOwnerAge = mutation({
     ownerId: v.id("owners"),
     newAge: v.number(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     // Check if owner exists
     const owner = await ctx.db.get(args.ownerId);
@@ -69,7 +67,6 @@ export const getDogsByOwnerAge = query({
   args: {
     age: v.number(),
   },
-  returns: v.array(v.object({ name: v.string(), breed: v.string() })),
   handler: async (ctx, args) => {
     const dogs =  await ctx.db
       .query("dogs")

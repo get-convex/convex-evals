@@ -3,12 +3,6 @@ import { query } from "./_generated/server";
 
 export const getCustomerStats = query({
   args: { customerId: v.string() },
-  returns: v.object({
-    totalOrders: v.number(),
-    totalItems: v.number(),
-    totalSpent: v.number(),
-    averageOrderValue: v.number(),
-  }),
   handler: async (ctx, args) => {
     const orders = await ctx.db
       .query("orders")

@@ -7,7 +7,6 @@ import { v } from "convex/values";
  */
 export const getActiveAdults = query({
   args: { minAge: v.number() },
-  returns: v.array(v.string()),
   handler: async (ctx, args) => {
     // Use the "by_age" index to efficiently filter users by age
     const users = await ctx.db

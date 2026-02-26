@@ -6,7 +6,6 @@ export const updateUserEmail = mutation({
     id: v.id("users"),
     email: v.string(),
   }),
-  returns: v.null(),
   handler: async (ctx, args) => {
     const user = await ctx.db.get(args.id);
     if (user == null) {

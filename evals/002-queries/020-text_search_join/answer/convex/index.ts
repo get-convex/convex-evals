@@ -3,13 +3,6 @@ import { v } from "convex/values";
 
 export const searchPostsWithAuthors = query({
   args: { query: v.string() },
-  returns: v.array(
-    v.object({
-      title: v.string(),
-      content: v.string(),
-      author: v.string(),
-    })
-  ),
   handler: async (ctx, args) => {
     // Search posts using the search index
     const posts = await ctx.db

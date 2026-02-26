@@ -3,27 +3,6 @@ import { query } from "./_generated/server";
 
 export const getAuthorDashboard = query({
   args: { email: v.string() },
-  returns: v.union(
-    v.null(),
-    v.object({
-      user: v.object({
-        name: v.string(),
-        email: v.string(),
-        theme: v.string(),
-        notifications: v.boolean(),
-      }),
-      posts: v.array(
-        v.object({
-          title: v.string(),
-          reactionCounts: v.object({
-            like: v.number(),
-            heart: v.number(),
-            celebrate: v.number(),
-          }),
-        }),
-      ),
-    }),
-  ),
   handler: async (ctx, args) => {
     const user = await ctx.db
       .query("users")

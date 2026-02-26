@@ -7,12 +7,6 @@ import { internal } from "./_generated/api";
  */
 export const getDocument = mutation({
   args: { documentId: v.id("documents") },
-  returns: v.object({
-    _id: v.id("documents"),
-    _creationTime: v.number(),
-    title: v.string(),
-    content: v.string(),
-  }),
   handler: async (ctx, args) => {
     const document = await ctx.db.get(args.documentId);
 
@@ -38,7 +32,6 @@ export const logAccess = internalMutation({
     documentId: v.id("documents"),
     action: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.insert("accessLogs", {
       documentId: args.documentId,

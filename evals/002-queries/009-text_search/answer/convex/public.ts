@@ -6,14 +6,6 @@ export const searchArticles = query({
     searchTerm: v.string(),
     author: v.string(),
   },
-  returns: v.array(
-    v.object({
-      title: v.string(),
-      author: v.string(),
-      preview: v.string(),
-      tags: v.array(v.string()),
-    }),
-  ),
   handler: async (ctx, args) => {
     const articles = await ctx.db
       .query("articles")

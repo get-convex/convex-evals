@@ -3,13 +3,6 @@ import { v } from "convex/values";
 
 export const getActiveUsersWithPosts = query({
   args: {},
-  returns: v.array(
-    v.object({
-      userId: v.id("users"),
-      name: v.string(),
-      posts: v.array(v.object({ title: v.string() })),
-    })
-  ),
   handler: async (ctx) => {
     // Get all active users using the by_status index
     const activeUsers = await ctx.db

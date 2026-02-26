@@ -16,7 +16,6 @@ export const createUser = mutation({
   args: {
     name: v.string(),
   },
-  returns: v.id("users"),
   handler: async (ctx, args) => {
     return await ctx.db.insert("users", { name: args.name });
   },
@@ -29,7 +28,6 @@ export const createChannel = mutation({
   args: {
     name: v.string(),
   },
-  returns: v.id("channels"),
   handler: async (ctx, args) => {
     return await ctx.db.insert("channels", { name: args.name });
   },
@@ -42,15 +40,6 @@ export const listMessages = query({
   args: {
     channelId: v.id("channels"),
   },
-  returns: v.array(
-    v.object({
-      _id: v.id("messages"),
-      _creationTime: v.number(),
-      channelId: v.id("channels"),
-      authorId: v.optional(v.id("users")),
-      content: v.string(),
-    }),
-  ),
   handler: async (ctx, args) => {
     const messages = await ctx.db
       .query("messages")
@@ -70,7 +59,6 @@ export const sendMessage = mutation({
     authorId: v.id("users"),
     content: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const channel = await ctx.db.get(args.channelId);
     if (!channel) {
@@ -98,7 +86,6 @@ export const generateResponse = internalAction({
   args: {
     channelId: v.id("channels"),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     const context = await ctx.runQuery(internal.index.loadContext, {
       channelId: args.channelId,
@@ -123,12 +110,6 @@ export const loadContext = internalQuery({
   args: {
     channelId: v.id("channels"),
   },
-  returns: v.array(
-    v.object({
-      role: v.union(v.literal("user"), v.literal("assistant")),
-      content: v.string(),
-    }),
-  ),
   handler: async (ctx, args) => {
     const channel = await ctx.db.get(args.channelId);
     if (!channel) {
@@ -164,7 +145,6 @@ export const writeAgentResponse = internalMutation({
     channelId: v.id("channels"),
     content: v.string(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.insert("messages", {
       channelId: args.channelId,

@@ -7,7 +7,6 @@ import { v } from "convex/values";
  */
 export const fetchFromHttpBin = action({
   args: {},
-  returns: v.any(),
   handler: async (ctx) => {
     const response = await fetch("https://httpbin.org/get");
     const data = await response.json();

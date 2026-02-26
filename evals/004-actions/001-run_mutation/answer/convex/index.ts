@@ -8,7 +8,6 @@ export const saveFetchResult = mutation({
     url: v.string(),
     data: v.any(),
   },
-  returns: v.id("fetchResults"),
   handler: async (ctx, args): Promise<Id<"fetchResults">> => {
     return await ctx.db.insert("fetchResults", args);
   },
@@ -18,7 +17,6 @@ export const fetchAndSave = action({
   args: {
     url: v.string(),
   },
-  returns: v.id("fetchResults"),
   handler: async (ctx, args): Promise<Id<"fetchResults">> => {
     const response = await fetch(args.url);
     const data = await response.json();

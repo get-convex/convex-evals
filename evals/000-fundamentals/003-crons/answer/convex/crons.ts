@@ -7,7 +7,6 @@ export const emptyAction = internalAction({
   args: {
     scheduleDescription: v.optional(v.string()),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     console.log(args.scheduleDescription);
   },
