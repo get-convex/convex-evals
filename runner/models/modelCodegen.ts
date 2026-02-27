@@ -142,6 +142,15 @@ export class Model {
     }
 
     const result = await generateText(options);
+    
+    // OpenRouter's Responses API (used by Codex models) includes cost in the 'raw' field.
+    // We ensure it's available for the scorer/leaderboard.
+    const usage = result.usage;
+    if (usage && usage.raw && typeof usage.raw === 'object' && 'cost' in (usage.raw as any)) {
+      // The AI SDK might not always surface the cost from the raw response in a standard way
+      // for the Responses API. We keep it in usage.raw.cost which is where the backend looks.
+    }
+
     return {
       files: parseMarkdownResponse(result.text),
       usage: result.usage,

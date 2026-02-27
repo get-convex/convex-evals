@@ -84,15 +84,15 @@ export const ALL_MODELS: ModelTemplate[] = [
     ciRunFrequency: "weekly",
   },
   {
-    name: "openai/gpt-5.2-codex",
-    formattedName: "GPT-5.2 Codex",
-    ciRunFrequency: "weekly",
-    apiKind: "responses",
-  },
-  {
     name: "openai/gpt-5.3-codex",
     formattedName: "GPT-5.3 Codex",
     ciRunFrequency: "daily",
+    apiKind: "responses",
+  },
+  {
+    name: "openai/gpt-5.2-codex",
+    formattedName: "GPT-5.2 Codex",
+    ciRunFrequency: "weekly",
     apiKind: "responses",
   },
   {

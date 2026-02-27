@@ -127,7 +127,8 @@ function deterministicCostUsd(model: string, evalPath: string): number {
     model.includes("opus") ? 2.2 :
       model.includes("gpt-5") ? 1.8 :
         model.includes("gemini") ? 1.2 :
-          1.0;
+          model.includes("codex") ? 1.5 :
+            1.0;
   const base = 0.0025;
   const variance = 0.6 + (hash % 140) / 100; // 0.60 - 1.99
   return Number((base * modelMultiplier * variance).toFixed(6));
