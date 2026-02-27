@@ -21,5 +21,5 @@
     "noEmit": true
   },
   "include": ["./**/*"],
-  "exclude": ["./_generated", "visualizer", "guidelines/tmp", "evals/**/node_modules"]
+  "exclude": ["./_generated", "visualizer", "guidelines/tmp", "evals/**/node_modules", "evals/**/answer/src", "examples"]
 }
