@@ -44,7 +44,7 @@
   },
   "scripts": {
     "dev": "bun run scripts/dev.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && cd evalScores && bunx tsc -p convex/tsconfig.json && cd ../visualizer && bunx tsc",
     "test": "bun test runner/__tests__ && cd evalScores && bun run test:once",
     "test:runner": "bun test runner/__tests__",
     "evals": "bun run scripts/runEvals.ts",

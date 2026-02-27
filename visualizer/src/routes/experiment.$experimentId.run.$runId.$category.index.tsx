@@ -126,6 +126,7 @@ function EvalRow({
         navigate({
           to: "/experiment/$experimentId/run/$runId/$category/$evalId",
           params: { experimentId, runId, category, evalId: evalItem._id },
+          search: { tab: "steps" },
         })
       }
     >

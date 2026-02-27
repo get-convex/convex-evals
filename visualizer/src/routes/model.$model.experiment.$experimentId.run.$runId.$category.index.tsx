@@ -133,6 +133,7 @@ function EvalRow({
         navigate({
           to: "/model/$model/experiment/$experimentId/run/$runId/$category/$evalId",
           params: { model, experimentId, runId, category, evalId: evalItem._id },
+          search: { tab: "steps" },
         })
       }
     >
