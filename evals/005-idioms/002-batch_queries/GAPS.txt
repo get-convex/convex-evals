@@ -1,4 +1,0 @@
-idioms, batch_queries:
-
-- It can't handle type declarations, so it's barfing on Promise<...> syntax
-- It's trying to use `.impl` instead of a helper function.

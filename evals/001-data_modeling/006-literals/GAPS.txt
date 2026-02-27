@@ -1,4 +1,0 @@
-data_modeling, literals:
-
-- For some reason, it didn't generate the "package.json" file or "tsconfig.json" file.
-- The schema.ts file looks great otherwise.

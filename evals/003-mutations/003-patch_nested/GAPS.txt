@@ -1,4 +1,0 @@
-mutations, patch_nested:
-
-- It thinks patch takes in a string path, but it takes in an object
-- It doesn't know how to patch a nested object (that it needs to spread the existing object)

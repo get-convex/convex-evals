@@ -1,3 +1,0 @@
-clients, use_query:
-
-- Claude still struggles to generate .tsx or anything with <tags>

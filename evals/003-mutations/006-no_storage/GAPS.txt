@@ -1,3 +1,0 @@
-mutations, no_storage:
-
-- Trying to store a file from a mutation

@@ -63,7 +63,7 @@ Classify the failure as one of:
 - **MODEL_FAULT**: The model genuinely got it wrong
 - **OVERLY_STRICT**: The eval/lint/test requirements are unreasonable for what was asked
 - **AMBIGUOUS_TASK**: The task description is unclear and the model's interpretation was reasonable
-- **KNOWN_GAP**: Check evalSourceFiles for a GAPS.txt that documents this issue
+- **KNOWN_GAP**: A known limitation of this eval that affects all models (e.g. the Convex API returns fields the model can't predict without being told)
 
 Summarize:
 1. The eval name, model, and experiment

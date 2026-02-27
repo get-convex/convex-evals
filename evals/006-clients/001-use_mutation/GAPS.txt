@@ -1,5 +1,0 @@
-clients, use_mutation:
-
-- Claude struggling with tags
-- OpenAI is just failing a maybe-dumb lint: @typescript-eslint/no-misused-promises
-- OpenAI is returning the ID of the message - should specify that in TASK.txt

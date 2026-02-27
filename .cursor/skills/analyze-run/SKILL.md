@@ -69,7 +69,7 @@ Classify the failure as one of:
 - MODEL_FAULT: The model genuinely got it wrong
 - OVERLY_STRICT: The eval/lint/test requirements are unreasonable for what was asked
 - AMBIGUOUS_TASK: The task description is unclear and the model's interpretation was reasonable
-- KNOWN_GAP: Check evalSourceFiles for a GAPS.txt that documents this issue
+- KNOWN_GAP: A known limitation of this eval that affects all models (e.g. the Convex API returns fields the model can't predict without being told)
 
 Return a structured summary:
 - Eval: <name> (<category>)
@@ -96,7 +96,7 @@ For each failure, list: eval name, failed step, classification, one-line reasoni
 Look for patterns across failures:
 - Are multiple failures caused by the same root issue? (e.g. same lint rule, same API misunderstanding, same missing pattern)
 - Are there categories of evals that are systematically harder?
-- Do the GAPS.txt files already acknowledge these issues?
+- Do prior reports for this model already document these issues?
 
 ### 5d. Recommendations
 Group recommendations by type:

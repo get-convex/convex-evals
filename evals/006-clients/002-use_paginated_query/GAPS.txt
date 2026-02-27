@@ -1,5 +1,0 @@
-clients, use_paginated_query:
-
-- Neither knows what to do with the `usePaginatedQuery` hook.
-- I added another line to task.txt asking to explicitly use it.
-- Claude still struggling with <tags> output (App.tsx)

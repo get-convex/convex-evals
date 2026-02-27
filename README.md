@@ -193,7 +193,6 @@ Each eval directory contains:
 - `TASK.txt` - the prompt sent to the model
 - `answer/` - the human-curated reference solution
 - `grader.test.ts` - Vitest tests that score the model's output
-- `GAPS.txt` (optional) - documents known failure patterns that are inherent to the task, not fixable by improving the model or task
 
 ### Common eval types
 

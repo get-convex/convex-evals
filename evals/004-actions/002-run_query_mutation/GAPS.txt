@@ -1,5 +1,0 @@
-actions, run_query_mutation:
-
-- Struggling with the return type on handler to break type cycles.
-- Struggling with api.saveFetchResult instead of api.index.saveFetchResult.
-- Not using an internal query/mutation, but not really asked to.

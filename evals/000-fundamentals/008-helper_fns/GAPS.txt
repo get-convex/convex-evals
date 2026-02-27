@@ -1,5 +1,0 @@
-fundamentals, helper_fns:
-
-- Invalid syntax, so it doesn't run.
-- It's putting it in `items` and `helpers` instead of all in `index.ts`.
-- It isn't doing the fetch inside the helper function, so it isn't testing whether the QueryCtx type is discoverable.

@@ -90,7 +90,7 @@ Read the script output and present the full summary table and verdict to the use
 
 ## Step 7: Recommend next steps
 
-- **No regressions, with or without improvements**: Safe to commit the guideline changes. Optionally update relevant `GAPS.txt` if the change addresses a known gap.
+- **No regressions, with or without improvements**: Safe to commit the guideline changes.
 - **Any regressions**: Do not commit. Suggest reverting the change or narrowing it (e.g. only add the new rule to a subsection that doesn’t affect the regressed eval). Re-run validation after adjusting.
 - **Unclear or noisy**: If only one model regresses one eval, consider re-running that model to check for flakiness, or run the full suite once more.
 
