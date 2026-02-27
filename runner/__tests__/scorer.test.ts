@@ -244,6 +244,7 @@ describe("withTimeout pattern", () => {
   });
 
   it("rejects when promise exceeds timeout", async () => {
+    // eslint-disable-next-line @typescript-eslint/await-thenable
     await expect(
       withTimeout(
         new Promise((resolve) => setTimeout(resolve, 5000)),
@@ -254,6 +255,7 @@ describe("withTimeout pattern", () => {
   });
 
   it("preserves the original error when promise rejects before timeout", async () => {
+    // eslint-disable-next-line @typescript-eslint/await-thenable
     await expect(
       withTimeout(
         Promise.reject(new Error("original error")),

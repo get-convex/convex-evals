@@ -69,7 +69,7 @@ function rCol(s: string, width: number): string {
 
 // ── Main ─────────────────────────────────────────────────────────────
 
-async function main() {
+async function main(): Promise<void> {
   const url = process.env.CONVEX_EVAL_URL ?? PROD_CONVEX_URL;
   console.log(`\nQuerying Convex: ${url}\n`);
 
@@ -163,7 +163,7 @@ async function main() {
     if (!s) continue;
 
     // For projection, treat age as 0 (not retired) so we see the formula's shape
-    const project = (runs: number) =>
+    const project = (runs: number): string =>
       fmtDays(computeTargetDays(runs, s.scoreStdDev, 0));
 
     console.log(
