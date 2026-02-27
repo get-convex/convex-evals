@@ -16,7 +16,12 @@ async function createCompletedRunWithEvals(
     formattedName?: string;
     provider?: string;
     experiment?: "no_guidelines";
-    evals: Array<{ category: string; name: string; passed: boolean }>;
+    evals: Array<{
+      category: string;
+      name: string;
+      passed: boolean;
+      costUsd?: number;
+    }>;
   },
 ): Promise<Id<"runs">> {
   const runId = await t.mutation(internal.runs.createRun, {
@@ -39,11 +44,22 @@ async function createCompletedRunWithEvals(
     await t.mutation(internal.evals.completeEval, {
       evalId,
       status: evalDef.passed
-        ? { kind: "passed" as const, durationMs: 1000 }
+        ? {
+            kind: "passed" as const,
+            durationMs: 1000,
+            usage:
+              evalDef.costUsd !== undefined
+                ? { raw: { cost: evalDef.costUsd } }
+                : undefined,
+          }
         : {
             kind: "failed" as const,
             failureReason: "test failure",
             durationMs: 1000,
+            usage:
+              evalDef.costUsd !== undefined
+                ? { raw: { cost: evalDef.costUsd } }
+                : undefined,
           },
     });
   }
@@ -152,6 +168,58 @@ describe("leaderboardScores", () => {
     expect(entry.scoreErrorBars.cat1).toBe(0.5);
 
     expect(entry.runCount).toBe(2);
+  });
+
+  it("computes average run cost and error bar from eval usage", async () => {
+    const t = convexTest(schema, modules);
+
+    // Run 1 total cost: $1.00
+    await createCompletedRunWithEvals(t, {
+      model: "cost-model",
+      formattedName: "Cost Model",
+      evals: [
+        { category: "cat1", name: "eval1", passed: true, costUsd: 0.3 },
+        { category: "cat1", name: "eval2", passed: true, costUsd: 0.7 },
+      ],
+    });
+
+    // Run 2 total cost: $3.00
+    await createCompletedRunWithEvals(t, {
+      model: "cost-model",
+      formattedName: "Cost Model",
+      evals: [
+        { category: "cat1", name: "eval1", passed: true, costUsd: 1.0 },
+        { category: "cat1", name: "eval2", passed: true, costUsd: 2.0 },
+      ],
+    });
+
+    const results = await t.query(api.runs.leaderboardScores, {});
+    const entry = results.find((r) => r.model === "cost-model");
+    expect(entry).toBeDefined();
+
+    // Mean of [1.0, 3.0] = 2.0
+    expect(entry!.averageRunCostUsd).toBeCloseTo(2.0);
+    // Population stddev of [1.0, 3.0] = 1.0
+    expect(entry!.averageRunCostUsdErrorBar).toBeCloseTo(1.0);
+  });
+
+  it("returns null run cost fields when cost data is unavailable", async () => {
+    const t = convexTest(schema, modules);
+
+    await createCompletedRunWithEvals(t, {
+      model: "no-cost-model",
+      formattedName: "No Cost Model",
+      evals: [
+        { category: "cat1", name: "eval1", passed: true },
+        { category: "cat1", name: "eval2", passed: false },
+      ],
+    });
+
+    const results = await t.query(api.runs.leaderboardScores, {});
+    const entry = results.find((r) => r.model === "no-cost-model");
+    expect(entry).toBeDefined();
+    expect(entry!.averageRunCostUsd).toBeNull();
+    expect(entry!.averageRunCostUsdErrorBar).toBeNull();
   });
 
   it("only uses last 5 runs for statistics", async () => {

@@ -171,6 +171,26 @@ export const completeEval = mutation({
   },
 });
 
+export const seedMissingEvalCosts = mutation({
+  args: {
+    token: v.string(),
+    runId: v.optional(v.id("runs")),
+  },
+  returns: v.object({
+    scanned: v.number(),
+    updated: v.number(),
+  }),
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ scanned: number; updated: number }> => {
+    await assertValidToken(ctx, args.token);
+    return await ctx.runMutation(internal.evals.seedMissingEvalCosts, {
+      runId: args.runId,
+    });
+  },
+});
+
 // ── Asset deduplication ──────────────────────────────────────────────
 
 export const checkAssetHash = mutation({

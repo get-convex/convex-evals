@@ -333,7 +333,11 @@ export const listRuns = query({
         .order("desc");
     }
     
-    const limit = args.limit ?? 100;
+    // This query also loads eval documents per returned run to compute counts.
+    // Cap the run count to keep total bytes read below Convex function limits.
+    const MAX_LIST_RUNS_LIMIT = 40;
+    const requestedLimit = args.limit ?? 100;
+    const limit = Math.min(Math.max(requestedLimit, 1), MAX_LIST_RUNS_LIMIT);
     const runs = await runsQuery.take(limit);
     
     // Fetch eval counts for each run
@@ -426,6 +430,37 @@ function computeMeanAndStdDev(values: number[]): { mean: number; stdDev: number 
   return { mean, stdDev };
 }
 
+/** Best-effort extraction of OpenRouter eval cost (USD) from usage metadata. */
+function getEvalCostUsd(evalDoc: Doc<"evals">): number {
+  const status = evalDoc.status;
+  if (status.kind !== "passed" && status.kind !== "failed") return 0;
+  const rawUsage = status.usage?.raw;
+  if (!rawUsage || typeof rawUsage !== "object") return 0;
+  if (!("cost" in rawUsage)) return 0;
+  const cost = (rawUsage as { cost?: unknown }).cost;
+  return typeof cost === "number" && Number.isFinite(cost) ? cost : 0;
+}
+
+function computeRunCostUsdFromEvals(evals: Doc<"evals">[]): number | null {
+  const terminalEvals = evals.filter(
+    (e) => e.status.kind === "passed" || e.status.kind === "failed",
+  );
+  const evalsWithCost = terminalEvals.filter((evalDoc) => {
+    const status = evalDoc.status;
+    if (status.kind !== "passed" && status.kind !== "failed") return false;
+    const rawUsage = status.usage?.raw;
+    return (
+      rawUsage !== undefined &&
+      rawUsage !== null &&
+      typeof rawUsage === "object" &&
+      "cost" in rawUsage &&
+      typeof (rawUsage as { cost?: unknown }).cost === "number"
+    );
+  });
+  if (evalsWithCost.length === 0) return null;
+  return evalsWithCost.reduce((sum, evalDoc) => sum + getEvalCostUsd(evalDoc), 0);
+}
+
 /** Check if a failed eval was caused by a rate-limit / infrastructure error. */
 function isRateLimitFailure(evalDoc: Doc<"evals">): boolean {
   if (evalDoc.status.kind !== "failed") return false;
@@ -493,6 +528,8 @@ export const leaderboardScores = query({
       formattedName: v.string(),
       totalScore: v.number(),
       totalScoreErrorBar: v.number(),
+      averageRunCostUsd: v.union(v.number(), v.null()),
+      averageRunCostUsdErrorBar: v.union(v.number(), v.null()),
       scores: v.record(v.string(), v.number()),
       scoreErrorBars: v.record(v.string(), v.number()),
       runCount: v.number(),
@@ -514,6 +551,7 @@ export const leaderboardScores = query({
 
     type ScoredRun = {
       run: Doc<"runs">;
+      evals: Doc<"evals">[];
       scores: ReturnType<typeof computeRunScoresFromEvals>;
     };
 
@@ -528,6 +566,8 @@ export const leaderboardScores = query({
       formattedName: string;
       totalScore: number;
       totalScoreErrorBar: number;
+      averageRunCostUsd: number | null;
+      averageRunCostUsdErrorBar: number | null;
       scores: Record<string, number>;
       scoreErrorBars: Record<string, number>;
       runCount: number;
@@ -567,7 +607,7 @@ export const leaderboardScores = query({
                 .withIndex("by_runId", (q) => q.eq("runId", run._id))
                 .collect();
               if (!isFullyCompletedRun(run, evals)) return null;
-              return { run, scores: computeRunScoresFromEvals(evals) };
+              return { run, evals, scores: computeRunScoresFromEvals(evals) };
             }),
           );
           for (const sr of batchResults) {
@@ -586,6 +626,17 @@ export const leaderboardScores = query({
         const totalScores = scoredRuns.map((sr) => sr.scores.totalScore);
         const { mean: totalScore, stdDev: totalScoreErrorBar } =
           computeMeanAndStdDev(totalScores);
+        const runCostsUsd = scoredRuns.map((sr) =>
+          computeRunCostUsdFromEvals(sr.evals),
+        );
+        const availableRunCosts = runCostsUsd.filter(
+          (c): c is number => c !== null,
+        );
+        const { mean, stdDev } = computeMeanAndStdDev(availableRunCosts);
+        const averageRunCostUsd =
+          availableRunCosts.length > 0 ? mean : null;
+        const averageRunCostUsdErrorBar =
+          availableRunCosts.length > 0 ? stdDev : null;
 
         // Compute mean and error bars for each category
         const allCategories = new Set<string>();
@@ -611,6 +662,8 @@ export const leaderboardScores = query({
           formattedName: latest.run.formattedName ?? latest.run.model,
           totalScore,
           totalScoreErrorBar,
+          averageRunCostUsd,
+          averageRunCostUsdErrorBar,
           scores,
           scoreErrorBars,
           runCount: scoredRuns.length,

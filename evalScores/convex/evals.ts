@@ -115,3 +115,90 @@ export const completeEval = internalMutation({
     return null;
   },
 });
+
+function deterministicCostUsd(model: string, evalPath: string): number {
+  // Cheap deterministic hash for stable seed values in dev.
+  let hash = 0;
+  const key = `${model}:${evalPath}`;
+  for (let i = 0; i < key.length; i++) {
+    hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  }
+  const modelMultiplier =
+    model.includes("opus") ? 2.2 :
+      model.includes("gpt-5") ? 1.8 :
+        model.includes("gemini") ? 1.2 :
+          1.0;
+  const base = 0.0025;
+  const variance = 0.6 + (hash % 140) / 100; // 0.60 - 1.99
+  return Number((base * modelMultiplier * variance).toFixed(6));
+}
+
+export const seedMissingEvalCosts = internalMutation({
+  args: {
+    runId: v.optional(v.id("runs")),
+  },
+  returns: v.object({
+    scanned: v.number(),
+    updated: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const evals = args.runId
+      ? await ctx.db
+          .query("evals")
+          .withIndex("by_runId", (q) => q.eq("runId", args.runId!))
+          .collect()
+      : await ctx.db.query("evals").collect();
+
+    let scanned = 0;
+    let updated = 0;
+    const runModelCache = new Map<string, string>();
+
+    for (const evalDoc of evals) {
+      const status = evalDoc.status;
+      if (status.kind !== "passed" && status.kind !== "failed") continue;
+      scanned++;
+
+      const existingCost =
+        status.usage &&
+        typeof status.usage.raw === "object" &&
+        status.usage.raw !== null &&
+        "cost" in status.usage.raw &&
+        typeof (status.usage.raw as { cost?: unknown }).cost === "number"
+          ? (status.usage.raw as { cost: number }).cost
+          : undefined;
+      if (existingCost !== undefined) continue;
+
+      const runIdStr = String(evalDoc.runId);
+      let model = runModelCache.get(runIdStr);
+      if (!model) {
+        const run = await ctx.db.get(evalDoc.runId);
+        model = run?.model ?? "unknown-model";
+        runModelCache.set(runIdStr, model);
+      }
+
+      const seededCost = deterministicCostUsd(model, evalDoc.evalPath);
+      const prevUsage = status.usage ?? {};
+      const prevRaw =
+        prevUsage.raw && typeof prevUsage.raw === "object"
+          ? prevUsage.raw
+          : {};
+      const usage = {
+        ...prevUsage,
+        raw: {
+          ...prevRaw,
+          cost: seededCost,
+        },
+      };
+
+      await ctx.db.patch(evalDoc._id, {
+        status: {
+          ...status,
+          usage,
+        },
+      });
+      updated++;
+    }
+
+    return { scanned, updated };
+  },
+});
