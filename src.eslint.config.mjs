@@ -32,6 +32,15 @@ export default tseslint.config(
         { allowConstantExport: true },
       ],
 
+      // TypeScript already catches undefined references (including globals from
+      // @types/react), so no-undef causes false positives in TS projects.
+      "no-undef": "off",
+
+      // Consistent with eslint.config.mjs - unsafe-return fires as a cascade
+      // when types are missing (e.g. @types/react not installed), making the
+      // eslint step fail on top of an already-failing tsc step.
+      "@typescript-eslint/no-unsafe-return": "off",
+
       "no-unused-vars": "off",
       "@typescript-eslint/no-unused-vars": [
         "warn",
