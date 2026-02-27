@@ -540,13 +540,16 @@ export const leaderboardScores = query({
   handler: async (ctx, args) => {
     const sixtyDaysAgo = Date.now() - LEADERBOARD_MAX_AGE_MS;
 
-    // Collect distinct model names from the experiments table to avoid
-    // scanning every run.  The "default" experiment (experiment === undefined)
-    // uses experiment name "default" in the experiments table.
-    const experiments = await ctx.db.query("experiments").collect();
+    // Collect model names only for the requested experiment to avoid scanning
+    // irrelevant models (which can push this query over Convex byte-read limits).
+    const targetExperimentName = args.experiment ?? "default";
+    const targetExperiment = await ctx.db
+      .query("experiments")
+      .withIndex("by_name", (q) => q.eq("name", targetExperimentName))
+      .unique();
     const allModels = new Set<string>();
-    for (const exp of experiments) {
-      for (const m of exp.models) allModels.add(m);
+    if (targetExperiment) {
+      for (const m of targetExperiment.models) allModels.add(m);
     }
 
     type ScoredRun = {
@@ -558,7 +561,7 @@ export const leaderboardScores = query({
     // For each model, fetch only enough recent runs to fill LEADERBOARD_HISTORY_SIZE
     // scored entries. We over-fetch slightly (3×) to account for incomplete /
     // wrong-experiment runs that will be filtered out.
-    const FETCH_MULTIPLIER = 3;
+    const FETCH_MULTIPLIER = 2;
     const perModelLimit = LEADERBOARD_HISTORY_SIZE * FETCH_MULTIPLIER;
 
     const results: Array<{
