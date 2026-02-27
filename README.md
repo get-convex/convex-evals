@@ -121,10 +121,6 @@ OUTPUT_TEMPDIR=/tmp/convex-codegen-evals bun run runner/index.ts
 - Per-step progress lines with the eval id
 - Per-eval result with pass/fail status and a clickable output dir
 
-## AI grading helper
-
-Grader tests can include an AI-based assessment that provides concise reasoning on failure. See the "AI grading" section in `EVAL_WORKFLOW.md` for details and usage with `createAIGraderTest(import.meta.url)`.
-
 ## Adding a new evaluation
 
 Note that test or category names cannot contain dashes.
@@ -134,6 +130,97 @@ Note that test or category names cannot contain dashes.
 3. Add an `answer/` directory with the human-curated solution
 4. Add a `grader.test.ts` file with unit tests
 5. Run the eval to verify it works
+
+### Scaffolding
+
+Use the helper script to create the directory structure and initialise a Convex project:
+
+```bash
+python3 create_eval.py <eval_name> <category>
+```
+
+### Implementing the answer
+
+1. Create `schema.ts` first
+2. Run codegen to generate types:
+   ```bash
+   cd evals/<category>/<eval>/answer && bunx convex codegen
+   ```
+3. Implement solution files
+4. Run codegen again after any schema changes
+
+## Writing evals
+
+### What we're testing
+
+These evals measure whether a model understands Convex - not whether it can follow detailed instructions. This creates a deliberate tension when writing tasks:
+
+- **Be explicit** about the shape of the problem: schema, function names, argument types, return structure, which files to create.
+- **Don't over-specify** Convex implementation details that are covered in the guidelines (e.g. when to use `internalMutation`, how to call functions via `internal.*`, how to export queries alongside an HTTP router). If a model needs the task to spell those out, it's failing the eval for the right reason.
+
+When reviewing a failure, the first question should be: "Is this something the guidelines already cover?" If yes, it's a model fault - not a task problem. Only add detail to a task when the requirement is genuinely ambiguous or the model's interpretation was reasonable given the guidelines.
+
+### Writing good prompts
+
+1. **Be explicit about schema** - always provide the complete schema in the prompt using TypeScript code blocks
+
+2. **Clear requirements** - for each function, specify:
+   - Exact function name
+   - Required arguments and their types
+   - Expected return type/structure
+   - Any specific behaviors or edge cases to handle
+
+3. **Scope the context** - describe what the feature does, but trust the model to know *how* to implement it in Convex. Don't assume knowledge of the problem domain; do assume knowledge of Convex patterns from the guidelines.
+
+4. **Implementation constraints** - specify what files to create, what NOT to do, and any performance considerations that aren't obvious from the guidelines.
+
+### Common pitfalls
+
+1. **Ambiguous requirements** - don't leave function names unspecified; don't use vague terms like "appropriate" without context; always specify exact field names and types
+
+2. **Over-complication** - don't test multiple concepts in one eval; keep schemas focused on the tested concept
+
+3. **Missing context** - describe the problem domain clearly, but don't explain Convex mechanics that are already in the guidelines
+
+4. **Untestable requirements** - make success criteria measurable; specify exact return types; include specific test cases
+
+5. **Over-specification** - spelling out every Convex detail (e.g. which function type to use, how the internal API works) defeats the purpose of the eval; if a model needs that hand-holding, that's a meaningful signal
+
+### Eval structure
+
+Each eval directory contains:
+
+- `TASK.txt` - the prompt sent to the model
+- `answer/` - the human-curated reference solution
+- `grader.test.ts` - Vitest tests that score the model's output
+- `GAPS.txt` (optional) - documents known failure patterns that are inherent to the task, not fixable by improving the model or task
+
+### Common eval types
+
+- **Data modeling** - table relationships, index design, schema validation
+- **Query patterns** - CRUD, index usage, filtering, joins, pagination, aggregation
+- **Actions** - external calls, storage, node runtime, HTTP endpoints
+- **Idioms** - internal functions, file organisation, batch patterns, code reuse
+
+## AI grading
+
+Grader tests can include a lightweight AI-based assessment that reviews the generated project and provides concise reasoning on pass/fail.
+
+The grader builds a prompt from `TASK.txt` plus a manifest of files from the generated output directory and asks a model to decide pass/fail with reasoning. On failure, the reasoning appears directly in the test output and in `run.log`.
+
+### Usage
+
+Add a single standardised test using the helper:
+
+```ts
+import { createAIGraderTest } from "../../../grader/aiGrader";
+
+// Basic usage (default name and 60s timeout)
+createAIGraderTest(import.meta.url);
+
+// Optional: custom name/timeout
+createAIGraderTest(import.meta.url, "AI grader assessment", 60000);
+```
 
 ## Generating guidelines
 

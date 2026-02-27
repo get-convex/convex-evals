@@ -124,6 +124,7 @@ The report should contain:
 - Cross-cutting patterns (especially recurring failures from prior reports)
 - Recommendations (eval improvements, lint/config changes, model-specific notes)
 - Net impact assessment (how many failures are actionable vs genuine model faults)
+- **Actions taken**: List any changes made as a result of this analysis (e.g. "Updated TASK.txt for 007-http_action_routing to clarify getSiteURL placement"). Default to "None" if no changes were made — this makes it explicit that recommendations were reviewed and deliberately not acted on, rather than simply forgotten.
 
 ### 5f. Present to user
 
@@ -132,3 +133,12 @@ Present the full analysis to the user. End with:
 "These are my findings. Would you like me to implement any of these recommendations, or would you like to discuss specific failures in more detail?"
 
 Do NOT make any code/config changes until the user explicitly asks.
+
+### 5g. Update report after implementing changes
+
+If the user asks you to implement any recommendations, **update the report file's "Actions taken" section** after making the changes. Record:
+- What was changed (file path + brief description)
+- Which failure(s) it addresses
+- Date of the change
+
+This ensures future analysis sessions can see which recommendations were already acted on and avoid re-recommending changes that have already been made.
