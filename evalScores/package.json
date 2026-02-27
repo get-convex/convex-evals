@@ -13,7 +13,7 @@
   "devDependencies": {
     "@types/bun": "latest",
     "convex-test": "^0.0.41",
-    "vitest": "^3.0.0",
+    "vitest": "^4.0.0",
     "@edge-runtime/vm": "^5.0.0"
   },
   "peerDependencies": {
