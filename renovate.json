@@ -31,6 +31,12 @@
       "enabled": false
     },
     {
+      "description": "Disable eslint major updates - typescript-eslint v8 only supports eslint v8/v9, re-enable when typescript-eslint drops v10 support",
+      "matchPackageNames": ["eslint", "@eslint/js", "@eslint/eslintrc"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
       "description": "Ignore rymndhng/release-on-push-action - pinned to @master intentionally",
       "matchPackageNames": ["rymndhng/release-on-push-action"],
       "enabled": false

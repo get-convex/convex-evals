@@ -5,10 +5,12 @@ import {
   writeFileSync,
   mkdirSync,
   existsSync,
+  appendFileSync,
+  rmSync,
 } from "fs";
+import { createHash } from "crypto";
 import { join } from "path";
 import { tmpdir } from "os";
-import { rmSync } from "fs";
 import JSZip from "jszip";
 
 /**
@@ -168,8 +170,6 @@ describe("directory hashing pattern", () => {
   });
 
   it("produces consistent hashes for the same content", () => {
-    const { createHash } = require("crypto") as typeof import("crypto");
-
     const dir = join(tempDir, "project");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "a.ts"), "const a = 1;");
@@ -194,8 +194,6 @@ describe("directory hashing pattern", () => {
   });
 
   it("produces different hashes for different content", () => {
-    const { createHash } = require("crypto") as typeof import("crypto");
-
     const hasher1 = createHash("sha256");
     hasher1.update("file.ts");
     hasher1.update("const a = 1;");
@@ -226,7 +224,6 @@ describe("JSONL writing pattern", () => {
     const record1 = { model: "gpt-5", score: 1 };
     const record2 = { model: "claude-4", score: 0.8 };
 
-    const { appendFileSync } = require("fs");
     appendFileSync(jsonlPath, JSON.stringify(record1) + "\n");
     appendFileSync(jsonlPath, JSON.stringify(record2) + "\n");
 
@@ -235,11 +232,11 @@ describe("JSONL writing pattern", () => {
       .split("\n");
     expect(lines).toHaveLength(2);
 
-    const parsed1 = JSON.parse(lines[0]);
+    const parsed1 = JSON.parse(lines[0]) as { model: string; score: number };
     expect(parsed1.model).toBe("gpt-5");
     expect(parsed1.score).toBe(1);
 
-    const parsed2 = JSON.parse(lines[1]);
+    const parsed2 = JSON.parse(lines[1]) as { model: string; score: number };
     expect(parsed2.model).toBe("claude-4");
     expect(parsed2.score).toBe(0.8);
   });

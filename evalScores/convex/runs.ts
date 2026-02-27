@@ -129,7 +129,7 @@ export const deleteRun = internalMutation({
       .collect();
 
     // Track stats for experiment counter adjustment
-    let totalEvalsCount = evals.length;
+    const totalEvalsCount = evals.length;
     let passedEvalsCount = 0;
     const storageIdsToDelete = new Set<string>();
 
