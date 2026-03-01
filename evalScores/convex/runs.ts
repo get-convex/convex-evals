@@ -3,20 +3,14 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { experimentLiteral, languageModelUsage, runStatus, evalStatus } from "./schema.js";
 import { internal } from "./_generated/api.js";
-
-/** Number of recent runs used for stdDev in scheduling stats */
-const LEADERBOARD_HISTORY_SIZE = 5;
-
-/** Maximum age of runs to include in leaderboard queries (60 days in ms) */
-const LEADERBOARD_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000;
-
-function computeMeanAndStdDev(values: number[]): { mean: number; stdDev: number } {
-  if (values.length === 0) return { mean: 0, stdDev: 0 };
-  if (values.length === 1) return { mean: values[0], stdDev: 0 };
-  const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
-  const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
-  return { mean, stdDev: Math.sqrt(variance) };
-}
+import {
+  LEADERBOARD_HISTORY_SIZE,
+  LEADERBOARD_MAX_AGE_MS,
+  computeMeanAndStdDev,
+  isFullyCompletedRun,
+  isRateLimitFailure,
+  computeRunScores,
+} from "./scoringUtils.js";
 
 export const createRun = internalMutation({
   args: {
@@ -417,73 +411,6 @@ export const listExperiments = query({
 
 // ── Leaderboard queries (computed from runs + evals) ─────────────────
 
-/**
- * Check whether a run is "fully completed": all planned evals have a
- * terminal status (passed or failed). Runs where some evals are still
- * pending/running are considered incomplete and should be excluded from
- * leaderboard computations.
- */
-function isFullyCompletedRun(
-  run: Doc<"runs">,
-  evals: Doc<"evals">[],
-): boolean {
-  const planned = run.plannedEvals.length;
-  if (planned === 0) return false; // degenerate case
-
-  // An eval is "finished" if it has a terminal status (passed or failed).
-  // Rate-limit failures still count as finished so the run can complete.
-  const finished = evals.filter(
-    (e) => e.status.kind === "passed" || e.status.kind === "failed",
-  ).length;
-
-  return finished >= planned;
-}
-
-/** Check if a failed eval was caused by a rate-limit / infrastructure error. */
-function isRateLimitFailure(evalDoc: Doc<"evals">): boolean {
-  if (evalDoc.status.kind !== "failed") return false;
-  return evalDoc.status.failureReason.startsWith("[rate_limit]");
-}
-
-/**
- * Compute scores for a single run from its evals.
- * Used by leaderboardModelHistory (per-run, not aggregated).
- */
-function computeRunScoresFromEvals(
-  evals: Doc<"evals">[],
-): { totalScore: number; scores: Record<string, number> } {
-  const completedEvals = evals.filter(
-    (e) =>
-      (e.status.kind === "passed" || e.status.kind === "failed") &&
-      !isRateLimitFailure(e),
-  );
-
-  if (completedEvals.length === 0) return { totalScore: 0, scores: {} };
-
-  const byCategory = new Map<string, { passed: number; total: number }>();
-  let totalPassed = 0;
-
-  for (const evalItem of completedEvals) {
-    const cat = evalItem.category;
-    const existing = byCategory.get(cat) ?? { passed: 0, total: 0 };
-    existing.total++;
-    if (evalItem.status.kind === "passed") {
-      existing.passed++;
-      totalPassed++;
-    }
-    byCategory.set(cat, existing);
-  }
-
-  const scores: Record<string, number> = {};
-  for (const [cat, stats] of byCategory) {
-    scores[cat] = stats.total > 0 ? stats.passed / stats.total : 0;
-  }
-
-  return {
-    totalScore: completedEvals.length > 0 ? totalPassed / completedEvals.length : 0,
-    scores,
-  };
-}
 
 /**
  * Lists all models with their mean scores and standard deviations.
@@ -589,7 +516,7 @@ export const leaderboardModelHistory = query({
           .withIndex("by_runId", (q) => q.eq("runId", run._id))
           .collect();
         if (!isFullyCompletedRun(run, evals)) return;
-        const { totalScore, scores } = computeRunScoresFromEvals(evals);
+        const { totalScore, scores } = computeRunScores(evals);
         results.push({
           _creationTime: run._creationTime,
           runId: run._id,
@@ -775,7 +702,7 @@ export const getSchedulingStats = query({
             .withIndex("by_runId", (q) => q.eq("runId", run._id))
             .collect();
           if (!isFullyCompletedRun(run, evals)) continue;
-          const { totalScore } = computeRunScoresFromEvals(evals);
+          const { totalScore } = computeRunScores(evals);
           scores.push(totalScore);
         }
         if (scores.length >= 2) {
