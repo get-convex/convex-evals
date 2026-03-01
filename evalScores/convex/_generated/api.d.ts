@@ -20,6 +20,7 @@ import type * as migrations from "../migrations.js";
 import type * as modelScores from "../modelScores.js";
 import type * as runMaintenance from "../runMaintenance.js";
 import type * as runs from "../runs.js";
+import type * as scoringUtils from "../scoringUtils.js";
 import type * as steps from "../steps.js";
 
 import type {
@@ -41,6 +42,7 @@ declare const fullApi: ApiFromModules<{
   modelScores: typeof modelScores;
   runMaintenance: typeof runMaintenance;
   runs: typeof runs;
+  scoringUtils: typeof scoringUtils;
   steps: typeof steps;
 }>;
 
