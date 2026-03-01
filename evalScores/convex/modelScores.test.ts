@@ -162,32 +162,20 @@ describe("recomputeModelScores", () => {
     expect(results).toHaveLength(0);
   });
 
-  it("caps statistics at 5 most recent runs", async () => {
+  it("caps statistics at 10 most recent runs", async () => {
     const t = convexTest(schema, modules);
 
-    // 7 runs: first 2 score 0, then 0.5, 0.5, 1.0, 1.0, 1.0
-    for (const passed of [false, false, true]) {
-      // Only one eval; pass/fail determines score
-      await createCompletedRun(t, {
-        model: "model-a",
-        evals: [
-          { category: "cat1", name: "eval1", passed },
-          { category: "cat1", name: "eval2", passed },
-        ],
-      });
-    }
-    // runs 4 & 5: 1 pass 1 fail -> score 0.5
+    // 12 runs: first 2 score 0 (oldest, should be excluded), then 10 score 1.0
     for (let i = 0; i < 2; i++) {
       await createCompletedRun(t, {
         model: "model-a",
         evals: [
-          { category: "cat1", name: "eval1", passed: true },
+          { category: "cat1", name: "eval1", passed: false },
           { category: "cat1", name: "eval2", passed: false },
         ],
       });
     }
-    // runs 6 & 7: all pass -> score 1.0
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 10; i++) {
       await createCompletedRun(t, {
         model: "model-a",
         evals: [
@@ -199,10 +187,10 @@ describe("recomputeModelScores", () => {
 
     const results = await t.query(api.runs.leaderboardScores, {});
     expect(results).toHaveLength(1);
-    expect(results[0].runCount).toBe(5);
+    expect(results[0].runCount).toBe(10);
 
-    // Last 5 runs: 0.5, 0.5, 1.0, 1.0, 1.0 -> mean = 4.0/5 = 0.8
-    expect(results[0].totalScore).toBeCloseTo(0.8);
+    // Only the 10 most recent runs used, all score 1.0
+    expect(results[0].totalScore).toBeCloseTo(1.0);
   });
 
   it("excludes rate-limited evals from scoring", async () => {

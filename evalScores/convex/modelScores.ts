@@ -35,16 +35,9 @@ export const backfillAllModelScores = internalMutation({
   args: {},
   returns: v.object({ queued: v.number() }),
   handler: async (ctx) => {
-    const sixtyDaysAgo = Date.now() - 60 * 24 * 60 * 60 * 1000;
-
     const runs = await ctx.db
       .query("runs")
-      .filter((q) =>
-        q.and(
-          q.eq(q.field("status.kind"), "completed"),
-          q.gte(q.field("_creationTime"), sixtyDaysAgo),
-        ),
-      )
+      .filter((q) => q.eq(q.field("status.kind"), "completed"))
       .collect();
 
     // Collect unique (model, experiment) pairs
@@ -75,14 +68,11 @@ export const recomputeModelScores = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const sixtyDaysAgo = Date.now() - 60 * 24 * 60 * 60 * 1000;
-
-    // Fetch recent completed runs for this model, matching experiment
+    // Fetch the most recent completed runs for this model+experiment.
+    // We over-fetch (2x) to account for incomplete/ghost runs that get filtered out.
     const candidateRuns = await ctx.db
       .query("runs")
-      .withIndex("by_model", (q) =>
-        q.eq("model", args.model).gte("_creationTime", sixtyDaysAgo),
-      )
+      .withIndex("by_model", (q) => q.eq("model", args.model))
       .order("desc")
       .take(LEADERBOARD_HISTORY_SIZE * 2);
 

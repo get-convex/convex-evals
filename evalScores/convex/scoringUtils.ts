@@ -4,7 +4,7 @@
  */
 import type { Doc } from "./_generated/dataModel";
 
-export const LEADERBOARD_HISTORY_SIZE = 5;
+export const LEADERBOARD_HISTORY_SIZE = 10;
 
 export const LEADERBOARD_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000;
 
