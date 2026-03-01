@@ -9,9 +9,10 @@
  * The leaderboardScores query in runs.ts reads directly from this table
  * rather than recomputing on every request.
  */
-import { internalMutation, internalQuery } from "./_generated/server";
+import { internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
+import { internal } from "./_generated/api.js";
 import { experimentLiteral } from "./schema.js";
 
 const LEADERBOARD_HISTORY_SIZE = 5;
@@ -104,26 +105,47 @@ function computeRunScores(
   };
 }
 
-// ── Internal query: used by the backfill migration ────────────────────
+// ── One-shot backfill action ──────────────────────────────────────────
 
-export const getAllModelExperimentPairs = internalQuery({
+/**
+ * Scans all completed runs, collects unique (model, experiment) pairs,
+ * and calls recomputeModelScores for each one.
+ *
+ * Run against dev:  npx convex run modelScores:backfillAllModelScores
+ * Run against prod: npx convex run modelScores:backfillAllModelScores --prod
+ */
+export const backfillAllModelScores = internalMutation({
   args: {},
-  returns: v.array(
-    v.object({
-      model: v.string(),
-      experiment: v.optional(experimentLiteral),
-    }),
-  ),
+  returns: v.object({ queued: v.number() }),
   handler: async (ctx) => {
-    const experiments = await ctx.db.query("experiments").collect();
+    const sixtyDaysAgo = Date.now() - 60 * 24 * 60 * 60 * 1000;
+
+    const runs = await ctx.db
+      .query("runs")
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("status.kind"), "completed"),
+          q.gte(q.field("_creationTime"), sixtyDaysAgo),
+        ),
+      )
+      .collect();
+
+    // Collect unique (model, experiment) pairs
+    const seen = new Set<string>();
     const pairs: Array<{ model: string; experiment?: "no_guidelines" | "web_search" | "web_search_no_guidelines" | "agents_md" }> = [];
-    for (const exp of experiments) {
-      const expValue = exp.name === "default" ? undefined : exp.name as "no_guidelines" | "web_search" | "web_search_no_guidelines" | "agents_md";
-      for (const model of exp.models) {
-        pairs.push({ model, experiment: expValue });
+    for (const run of runs) {
+      const key = `${run.model}|${run.experiment ?? ""}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        pairs.push({ model: run.model, experiment: run.experiment as "no_guidelines" | "web_search" | "web_search_no_guidelines" | "agents_md" | undefined });
       }
     }
-    return pairs;
+
+    for (const pair of pairs) {
+      await ctx.scheduler.runAfter(0, internal.modelScores.recomputeModelScores, pair);
+    }
+
+    return { queued: pairs.length };
   },
 });
 
