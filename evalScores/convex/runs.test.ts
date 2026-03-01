@@ -232,87 +232,43 @@ describe("leaderboardScores", () => {
     expect(entry!.averageRunCostUsdErrorBar).toBeNull();
   });
 
-  it("only uses last 5 runs for statistics", async () => {
+  it("only uses last 10 runs for statistics", async () => {
     const t = convexTest(schema, modules);
 
-    // Create 7 runs. Scores: 0, 0, 0.5, 0.5, 1.0, 1.0, 1.0
-    // Only the last 5 should be used: 0, 0.5, 0.5, 1.0, 1.0, 1.0
-    // But runs are ordered by _creationTime desc, so last 5 = most recent 5
+    // Create 12 runs. First 2 score 0.0, rest score 1.0.
+    // Only the last 10 should be used (most recent 10).
+    // The 2 zero-score runs are the oldest and should be excluded.
 
-    // Run 1: score 0 (0/2)
-    await createCompletedRunWithEvals(t, {
-      model: "test-model",
-      evals: [
-        { category: "cat1", name: "eval1", passed: false },
-        { category: "cat1", name: "eval2", passed: false },
-      ],
-    });
+    // Runs 1-2: score 0 (should be excluded as oldest)
+    for (let i = 0; i < 2; i++) {
+      await createCompletedRunWithEvals(t, {
+        model: "test-model",
+        evals: [
+          { category: "cat1", name: "eval1", passed: false },
+          { category: "cat1", name: "eval2", passed: false },
+        ],
+      });
+    }
 
-    // Run 2: score 0 (0/2)
-    await createCompletedRunWithEvals(t, {
-      model: "test-model",
-      evals: [
-        { category: "cat1", name: "eval1", passed: false },
-        { category: "cat1", name: "eval2", passed: false },
-      ],
-    });
-
-    // Run 3: score 0.5 (1/2)
-    await createCompletedRunWithEvals(t, {
-      model: "test-model",
-      evals: [
-        { category: "cat1", name: "eval1", passed: true },
-        { category: "cat1", name: "eval2", passed: false },
-      ],
-    });
-
-    // Run 4: score 0.5 (1/2)
-    await createCompletedRunWithEvals(t, {
-      model: "test-model",
-      evals: [
-        { category: "cat1", name: "eval1", passed: true },
-        { category: "cat1", name: "eval2", passed: false },
-      ],
-    });
-
-    // Run 5: score 1.0 (2/2)
-    await createCompletedRunWithEvals(t, {
-      model: "test-model",
-      evals: [
-        { category: "cat1", name: "eval1", passed: true },
-        { category: "cat1", name: "eval2", passed: true },
-      ],
-    });
-
-    // Run 6: score 1.0 (2/2)
-    await createCompletedRunWithEvals(t, {
-      model: "test-model",
-      evals: [
-        { category: "cat1", name: "eval1", passed: true },
-        { category: "cat1", name: "eval2", passed: true },
-      ],
-    });
-
-    // Run 7: score 1.0 (2/2)
-    await createCompletedRunWithEvals(t, {
-      model: "test-model",
-      evals: [
-        { category: "cat1", name: "eval1", passed: true },
-        { category: "cat1", name: "eval2", passed: true },
-      ],
-    });
+    // Runs 3-12: score 1.0 (these are the 10 most recent)
+    for (let i = 0; i < 10; i++) {
+      await createCompletedRunWithEvals(t, {
+        model: "test-model",
+        evals: [
+          { category: "cat1", name: "eval1", passed: true },
+          { category: "cat1", name: "eval2", passed: true },
+        ],
+      });
+    }
 
     const results = await t.query(api.runs.leaderboardScores, {});
 
     expect(results).toHaveLength(1);
     const entry = results[0];
 
-    // Last 5 runs (most recent): 0.5, 0.5, 1.0, 1.0, 1.0
-    // Mean = (0.5 + 0.5 + 1.0 + 1.0 + 1.0) / 5 = 4.0 / 5 = 0.8
-    expect(entry.totalScore).toBeCloseTo(0.8);
-
-    // runCount reflects the number of runs used in the statistics (capped at LEADERBOARD_HISTORY_SIZE)
-    expect(entry.runCount).toBe(5);
+    // Only the 10 most recent runs used, all score 1.0
+    expect(entry.totalScore).toBeCloseTo(1.0);
+    expect(entry.runCount).toBe(10);
   });
 
   it("filters by experiment correctly", async () => {
