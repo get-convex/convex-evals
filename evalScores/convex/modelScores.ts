@@ -47,7 +47,7 @@ export const backfillAllModelScores = internalMutation({
       const key = `${run.model}|${run.experiment ?? ""}`;
       if (!seen.has(key)) {
         seen.add(key);
-        pairs.push({ model: run.model, experiment: run.experiment as "no_guidelines" | "web_search" | "web_search_no_guidelines" | "agents_md" | undefined });
+        pairs.push({ model: run.model, experiment: run.experiment });
       }
     }
 
