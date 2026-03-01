@@ -134,4 +134,25 @@ export default defineSchema({
     status: stepStatus,
   })
     .index("by_evalId", ["evalId"]),
+
+  // Materialised leaderboard scores per (model, experiment) pair.
+  // Updated via a scheduled mutation whenever a run completes or is deleted.
+  // The leaderboardScores query reads directly from this table instead of
+  // recomputing from runs + evals on every request.
+  modelScores: defineTable({
+    model: v.string(),
+    experiment: v.optional(experimentLiteral),
+    formattedName: v.string(),
+    totalScore: v.number(),
+    totalScoreErrorBar: v.number(),
+    averageRunCostUsd: v.union(v.number(), v.null()),
+    averageRunCostUsdErrorBar: v.union(v.number(), v.null()),
+    scores: v.record(v.string(), v.number()),
+    scoreErrorBars: v.record(v.string(), v.number()),
+    runCount: v.number(),
+    latestRunId: v.id("runs"),
+    latestRunTime: v.number(),
+  })
+    .index("by_model_experiment", ["model", "experiment"])
+    .index("by_experiment", ["experiment"]),
 });

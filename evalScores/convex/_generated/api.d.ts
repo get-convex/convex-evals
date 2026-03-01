@@ -17,6 +17,7 @@ import type * as evalAssets from "../evalAssets.js";
 import type * as evals from "../evals.js";
 import type * as http from "../http.js";
 import type * as migrations from "../migrations.js";
+import type * as modelScores from "../modelScores.js";
 import type * as runMaintenance from "../runMaintenance.js";
 import type * as runs from "../runs.js";
 import type * as steps from "../steps.js";
@@ -37,6 +38,7 @@ declare const fullApi: ApiFromModules<{
   evals: typeof evals;
   http: typeof http;
   migrations: typeof migrations;
+  modelScores: typeof modelScores;
   runMaintenance: typeof runMaintenance;
   runs: typeof runs;
   steps: typeof steps;
