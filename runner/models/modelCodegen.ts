@@ -76,6 +76,198 @@ function createLanguageModel(
   return openrouter.chatModel(template.name);
 }
 
+function asFiniteNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function getAtPath(
+  obj: Record<string, unknown>,
+  path: readonly string[],
+): unknown {
+  let current: unknown = obj;
+  for (const key of path) {
+    if (!current || typeof current !== "object") return undefined;
+    current = (current as Record<string, unknown>)[key];
+  }
+  return current;
+}
+
+function extractCostFromRawUsage(raw: Record<string, unknown>): number | null {
+  const candidatePaths: ReadonlyArray<readonly string[]> = [
+    ["cost"],
+    ["usage", "cost"],
+    ["usage", "total_cost"],
+    ["usage", "totalCost"],
+    ["total_cost"],
+    ["totalCost"],
+    ["providerMetadata", "openrouter", "cost"],
+    ["provider_metadata", "openrouter", "cost"],
+    ["response", "usage", "cost"],
+    ["data", "usage", "cost"],
+  ];
+
+  for (const path of candidatePaths) {
+    const value = getAtPath(raw, path);
+    const parsed = asFiniteNumber(value);
+    if (parsed !== null) return parsed;
+  }
+  return null;
+}
+
+type OpenRouterModelPricing = {
+  prompt: number;
+  completion: number;
+  inputCacheRead?: number;
+};
+
+const pricingCache = new Map<string, OpenRouterModelPricing | null>();
+
+async function fetchOpenRouterModelPricing(
+  baseURL: string,
+  modelName: string,
+): Promise<OpenRouterModelPricing | null> {
+  const cacheKey = `${baseURL}|${modelName}`;
+  if (pricingCache.has(cacheKey)) return pricingCache.get(cacheKey) ?? null;
+
+  try {
+    const resp = await fetch(`${baseURL.replace(/\/$/, "")}/models`);
+    if (!resp.ok) {
+      pricingCache.set(cacheKey, null);
+      return null;
+    }
+    const json = (await resp.json()) as {
+      data?: Array<{
+        id?: string;
+        pricing?: {
+          prompt?: string | number;
+          completion?: string | number;
+          input_cache_read?: string | number;
+        };
+      }>;
+    };
+
+    const model = json.data?.find((m) => m.id === modelName);
+    const pricing = model?.pricing;
+    if (!pricing) {
+      pricingCache.set(cacheKey, null);
+      return null;
+    }
+
+    const prompt = asFiniteNumber(pricing.prompt);
+    const completion = asFiniteNumber(pricing.completion);
+    const inputCacheRead = asFiniteNumber(pricing.input_cache_read);
+    if (prompt === null || completion === null) {
+      pricingCache.set(cacheKey, null);
+      return null;
+    }
+
+    const parsed: OpenRouterModelPricing = {
+      prompt,
+      completion,
+      ...(inputCacheRead !== null ? { inputCacheRead } : {}),
+    };
+    pricingCache.set(cacheKey, parsed);
+    return parsed;
+  } catch {
+    pricingCache.set(cacheKey, null);
+    return null;
+  }
+}
+
+export function computeCostFromUsageAndPricing(
+  usage: LanguageModelUsage,
+  pricing: OpenRouterModelPricing,
+): number | null {
+  const inputTokens =
+    typeof usage.inputTokens === "number" ? usage.inputTokens : null;
+  const outputTokens =
+    typeof usage.outputTokens === "number" ? usage.outputTokens : null;
+  if (inputTokens === null || outputTokens === null) return null;
+
+  const noCacheInput = usage.inputTokenDetails?.noCacheTokens;
+  const cacheReadInput = usage.inputTokenDetails?.cacheReadTokens ?? 0;
+  const cacheWriteInput = usage.inputTokenDetails?.cacheWriteTokens ?? 0;
+
+  const noCacheTokens =
+    typeof noCacheInput === "number"
+      ? noCacheInput
+      : Math.max(0, inputTokens - cacheReadInput - cacheWriteInput);
+
+  const promptCostPerToken = pricing.prompt;
+  const cacheReadCostPerToken = pricing.inputCacheRead ?? promptCostPerToken;
+  const completionCostPerToken = pricing.completion;
+
+  const inputCost =
+    noCacheTokens * promptCostPerToken +
+    cacheReadInput * cacheReadCostPerToken +
+    cacheWriteInput * promptCostPerToken;
+  const outputCost = outputTokens * completionCostPerToken;
+  const totalCost = inputCost + outputCost;
+  return Number.isFinite(totalCost) ? totalCost : null;
+}
+
+/**
+ * Normalize usage from provider-specific shapes into the canonical format used
+ * by evalScores. Today, scoring reads only `usage.raw.cost`.
+ */
+export function normalizeUsageForScoring(
+  usage: LanguageModelUsage | undefined,
+): LanguageModelUsage | undefined {
+  if (!usage) return usage;
+  const raw = usage.raw;
+  if (!raw || typeof raw !== "object") return usage;
+
+  const rawObj = raw as Record<string, unknown>;
+  const cost = extractCostFromRawUsage(rawObj);
+  if (cost === null) return usage;
+
+  const existing = asFiniteNumber(rawObj.cost);
+  if (existing !== null && existing === cost) return usage;
+
+  return {
+    ...usage,
+    raw: {
+      ...rawObj,
+      cost,
+    },
+  };
+}
+
+async function enrichUsageWithOpenRouterPricingFallback(
+  usage: LanguageModelUsage | undefined,
+  modelName: string,
+  baseURL: string,
+): Promise<LanguageModelUsage | undefined> {
+  if (!usage) return usage;
+
+  const normalized = normalizeUsageForScoring(usage);
+  const raw =
+    normalized?.raw && typeof normalized.raw === "object"
+      ? (normalized.raw as Record<string, unknown>)
+      : null;
+  if (raw && asFiniteNumber(raw.cost) !== null) return normalized;
+
+  const pricing = await fetchOpenRouterModelPricing(baseURL, modelName);
+  if (!pricing || !normalized) return normalized;
+
+  const fallbackCost = computeCostFromUsageAndPricing(normalized, pricing);
+  if (fallbackCost === null) return normalized;
+
+  return {
+    ...normalized,
+    raw: {
+      ...(raw ?? {}),
+      cost: fallbackCost,
+      costEstimatedFromPricing: true,
+    },
+  };
+}
+
 // ── Token limit helpers ──────────────────────────────────────────────
 
 // Re-export LanguageModelUsage so callers can import it from here without
@@ -143,17 +335,17 @@ export class Model {
 
     const result = await generateText(options);
     
-    // OpenRouter's Responses API (used by Codex models) includes cost in the 'raw' field.
-    // We ensure it's available for the scorer/leaderboard.
-    const usage = result.usage;
-    if (usage && usage.raw && typeof usage.raw === 'object' && 'cost' in (usage.raw as any)) {
-      // The AI SDK might not always surface the cost from the raw response in a standard way
-      // for the Responses API. We keep it in usage.raw.cost which is where the backend looks.
-    }
+    // The leaderboard scorer expects cost at usage.raw.cost.
+    // Normalize provider-specific usage payloads into that canonical field.
+    const usage = await enrichUsageWithOpenRouterPricingFallback(
+      result.usage,
+      this.template.name,
+      this.template.overrideProxy ?? OPENROUTER_BASE_URL,
+    );
 
     return {
       files: parseMarkdownResponse(result.text),
-      usage: result.usage,
+      usage,
     };
   }
 }

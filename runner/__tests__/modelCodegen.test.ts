@@ -1,5 +1,11 @@
 import { describe, it, expect } from "bun:test";
-import { parseMarkdownResponse, renderPrompt } from "../models/modelCodegen.js";
+import type { LanguageModelUsage } from "ai";
+import {
+  computeCostFromUsageAndPricing,
+  normalizeUsageForScoring,
+  parseMarkdownResponse,
+  renderPrompt,
+} from "../models/modelCodegen.js";
 
 describe("parseMarkdownResponse", () => {
   it("extracts files from a well-formed markdown response", () => {
@@ -217,5 +223,141 @@ describe("renderPrompt", () => {
   it("always generates non-empty output", () => {
     const prompt = renderPrompt("");
     expect(prompt.length).toBeGreaterThan(100);
+  });
+});
+
+describe("normalizeUsageForScoring", () => {
+  const makeUsage = (
+    raw: NonNullable<LanguageModelUsage["raw"]>,
+  ): LanguageModelUsage => ({
+    inputTokens: 0,
+    inputTokenDetails: {
+      noCacheTokens: undefined,
+      cacheReadTokens: undefined,
+      cacheWriteTokens: undefined,
+    },
+    outputTokens: 0,
+    outputTokenDetails: {
+      textTokens: undefined,
+      reasoningTokens: undefined,
+    },
+    totalTokens: 0,
+    raw,
+  });
+
+  it("preserves usage when raw.cost already exists", () => {
+    const usage = makeUsage({ cost: 0.1234 });
+    const normalized = normalizeUsageForScoring(usage);
+    expect(normalized?.raw).toEqual({ cost: 0.1234 });
+  });
+
+  it("extracts cost from usage.total_cost", () => {
+    const usage = makeUsage({
+      usage: {
+        total_cost: 0.42,
+      },
+    });
+    const normalized = normalizeUsageForScoring(usage);
+    expect(normalized?.raw).toEqual({
+      usage: { total_cost: 0.42 },
+      cost: 0.42,
+    });
+  });
+
+  it("extracts cost from provider metadata", () => {
+    const usage = makeUsage({
+      providerMetadata: {
+        openrouter: {
+          cost: "0.77",
+        },
+      },
+    });
+    const normalized = normalizeUsageForScoring(usage);
+    expect(normalized?.raw).toEqual({
+      providerMetadata: { openrouter: { cost: "0.77" } },
+      cost: 0.77,
+    });
+  });
+
+  it("leaves usage unchanged when no numeric cost is present", () => {
+    const usage = makeUsage({
+      usage: {
+        total_cost: "unknown",
+      },
+    });
+    const normalized = normalizeUsageForScoring(usage);
+    expect(normalized).toEqual(usage);
+    expect((normalized?.raw as Record<string, unknown>).cost).toBeUndefined();
+  });
+});
+
+describe("computeCostFromUsageAndPricing", () => {
+  it("computes cost using prompt and completion pricing", () => {
+    const usage: LanguageModelUsage = {
+      inputTokens: 1000,
+      inputTokenDetails: {
+        noCacheTokens: 1000,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+      },
+      outputTokens: 500,
+      outputTokenDetails: {
+        textTokens: 500,
+        reasoningTokens: 0,
+      },
+      totalTokens: 1500,
+    };
+    const cost = computeCostFromUsageAndPricing(usage, {
+      prompt: 0.000001,
+      completion: 0.000002,
+      inputCacheRead: 0.0000001,
+    });
+    expect(cost).toBeCloseTo(0.002);
+  });
+
+  it("uses cache-read pricing for cached input tokens", () => {
+    const usage: LanguageModelUsage = {
+      inputTokens: 1000,
+      inputTokenDetails: {
+        noCacheTokens: 200,
+        cacheReadTokens: 800,
+        cacheWriteTokens: 0,
+      },
+      outputTokens: 100,
+      outputTokenDetails: {
+        textTokens: 100,
+        reasoningTokens: 0,
+      },
+      totalTokens: 1100,
+    };
+    const cost = computeCostFromUsageAndPricing(usage, {
+      prompt: 0.000002,
+      completion: 0.000004,
+      inputCacheRead: 0.0000005,
+    });
+    expect(cost).toBeCloseTo(0.0012);
+  });
+
+  it("returns null when required token counts are missing", () => {
+    const usage: LanguageModelUsage = {
+      inputTokens: undefined,
+      inputTokenDetails: {
+        noCacheTokens: undefined,
+        cacheReadTokens: undefined,
+        cacheWriteTokens: undefined,
+      },
+      outputTokens: 100,
+      outputTokenDetails: {
+        textTokens: 100,
+        reasoningTokens: 0,
+      },
+      totalTokens: 100,
+    };
+    const cost = computeCostFromUsageAndPricing(usage, {
+      prompt: 0.000001,
+      completion: 0.000002,
+      inputCacheRead: 0.0000001,
+    });
+    expect(cost).toBeNull();
   });
 });
