@@ -2,12 +2,21 @@ import { internalMutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { experimentLiteral, languageModelUsage, runStatus, evalStatus } from "./schema.js";
+import { internal } from "./_generated/api.js";
 
-/** Number of recent runs to use for mean/stddev computation in leaderboard */
+/** Number of recent runs used for stdDev in scheduling stats */
 const LEADERBOARD_HISTORY_SIZE = 5;
 
 /** Maximum age of runs to include in leaderboard queries (60 days in ms) */
 const LEADERBOARD_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000;
+
+function computeMeanAndStdDev(values: number[]): { mean: number; stdDev: number } {
+  if (values.length === 0) return { mean: 0, stdDev: 0 };
+  if (values.length === 1) return { mean: values[0], stdDev: 0 };
+  const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
+  const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
+  return { mean, stdDev: Math.sqrt(variance) };
+}
 
 export const createRun = internalMutation({
   args: {
@@ -108,6 +117,12 @@ export const completeRun = internalMutation({
         completedRuns: experiment.completedRuns + 1,
       });
     }
+
+    // Schedule a recompute of the materialised leaderboard row for this model
+    await ctx.scheduler.runAfter(0, internal.modelScores.recomputeModelScores, {
+      model: run.model,
+      experiment: run.experiment,
+    });
     
     return null;
   },
@@ -191,6 +206,12 @@ export const deleteRun = internalMutation({
 
     // Delete the run itself
     await ctx.db.delete(args.runId);
+
+    // Recompute the leaderboard row for this model now that a run is gone
+    await ctx.scheduler.runAfter(0, internal.modelScores.recomputeModelScores, {
+      model: run.model,
+      experiment: run.experiment,
+    });
 
     return null;
   },
@@ -418,49 +439,6 @@ function isFullyCompletedRun(
   return finished >= planned;
 }
 
-function computeMeanAndStdDev(values: number[]): { mean: number; stdDev: number } {
-  if (values.length === 0) return { mean: 0, stdDev: 0 };
-  if (values.length === 1) return { mean: values[0], stdDev: 0 };
-
-  const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
-  const squaredDiffs = values.map((v) => (v - mean) ** 2);
-  const variance = squaredDiffs.reduce((sum, v) => sum + v, 0) / values.length;
-  const stdDev = Math.sqrt(variance);
-
-  return { mean, stdDev };
-}
-
-/** Best-effort extraction of OpenRouter eval cost (USD) from usage metadata. */
-function getEvalCostUsd(evalDoc: Doc<"evals">): number {
-  const status = evalDoc.status;
-  if (status.kind !== "passed" && status.kind !== "failed") return 0;
-  const rawUsage = status.usage?.raw;
-  if (!rawUsage || typeof rawUsage !== "object") return 0;
-  if (!("cost" in rawUsage)) return 0;
-  const cost = (rawUsage as { cost?: unknown }).cost;
-  return typeof cost === "number" && Number.isFinite(cost) ? cost : 0;
-}
-
-function computeRunCostUsdFromEvals(evals: Doc<"evals">[]): number | null {
-  const terminalEvals = evals.filter(
-    (e) => e.status.kind === "passed" || e.status.kind === "failed",
-  );
-  const evalsWithCost = terminalEvals.filter((evalDoc) => {
-    const status = evalDoc.status;
-    if (status.kind !== "passed" && status.kind !== "failed") return false;
-    const rawUsage = status.usage?.raw;
-    return (
-      rawUsage !== undefined &&
-      rawUsage !== null &&
-      typeof rawUsage === "object" &&
-      "cost" in rawUsage &&
-      typeof (rawUsage as { cost?: unknown }).cost === "number"
-    );
-  });
-  if (evalsWithCost.length === 0) return null;
-  return evalsWithCost.reduce((sum, evalDoc) => sum + getEvalCostUsd(evalDoc), 0);
-}
-
 /** Check if a failed eval was caused by a rate-limit / infrastructure error. */
 function isRateLimitFailure(evalDoc: Doc<"evals">): boolean {
   if (evalDoc.status.kind !== "failed") return false;
@@ -469,25 +447,19 @@ function isRateLimitFailure(evalDoc: Doc<"evals">): boolean {
 
 /**
  * Compute scores for a single run from its evals.
- * Returns category pass rates and overall pass rate.
- * Evals that failed due to rate limits are excluded from scoring
- * since they reflect provider infrastructure limits, not model quality.
+ * Used by leaderboardModelHistory (per-run, not aggregated).
  */
 function computeRunScoresFromEvals(
   evals: Doc<"evals">[],
 ): { totalScore: number; scores: Record<string, number> } {
-  // Only count completed evals (passed or failed), excluding rate-limit failures
   const completedEvals = evals.filter(
     (e) =>
       (e.status.kind === "passed" || e.status.kind === "failed") &&
       !isRateLimitFailure(e),
   );
 
-  if (completedEvals.length === 0) {
-    return { totalScore: 0, scores: {} };
-  }
+  if (completedEvals.length === 0) return { totalScore: 0, scores: {} };
 
-  // Group by category
   const byCategory = new Map<string, { passed: number; total: number }>();
   let totalPassed = 0;
 
@@ -507,16 +479,16 @@ function computeRunScoresFromEvals(
     scores[cat] = stats.total > 0 ? stats.passed / stats.total : 0;
   }
 
-  const totalScore = completedEvals.length > 0 ? totalPassed / completedEvals.length : 0;
-
-  return { totalScore, scores };
+  return {
+    totalScore: completedEvals.length > 0 ? totalPassed / completedEvals.length : 0,
+    scores,
+  };
 }
 
 /**
  * Lists all models with their mean scores and standard deviations.
- * Computed on-demand from the runs and evals tables (single source of truth).
- * Standard deviation is computed from the last N runs (population SD).
- * Only includes completed runs.
+ * Reads directly from the materialised modelScores table, which is kept
+ * up-to-date by the recomputeModelScores scheduled mutation.
  */
 export const leaderboardScores = query({
   args: {
@@ -538,148 +510,27 @@ export const leaderboardScores = query({
     }),
   ),
   handler: async (ctx, args) => {
-    const sixtyDaysAgo = Date.now() - LEADERBOARD_MAX_AGE_MS;
+    const rows = await ctx.db
+      .query("modelScores")
+      .withIndex("by_experiment", (q) => q.eq("experiment", args.experiment))
+      .collect();
 
-    // Collect model names only for the requested experiment to avoid scanning
-    // irrelevant models (which can push this query over Convex byte-read limits).
-    const targetExperimentName = args.experiment ?? "default";
-    const targetExperiment = await ctx.db
-      .query("experiments")
-      .withIndex("by_name", (q) => q.eq("name", targetExperimentName))
-      .unique();
-    const allModels = new Set<string>();
-    if (targetExperiment) {
-      for (const m of targetExperiment.models) allModels.add(m);
-    }
+    // Sort by total score descending (highest first), then by model name for ties
+    rows.sort((a, b) => b.totalScore - a.totalScore || a.model.localeCompare(b.model));
 
-    type ScoredRun = {
-      run: Doc<"runs">;
-      evals: Doc<"evals">[];
-      scores: ReturnType<typeof computeRunScoresFromEvals>;
-    };
-
-    // For each model, fetch only enough recent runs to fill LEADERBOARD_HISTORY_SIZE
-    // scored entries. We over-fetch slightly (3×) to account for incomplete /
-    // wrong-experiment runs that will be filtered out.
-    const FETCH_MULTIPLIER = 2;
-    const perModelLimit = LEADERBOARD_HISTORY_SIZE * FETCH_MULTIPLIER;
-
-    const results: Array<{
-      model: string;
-      formattedName: string;
-      totalScore: number;
-      totalScoreErrorBar: number;
-      averageRunCostUsd: number | null;
-      averageRunCostUsdErrorBar: number | null;
-      scores: Record<string, number>;
-      scoreErrorBars: Record<string, number>;
-      runCount: number;
-      latestRunId: Id<"runs">;
-      latestRunTime: number;
-    }> = [];
-
-    await Promise.all(
-      Array.from(allModels).map(async (model) => {
-        // Use the by_model index — it stores [model, _creationTime] so we get
-        // recent runs first with .order("desc") and can apply a tight .take().
-        const candidateRuns = await ctx.db
-          .query("runs")
-          .withIndex("by_model", (q) =>
-            q.eq("model", model).gte("_creationTime", sixtyDaysAgo))
-          .order("desc")
-          .take(perModelLimit);
-
-        // Filter to completed runs matching the requested experiment
-        const completedRuns = candidateRuns.filter(
-          (r) =>
-            r.status.kind === "completed" &&
-            r.experiment === args.experiment,
-        );
-
-        // Score each run (fetch its evals), stopping once we have enough
-        const scoredRuns: ScoredRun[] = [];
-        // Process sequentially so we can short-circuit, but parallelise the
-        // eval fetches in small batches for throughput.
-        const BATCH_SIZE = 5;
-        for (let i = 0; i < completedRuns.length && scoredRuns.length < LEADERBOARD_HISTORY_SIZE; i += BATCH_SIZE) {
-          const batch = completedRuns.slice(i, i + BATCH_SIZE);
-          const batchResults = await Promise.all(
-            batch.map(async (run): Promise<ScoredRun | null> => {
-              const evals = await ctx.db
-                .query("evals")
-                .withIndex("by_runId", (q) => q.eq("runId", run._id))
-                .collect();
-              if (!isFullyCompletedRun(run, evals)) return null;
-              return { run, evals, scores: computeRunScoresFromEvals(evals) };
-            }),
-          );
-          for (const sr of batchResults) {
-            if (sr && scoredRuns.length < LEADERBOARD_HISTORY_SIZE) {
-              scoredRuns.push(sr);
-            }
-          }
-        }
-
-        if (scoredRuns.length === 0) return;
-
-        // Runs are already sorted desc by _creationTime from the index query
-        const latest = scoredRuns[0];
-
-        // Compute mean and standard deviation for totalScore
-        const totalScores = scoredRuns.map((sr) => sr.scores.totalScore);
-        const { mean: totalScore, stdDev: totalScoreErrorBar } =
-          computeMeanAndStdDev(totalScores);
-        const runCostsUsd = scoredRuns.map((sr) =>
-          computeRunCostUsdFromEvals(sr.evals),
-        );
-        const availableRunCosts = runCostsUsd.filter(
-          (c): c is number => c !== null,
-        );
-        const { mean, stdDev } = computeMeanAndStdDev(availableRunCosts);
-        const averageRunCostUsd =
-          availableRunCosts.length > 0 ? mean : null;
-        const averageRunCostUsdErrorBar =
-          availableRunCosts.length > 0 ? stdDev : null;
-
-        // Compute mean and error bars for each category
-        const allCategories = new Set<string>();
-        for (const sr of scoredRuns) {
-          for (const cat of Object.keys(sr.scores.scores)) {
-            allCategories.add(cat);
-          }
-        }
-
-        const scores: Record<string, number> = {};
-        const scoreErrorBars: Record<string, number> = {};
-        for (const cat of allCategories) {
-          const catScores = scoredRuns
-            .map((sr) => sr.scores.scores[cat])
-            .filter((s): s is number => s !== undefined);
-          const { mean, stdDev } = computeMeanAndStdDev(catScores);
-          scores[cat] = mean;
-          scoreErrorBars[cat] = stdDev;
-        }
-
-        results.push({
-          model,
-          formattedName: latest.run.formattedName ?? latest.run.model,
-          totalScore,
-          totalScoreErrorBar,
-          averageRunCostUsd,
-          averageRunCostUsdErrorBar,
-          scores,
-          scoreErrorBars,
-          runCount: scoredRuns.length,
-          latestRunId: latest.run._id,
-          latestRunTime: latest.run._creationTime,
-        });
-      }),
-    );
-
-    // Sort by model name for consistent ordering
-    results.sort((a, b) => a.model.localeCompare(b.model));
-
-    return results;
+    return rows.map((r) => ({
+      model: r.model,
+      formattedName: r.formattedName,
+      totalScore: r.totalScore,
+      totalScoreErrorBar: r.totalScoreErrorBar,
+      averageRunCostUsd: r.averageRunCostUsd,
+      averageRunCostUsdErrorBar: r.averageRunCostUsdErrorBar,
+      scores: r.scores,
+      scoreErrorBars: r.scoreErrorBars,
+      runCount: r.runCount,
+      latestRunId: r.latestRunId,
+      latestRunTime: r.latestRunTime,
+    }));
   },
 });
 

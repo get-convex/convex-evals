@@ -344,6 +344,28 @@ export const migrateExperimentModelNames = migrations.define({
   },
 });
 
+/**
+ * Populate the materialised modelScores table from existing runs data.
+ *
+ * This iterates over all (model, experiment) pairs found in the experiments
+ * table and schedules a recomputeModelScores mutation for each one.
+ * The scheduled mutations run immediately after this migration completes.
+ */
+export const backfillModelScores = migrations.define({
+  table: "experiments",
+  migrateOne: async (ctx, doc) => {
+    const expValue = doc.name === "default"
+      ? undefined
+      : doc.name as "no_guidelines" | "web_search" | "web_search_no_guidelines" | "agents_md";
+    for (const model of doc.models) {
+      await ctx.scheduler.runAfter(0, internal.modelScores.recomputeModelScores, {
+        model,
+        experiment: expValue,
+      });
+    }
+  },
+});
+
 // ── Runner functions ─────────────────────────────────────────────────
 
 /** Run a single named migration via CLI: npx convex run migrations:run '{fn: "migrations:backfillRunFields"}' */
@@ -356,4 +378,5 @@ export const runAll = migrations.runner([
   internal.migrations.fixPendingEvalsAndRestoreRuns,
   internal.migrations.migrateModelNamesToOpenRouter,
   internal.migrations.migrateExperimentModelNames,
+  internal.migrations.backfillModelScores,
 ]);

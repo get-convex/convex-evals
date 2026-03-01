@@ -1,9 +1,15 @@
 import { convexTest } from "convex-test";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
 import { modules } from "./test.setup";
-import type { Id } from "./_generated/dataModel";
+
+// Prevent scheduled functions (from completeRun/deleteRun) from firing
+// asynchronously during tests and causing "write outside of transaction" errors.
+// Each test drains its own scheduled functions explicitly via the helper.
+beforeEach(() => { vi.useFakeTimers(); });
+afterEach(() => { vi.useRealTimers(); });
 
 /**
  * Helper: Create a completed run with the given evals.
@@ -64,11 +70,15 @@ async function createCompletedRunWithEvals(
     });
   }
 
-  // Complete the run
   await t.mutation(internal.runs.completeRun, {
     runId,
     status: { kind: "completed", durationMs: 5000 },
   });
+
+  // Advance fake time past the 0ms mark so the scheduled recomputeModelScores
+  // moves from "pending" to "in-progress", then wait for it to complete.
+  vi.runAllTimers();
+  await t.finishInProgressScheduledFunctions();
 
   return runId;
 }
