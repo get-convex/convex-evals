@@ -234,9 +234,53 @@ Note: \`paginationOpts\` is an object with the following properties:
       'Index fields must be queried in the same order they are defined. If you want to be able to query by "field1" then "field2" and by "field2" then "field1", you must create separate indexes.',
     ),
   ]),
+  section("authentication_guidelines", [
+    guideline(
+      "Convex supports JWT-based authentication through `convex/auth.config.ts`. ALWAYS create this file when using authentication. Without it, `ctx.auth.getUserIdentity()` will always return `null`.",
+    ),
+    guideline(`Example \`convex/auth.config.ts\`:
+\`\`\`typescript
+export default {
+  providers: [
+    {
+      domain: "https://your-auth-provider.com",
+      applicationID: "convex",
+    },
+  ],
+};
+\`\`\`
+The \`domain\` must be the issuer URL of the JWT provider. Convex fetches \`{domain}/.well-known/openid-configuration\` to discover the JWKS endpoint. The \`applicationID\` is checked against the JWT \`aud\` (audience) claim.`),
+    guideline(
+      "Use `ctx.auth.getUserIdentity()` to get the authenticated user's identity in any query, mutation, or action. This returns `null` if the user is not authenticated, or a `UserIdentity` object with fields like `subject`, `issuer`, `name`, `email`, etc. The `subject` field is the unique user identifier.",
+    ),
+    guideline(
+      "NEVER accept a `userId` or any user identifier as a function argument for authorization purposes. Always derive the user identity server-side via `ctx.auth.getUserIdentity()`.",
+    ),
+    guideline(`When using an external auth provider with Convex on the client, use \`ConvexProviderWithAuth\` instead of \`ConvexProvider\`:
+\`\`\`tsx
+import { ConvexProviderWithAuth, ConvexReactClient } from "convex/react";
+
+const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+
+function App({ children }: { children: React.ReactNode }) {
+  return (
+    <ConvexProviderWithAuth client={convex} useAuth={useYourAuthHook}>
+      {children}
+    </ConvexProviderWithAuth>
+  );
+}
+\`\`\`
+The \`useAuth\` prop must return \`{ isLoading, isAuthenticated, fetchAccessToken }\`. Do NOT use plain \`ConvexProvider\` when authentication is needed — it will not send tokens with requests.`),
+  ]),
   section("typescript_guidelines", [
     guideline(
       "You can use the helper typescript type `Id` imported from './_generated/dataModel' to get the type of the id for a given table. For example if there is a table called 'users' you can use `Id<'users'>` to get the type of the id for that table.",
+    ),
+    guideline(
+      "Use `Doc<\"tableName\">` from `./_generated/dataModel` to get the full document type for a table.",
+    ),
+    guideline(
+      "Use `QueryCtx`, `MutationCtx`, `ActionCtx` from `./_generated/server` for typing function contexts. NEVER use `any` for ctx parameters — always use the proper context type.",
     ),
     guideline(`If you need to define a \`Record\` make sure that you correctly provide the type of the key and value in the type. For example a validator \`v.record(v.id('users'), v.string())\` would have the type \`Record<Id<'users'>, string>\`. Below is an example of using \`Record\` with an \`Id\` type in a query:
 \`\`\`ts
@@ -503,9 +547,29 @@ http.route({
         'Index fields must be queried in the same order they are defined. If you want to be able to query by "field1" then "field2" and by "field2" then "field1", you must create separate indexes.',
       ),
     ]),
+    section("authentication_guidelines", [
+      guideline(
+        "Convex supports JWT-based authentication through `convex/auth.config.ts`. ALWAYS create this file when using authentication. Without it, `ctx.auth.getUserIdentity()` will always return `null`. Configure it with `providers: [{ domain: \"https://your-issuer\", applicationID: \"convex\" }]`.",
+      ),
+      guideline(
+        "Use `ctx.auth.getUserIdentity()` in queries, mutations, and actions to get the authenticated user. Returns `null` if unauthenticated, or a `UserIdentity` with `subject` (unique user ID), `issuer`, `name`, `email`, etc.",
+      ),
+      guideline(
+        "NEVER accept a `userId` or any user identifier as a function argument for authorization. Always derive identity server-side via `ctx.auth.getUserIdentity()`.",
+      ),
+      guideline(
+        "On the client, use `ConvexProviderWithAuth` (not `ConvexProvider`) when authentication is needed. The `useAuth` prop must return `{ isLoading, isAuthenticated, fetchAccessToken }`. Plain `ConvexProvider` will not send auth tokens.",
+      ),
+    ]),
     section("typescript_guidelines", [
       guideline(
         "You can use the helper typescript type `Id` imported from './_generated/dataModel' to get the type of the id for a given table. For example if there is a table called 'users' you can use `Id<'users'>` to get the type of the id for that table.",
+      ),
+      guideline(
+        "Use `Doc<\"tableName\">` from `./_generated/dataModel` to get the full document type for a table.",
+      ),
+      guideline(
+        "Use `QueryCtx`, `MutationCtx`, `ActionCtx` from `./_generated/server` for typing function contexts. NEVER use `any` for ctx parameters.",
       ),
       guideline(`If you need to define a \`Record\` make sure that you correctly provide the type of the key and value in the type. For example a validator \`v.record(v.id('users'), v.string())\` would have the type \`Record<Id<'users'>, string>\`. Below is an example of using \`Record\` with an \`Id\` type in a query:
 \`\`\`ts
