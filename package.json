@@ -29,6 +29,7 @@
     "@types/jszip": "^3.4.1",
     "@types/node": "^25.0.0",
     "ai": "^6.0.73",
+    "chalk": "^5.6.2",
     "commander": "^14.0.0",
     "convex": "^1.31.2",
     "dotenv": "^17.2.1",
