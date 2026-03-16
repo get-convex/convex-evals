@@ -22,7 +22,8 @@ jobs:
           CONVEX_EVAL_URL: ${{ secrets.CONVEX_EVAL_URL }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
-          models=$(bun run scripts/listPeriodicModels.ts --format json)
+          bun run scripts/listPeriodicModels.ts --format json --output-file /tmp/periodic-models.json
+          models=$(< /tmp/periodic-models.json)
           echo "models=$models" >> $GITHUB_OUTPUT
           if [ "$models" = "[]" ]; then
             echo "has_models=false" >> $GITHUB_OUTPUT

@@ -6,9 +6,10 @@
  * detailed logging so it is obvious why each model was kept or skipped.
  *
  * Usage:
- *   bun run scripts/listPeriodicModels.ts --format json
+ *   bun run scripts/listPeriodicModels.ts --format json [--output-file <path>]
  */
 import { ConvexHttpClient } from "convex/browser";
+import { writeFile } from "node:fs/promises";
 import { ALL_MODELS } from "../runner/models/index.js";
 import {
   discoverOpenRouterModel,
@@ -41,17 +42,21 @@ export interface MergeModelsResult {
   modelSources: Record<string, ModelSourceName[]>;
 }
 
-function parseArgs(): { format: string } {
+function parseArgs(): { format: string; outputFile?: string } {
   const args = process.argv.slice(2);
   let format = DEFAULT_FORMAT;
+  let outputFile: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--format" && args[i + 1]) {
       format = args[++i];
     }
+    if (args[i] === "--output-file" && args[i + 1]) {
+      outputFile = args[++i];
+    }
   }
 
-  return { format };
+  return { format, outputFile };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -94,12 +99,12 @@ function shouldRetryPreflightFailure(error: unknown): boolean {
 
 async function collectCuratedModels(): Promise<string[]> {
   const models = ALL_MODELS.map((model) => model.name);
-  console.error(`[periodic] curated source produced ${models.length} models`);
+  console.log(`[periodic] curated source produced ${models.length} models`);
   return models;
 }
 
 async function collectTopDayModels(): Promise<string[]> {
-  console.error(
+  console.log(
     `[periodic] fetching top-day OpenRouter models, target ${TOP_DAY_LIMIT}`,
   );
   const knownModels = new Set(ALL_MODELS.map((model) => model.name));
@@ -108,35 +113,35 @@ async function collectTopDayModels(): Promise<string[]> {
 
   for (const slug of topSlugs) {
     if (knownModels.has(slug)) {
-      console.error(
+      console.log(
         `[periodic] [top-day] skipping ${slug}: already covered by curated models`,
       );
       continue;
     }
 
     if (selected.includes(slug)) {
-      console.error(`[periodic] [top-day] skipping duplicate ${slug}`);
+      console.log(`[periodic] [top-day] skipping duplicate ${slug}`);
       continue;
     }
 
     selected.push(slug);
-    console.error(
+    console.log(
       `[periodic] [top-day] selected ${slug} (${selected.length}/${TOP_DAY_LIMIT})`,
     );
     if (selected.length >= TOP_DAY_LIMIT) break;
   }
 
-  console.error(`[periodic] top-day source produced ${selected.length} models`);
+  console.log(`[periodic] top-day source produced ${selected.length} models`);
   return selected;
 }
 
 async function collectBenchmarkModels(): Promise<string[]> {
-  console.error(
+  console.log(
     `[periodic] fetching benchmark OpenRouter models, target ${BENCHMARK_LIMIT}`,
   );
   const rows = await fetchAgenticBenchmarkRows();
   const models = selectTopBenchmarkModels(rows, BENCHMARK_LIMIT);
-  console.error(`[periodic] benchmark source produced ${models.length} models`);
+  console.log(`[periodic] benchmark source produced ${models.length} models`);
   return models;
 }
 
@@ -177,16 +182,16 @@ function logSelectionSummary(
     ([, sources]) => sources.length > 1,
   );
 
-  console.error(
+  console.log(
     `Periodic selector counts: ${sourceEntries
       .map(([name, sourceModels]) => `${name}=${sourceModels.length}`)
       .join(", ")}`,
   );
-  console.error(
+  console.log(
     `Periodic selector merged ${totalCandidates} candidates into ${merged.models.length} unique models`,
   );
   if (overlaps.length > 0) {
-    console.error(
+    console.log(
       `Periodic selector overlaps: ${overlaps
         .map(([model, sources]) => `${model} (${sources.join(", ")})`)
         .join("; ")}`,
@@ -197,7 +202,7 @@ function logSelectionSummary(
 async function filterDueModelsSequentially(models: string[]): Promise<string[]> {
   const convexUrl = process.env.CONVEX_EVAL_URL;
   if (!convexUrl) {
-    console.error(
+    console.log(
       "[periodic] CONVEX_EVAL_URL not set, returning models without due filtering",
     );
     return models;
@@ -211,7 +216,7 @@ async function filterDueModelsSequentially(models: string[]): Promise<string[]> 
   for (const model of models) {
     const decision = schedulingDecisions.get(model);
     if (!decision) {
-      console.warn(
+      console.log(
         `[periodic] [due] keeping ${model}: missing scheduling metadata`,
       );
       dueModels.push(model);
@@ -219,19 +224,19 @@ async function filterDueModelsSequentially(models: string[]): Promise<string[]> 
     }
 
     if (decision.isDue) {
-      console.error(
+      console.log(
         `[periodic] [due] keeping ${model}: ${describeDecision(decision, now)}`,
       );
       dueModels.push(model);
       continue;
     }
 
-    console.warn(
+    console.log(
       `[periodic] [due] skipping ${model}: ${describeDecision(decision, now)}`,
     );
   }
 
-  console.error(
+  console.log(
     `[periodic] due filter kept ${dueModels.length}/${models.length} models`,
   );
   return dueModels;
@@ -258,7 +263,7 @@ async function preflightWithRetries(
   let attempts = 0;
   for (let attempt = 1; attempt <= PREFLIGHT_MAX_ATTEMPTS; attempt++) {
     attempts = attempt;
-    console.error(
+    console.log(
       `[periodic] [preflight] attempt ${attempt}/${PREFLIGHT_MAX_ATTEMPTS} for ${modelName}`,
     );
     try {
@@ -274,7 +279,7 @@ async function preflightWithRetries(
       }
 
       const delayMs = PREFLIGHT_RETRY_DELAYS_MS[attempt - 1] ?? 2_000;
-      console.warn(
+      console.log(
         `[periodic] [preflight] retrying ${modelName} after attempt ${attempt} failed: ${String(error)}`,
       );
       await sleep(delayMs);
@@ -294,7 +299,7 @@ async function filterRunnableModelsSequentially(
 ): Promise<string[]> {
   const openRouterApiKey = process.env.OPENROUTER_API_KEY;
   if (!openRouterApiKey) {
-    console.error(
+    console.log(
       "[periodic] OPENROUTER_API_KEY not set, returning models without selector preflight filtering",
     );
     return models;
@@ -304,7 +309,7 @@ async function filterRunnableModelsSequentially(
   for (const model of models) {
     const sources = modelSources[model] ?? [];
     if (!requiresSelectorPreflight(sources)) {
-      console.error(
+      console.log(
         `[periodic] [preflight] keeping ${model} without selector preflight: curated-only model`,
       );
       runnableModels.push(model);
@@ -313,7 +318,7 @@ async function filterRunnableModelsSequentially(
 
     const result = await preflightWithRetries(model, openRouterApiKey);
     if (result.success) {
-      console.error(
+      console.log(
         `[periodic] [preflight] keeping ${model}: passed after ${result.attempts} attempt${result.attempts === 1 ? "" : "s"}`,
       );
       runnableModels.push(model);
@@ -322,19 +327,19 @@ async function filterRunnableModelsSequentially(
 
     const errorMessage = String(result.error);
     if (shouldKeepDespitePreflightFailure(result.error)) {
-      console.warn(
+      console.log(
         `[periodic] [preflight] keeping ${model} despite provider error after ${result.attempts} attempt${result.attempts === 1 ? "" : "s"}: ${errorMessage}`,
       );
       runnableModels.push(model);
       continue;
     }
 
-    console.warn(
+    console.log(
       `[periodic] [preflight] skipping ${model} after ${result.attempts} attempt${result.attempts === 1 ? "" : "s"}: ${errorMessage}`,
     );
   }
 
-  console.error(
+  console.log(
     `[periodic] runnable filter kept ${runnableModels.length}/${models.length} models`,
   );
   return runnableModels;
@@ -360,20 +365,23 @@ export async function selectPeriodicModels(): Promise<string[]> {
     merged.modelSources,
   );
 
-  console.error(
+  console.log(
     `[periodic] final selection contains ${runnableModels.length} models`,
   );
   return runnableModels;
 }
 
 export async function main(): Promise<void> {
-  const { format } = parseArgs();
+  const { format, outputFile } = parseArgs();
   const models = await selectPeriodicModels();
+  const serializedModels =
+    format === "json" ? JSON.stringify(models) : models.join(",");
 
-  if (format === "json") {
-    console.log(JSON.stringify(models));
+  if (outputFile) {
+    await writeFile(outputFile, serializedModels, "utf8");
+    console.log(`[periodic] wrote output to ${outputFile}`);
   } else {
-    console.log(models.join(","));
+    console.log(serializedModels);
   }
 }
 
