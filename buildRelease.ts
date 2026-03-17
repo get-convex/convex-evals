@@ -5,7 +5,6 @@
  */
 import { mkdirSync, writeFileSync } from "fs";
 import { encode } from "gpt-tokenizer/encoding/cl100k_base";
-import { renderCompactGuidelines } from "./runner/models/guidelines.js";
 import { buildReleaseRules } from "./runner/models/modelCodegen.js";
 
 const MDC_FRONTMATTER = `---
@@ -36,10 +35,9 @@ function main(): void {
     GITHUB_COPILOT_FRONTMATTER + rules,
   );
 
-  const compactGuidelines = renderCompactGuidelines();
-  writeFileSync("dist/AGENTS.md", compactGuidelines);
-  const compactTokens = encode(compactGuidelines).length;
-  console.log(`dist/AGENTS.md: ${compactTokens} tokens`);
+  writeFileSync("dist/AGENTS.md", rules);
+  const agentsTokens = encode(rules).length;
+  console.log(`dist/AGENTS.md: ${agentsTokens} tokens`);
 }
 
 main();
