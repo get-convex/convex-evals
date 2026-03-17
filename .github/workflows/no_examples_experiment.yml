@@ -1,7 +1,9 @@
 name: No-Examples Experiment
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - "mikec/no-examples-experiment"
 
 jobs:
   run-evals:
