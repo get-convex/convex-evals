@@ -52,11 +52,9 @@
     "evals": "bun run scripts/runEvals.ts",
     "evalScores": "cd evalScores && bun run",
     "evals:list": "bun run scripts/runEvals.ts list",
-    "generate-guidelines": "cd guidelines && bun run src/index.ts",
     "local:run:fundamentals": "MODELS=gpt-5 TEST_FILTER=000-fundamentals bun run runner/index.ts",
     "local:run:one": "MODELS=gpt-5 TEST_FILTER=000-fundamentals/000 bun run runner/index.ts",
     "local:run": "bun run runner/index.ts",
-    "run:evals": "bun run runner/index.ts",
     "list:models": "bun run scripts/listModels.ts",
     "build:release": "bun run buildRelease.ts",
     "ablation:generate": "bun run scripts/ablateGuidelines.ts",
@@ -66,7 +64,6 @@
     "validate:answers": "bun run scripts/validateAnswers.ts",
     "generate:answer-types": "bun run scripts/generateAnswerTypes.ts",
     "generate:evalscores-types": "cd evalScores && bun run codegen",
-    "visualizer": "cd visualizer && bun run dev",
     "visualizer:dev": "cd visualizer && bun run dev",
     "visualizer:build": "cd visualizer && bun run build"
   }
