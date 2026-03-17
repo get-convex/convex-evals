@@ -20,9 +20,23 @@ import type { LanguageModelUsage } from "ai";
 
 // ── Config ────────────────────────────────────────────────────────────
 
-const CONVEX_EVAL_URL = process.env.CONVEX_EVAL_URL;
-const CONVEX_AUTH_TOKEN = process.env.CONVEX_AUTH_TOKEN;
-const EVALS_EXPERIMENT = process.env.EVALS_EXPERIMENT;
+function isConvexReportingDisabled(): boolean {
+  return process.env.DISABLE_CONVEX_REPORTING === "1";
+}
+
+function getConvexEvalUrl(): string | undefined {
+  if (isConvexReportingDisabled()) return undefined;
+  return process.env.CONVEX_EVAL_URL;
+}
+
+function getConvexAuthToken(): string | undefined {
+  if (isConvexReportingDisabled()) return undefined;
+  return process.env.CONVEX_AUTH_TOKEN;
+}
+
+function getEvalsExperiment(): string | undefined {
+  return process.env.EVALS_EXPERIMENT;
+}
 
 /** Cache for eval source hashes to avoid re-uploading. */
 const evalSourceCache = new Map<string, string>();
@@ -32,9 +46,10 @@ const evalSourceCache = new Map<string, string>();
 let _client: ConvexClient | null = null;
 
 function getClient(): ConvexClient | null {
-  if (!CONVEX_EVAL_URL) return null;
+  const convexEvalUrl = getConvexEvalUrl();
+  if (!convexEvalUrl) return null;
   if (!_client) {
-    _client = new ConvexClient(CONVEX_EVAL_URL);
+    _client = new ConvexClient(convexEvalUrl);
   }
   return _client;
 }
@@ -56,10 +71,11 @@ async function mutate<T>(
   args: Record<string, unknown>,
 ): Promise<T | null> {
   const client = getClient();
-  if (!client || !CONVEX_AUTH_TOKEN) return null;
+  const convexAuthToken = getConvexAuthToken();
+  if (!client || !convexAuthToken) return null;
 
   return (await client.mutation(mutation, {
-    token: CONVEX_AUTH_TOKEN,
+    token: convexAuthToken,
     ...args,
   })) as T;
 }
@@ -91,7 +107,7 @@ export async function startRun(
   provider: string,
   experiment?: string,
 ): Promise<string | null> {
-  if (!getClient() || !CONVEX_AUTH_TOKEN) {
+  if (!getClient() || !getConvexAuthToken()) {
     logInfo("Skipping startRun: CONVEX_EVAL_URL or CONVEX_AUTH_TOKEN not set");
     return null;
   }
@@ -100,7 +116,7 @@ export async function startRun(
     modelId: modelId as Id<"models">,
     plannedEvals,
     provider,
-    experiment: (experiment ?? EVALS_EXPERIMENT) as
+    experiment: (experiment ?? getEvalsExperiment()) as
       | "no_guidelines"
       | "web_search"
       | "web_search_no_guidelines"
@@ -115,7 +131,7 @@ export async function ensureModelFromSlug(
   apiKind?: "chat" | "responses",
   openRouterFirstSeenAt?: number,
 ): Promise<string | null> {
-  if (!getClient() || !CONVEX_AUTH_TOKEN) {
+  if (!getClient() || !getConvexAuthToken()) {
     logInfo(
       "Skipping ensureModelFromSlug: CONVEX_EVAL_URL or CONVEX_AUTH_TOKEN not set",
     );
@@ -196,12 +212,13 @@ export function recordStep(
   status: StepStatus,
 ): void {
   const client = getClient();
-  if (!client || !CONVEX_AUTH_TOKEN) return;
+  const convexAuthToken = getConvexAuthToken();
+  if (!client || !convexAuthToken) return;
 
   // Fire and forget - don't block the scorer
   client
     .mutation(api.admin.recordStep, {
-      token: CONVEX_AUTH_TOKEN,
+      token: convexAuthToken,
       evalId: evalId as Id<"evals">,
       name: stepName,
       status,
@@ -218,7 +235,8 @@ export async function uploadEvalOutput(
   outputDir: string,
 ): Promise<void> {
   const client = getClient();
-  if (!client || !CONVEX_AUTH_TOKEN) return;
+  const convexAuthToken = getConvexAuthToken();
+  if (!client || !convexAuthToken) return;
 
   try {
     const zipPath = await zipDirectory(outputDir, ["node_modules", "_generated"]);
@@ -227,7 +245,7 @@ export async function uploadEvalOutput(
       const storageId = await uploadToConvexStorage(zipPath);
       if (storageId) {
         await client.mutation(api.admin.updateEvalOutput, {
-          token: CONVEX_AUTH_TOKEN,
+          token: convexAuthToken,
           evalId: evalId as Id<"evals">,
           outputStorageId: storageId as Id<"_storage">,
         });
@@ -292,7 +310,7 @@ export async function completeEval(
 export async function getOrUploadEvalSource(
   evalPath: string,
 ): Promise<{ taskContent: string | null; storageId: string | null }> {
-  if (!getClient() || !CONVEX_AUTH_TOKEN) {
+  if (!getClient() || !getConvexAuthToken()) {
     return { taskContent: null, storageId: null };
   }
 
@@ -459,12 +477,13 @@ async function uploadToConvexStorage(
   zipPath: string,
 ): Promise<string | null> {
   const client = getClient();
-  if (!client || !CONVEX_AUTH_TOKEN) return null;
+  const convexAuthToken = getConvexAuthToken();
+  if (!client || !convexAuthToken) return null;
 
   try {
     const uploadUrl: string = await client.mutation(
       api.admin.generateUploadUrl,
-      { token: CONVEX_AUTH_TOKEN },
+      { token: convexAuthToken },
     );
 
     const fileData = Bun.file(zipPath);

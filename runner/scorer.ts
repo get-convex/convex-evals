@@ -570,8 +570,10 @@ async function lintCode(
   const results: Array<{ cmd: string; stdout: string }> = [];
   const eslintConfig = resolve("eslint.config.mjs");
 
+  const eslintBin = resolve("node_modules/.bin/eslint");
+
   const eslintConvex = await withTimeout(
-    $`bunx eslint -c ${eslintConfig} convex`
+    $`${eslintBin} -c ${eslintConfig} convex`
       .cwd(projectDir)
       .nothrow()
       .quiet(),
@@ -582,7 +584,7 @@ async function lintCode(
     throw new Error(`Failed to lint code:\n${combinedOutput(eslintConvex)}`);
   }
   results.push({
-    cmd: `bunx eslint -c ${eslintConfig} convex`,
+    cmd: `${eslintBin} -c ${eslintConfig} convex`,
     stdout: combinedOutput(eslintConvex),
   });
 
@@ -590,7 +592,7 @@ async function lintCode(
   if (existsSync(srcDir)) {
     const srcEslintConfig = resolve("src.eslint.config.mjs");
     const eslintSrc = await withTimeout(
-      $`bunx eslint -c ${srcEslintConfig} src`
+      $`${eslintBin} -c ${srcEslintConfig} src`
         .cwd(projectDir)
         .nothrow()
         .quiet(),
@@ -601,7 +603,7 @@ async function lintCode(
       throw new Error(`Failed to lint code:\n${combinedOutput(eslintSrc)}`);
     }
     results.push({
-      cmd: `bunx eslint -c ${srcEslintConfig} src`,
+      cmd: `${eslintBin} -c ${srcEslintConfig} src`,
       stdout: combinedOutput(eslintSrc),
     });
   }

@@ -36,6 +36,10 @@ function isWebSearchEnabled(): boolean {
   return exp === "web_search" || exp === "web_search_no_guidelines";
 }
 
+function shouldIncludePromptExamples(): boolean {
+  return process.env.SKIP_PROMPT_EXAMPLES !== "1";
+}
+
 // ── Guidelines helpers ────────────────────────────────────────────────
 
 function getGuidelinesContent(): string {
@@ -423,7 +427,9 @@ For example, correct output looks like
 ${FILE_FORMAT_EXAMPLE}`,
   );
 
-  sections.push(renderExamples());
+  if (shouldIncludePromptExamples()) {
+    sections.push(renderExamples());
+  }
 
   sections.push(`# General Coding Standards
 - Use 2 spaces for code indentation.
