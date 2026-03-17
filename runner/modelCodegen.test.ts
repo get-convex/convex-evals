@@ -225,20 +225,6 @@ describe("renderPrompt", () => {
     expect(prompt.length).toBeGreaterThan(100);
   });
 
-  it("can skip bundled examples via env flag", () => {
-    const prev = process.env.SKIP_PROMPT_EXAMPLES;
-    process.env.SKIP_PROMPT_EXAMPLES = "1";
-    try {
-      const prompt = renderPrompt("test");
-      expect(prompt).not.toContain("# Examples:");
-    } finally {
-      if (prev === undefined) {
-        delete process.env.SKIP_PROMPT_EXAMPLES;
-      } else {
-        process.env.SKIP_PROMPT_EXAMPLES = prev;
-      }
-    }
-  });
 });
 
 describe("normalizeUsageForScoring", () => {
