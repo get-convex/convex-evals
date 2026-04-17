@@ -17,7 +17,7 @@
     "@edge-runtime/vm": "^5.0.0"
   },
   "peerDependencies": {
-    "typescript": "^5"
+    "typescript": "^5 || ^6.0.0"
   },
   "dependencies": {
     "@convex-dev/migrations": "^0.3.1",
