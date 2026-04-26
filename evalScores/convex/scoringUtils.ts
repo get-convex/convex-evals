@@ -30,6 +30,11 @@ export function isRateLimitFailure(evalDoc: Doc<"evals">): boolean {
   return evalDoc.status.failureReason.startsWith("[rate_limit]");
 }
 
+export function isInfrastructureFailure(evalDoc: Doc<"evals">): boolean {
+  if (evalDoc.status.kind !== "failed") return false;
+  return evalDoc.status.failureReason.startsWith("[infrastructure]");
+}
+
 export function getEvalCostUsd(evalDoc: Doc<"evals">): number {
   const status = evalDoc.status;
   if (status.kind !== "passed" && status.kind !== "failed") return 0;
@@ -75,7 +80,8 @@ export function computeRunScores(
   const completed = evals.filter(
     (e) =>
       (e.status.kind === "passed" || e.status.kind === "failed") &&
-      !isRateLimitFailure(e),
+      !isRateLimitFailure(e) &&
+      !isInfrastructureFailure(e),
   );
   if (completed.length === 0) return { totalScore: 0, scores: {} };
 

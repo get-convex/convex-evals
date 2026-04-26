@@ -316,7 +316,11 @@ export class Model {
     this.languageModel = createLanguageModel(model, apiKey);
   }
 
-  async generate(prompt: string): Promise<{ files: Record<string, string>; usage?: LanguageModelUsage }> {
+  async generate(prompt: string): Promise<{
+    files: Record<string, string>;
+    usage?: LanguageModelUsage;
+    rawResponse: string;
+  }> {
     const userPrompt = renderPrompt(prompt);
     const useWebSearch = isWebSearchEnabled();
 
@@ -390,6 +394,7 @@ export class Model {
     return {
       files: parseMarkdownResponse(text),
       usage: enrichedUsage,
+      rawResponse: text,
     };
   }
 }

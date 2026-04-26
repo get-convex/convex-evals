@@ -4,7 +4,6 @@ import {
   readFileSync,
   existsSync,
   mkdirSync,
-  readdirSync,
   writeFileSync,
 } from "fs";
 import { join, resolve } from "path";
@@ -15,6 +14,7 @@ import {
   getTypecheckTargets,
   isInfrastructureStepFailure,
   walkAnswer,
+  writeFilesystem,
 } from "./scorer.js";
 
 describe("writeFilesystem pattern", () => {
@@ -27,26 +27,6 @@ describe("writeFilesystem pattern", () => {
   afterEach(() => {
     rmSync(tempDir, { recursive: true, force: true });
   });
-
-  /**
-   * Replicate the writeFilesystem logic for testing since it's not exported.
-   */
-  function writeFilesystem(
-    projectDir: string,
-    output: Record<string, string>,
-  ): void {
-    const absDir = resolve(projectDir);
-    for (const [relativePath, content] of Object.entries(output)) {
-      const filePath = resolve(join(absDir, relativePath));
-      if (!filePath.startsWith(absDir)) {
-        throw new Error(
-          `Invalid filesystem output: ${filePath} is not in ${absDir}`,
-        );
-      }
-      mkdirSync(join(filePath, ".."), { recursive: true });
-      writeFileSync(filePath, content, "utf-8");
-    }
-  }
 
   it("writes a flat set of files", () => {
     const projectDir = join(tempDir, "project");
@@ -94,13 +74,13 @@ describe("writeFilesystem pattern", () => {
     ).toThrow("is not in");
   });
 
-  it("handles empty output", () => {
+  it("rejects empty output", () => {
     const projectDir = join(tempDir, "project");
     mkdirSync(projectDir, { recursive: true });
 
-    writeFilesystem(projectDir, {});
-    const files = readdirSync(projectDir);
-    expect(files).toHaveLength(0);
+    expect(() => writeFilesystem(projectDir, {})).toThrow(
+      "Empty parsed model output",
+    );
   });
 
   it("writes UTF-8 content correctly", () => {

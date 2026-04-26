@@ -29,6 +29,9 @@ import type { LanguageModelUsage } from "ai";
 
 // ── Timeout constants (ms) ───────────────────────────────────────────
 
+const RAW_MODEL_RESPONSE_DEBUG_FILE = "raw_model_response.md";
+const EMPTY_PARSED_OUTPUT_ERROR = "Empty parsed model output";
+
 const TIMEOUTS = {
   bunInstall: 60_000,
   codegen: 60_000,
@@ -176,10 +179,24 @@ class ScoringContext {
     readonly evalId: string | undefined,
     readonly outputProjectDir: string,
     readonly usage?: LanguageModelUsage,
+    readonly metadata: Record<string, unknown> = {},
   ) {
     this.evalPrefix = `${category}/${name}`;
     this.runLogPath = join(outputProjectDir, "run.log");
     appendLog(this.runLogPath, `=== Eval: ${this.evalPrefix} ===`);
+
+    const rawResponseDebug = metadataRawResponseDebug(this.metadata);
+    if (rawResponseDebug !== undefined) {
+      writeFileSync(
+        join(outputProjectDir, RAW_MODEL_RESPONSE_DEBUG_FILE),
+        rawResponseDebug,
+        "utf-8",
+      );
+      appendLog(
+        this.runLogPath,
+        `[debug] saved truncated raw model response to ${RAW_MODEL_RESPONSE_DEBUG_FILE}`,
+      );
+    }
   }
 
   /** Record the result of a step, logging and reporting to Convex. */
@@ -205,6 +222,7 @@ class ScoringContext {
       }
     } else {
       const reason = failureReason ?? `${stepName} failed`;
+      appendLog(this.runLogPath, `[error] ${stepName}: ${reason}`);
       logInfo(`[${this.evalPrefix}] ${stepName}: FAIL`);
       if (this.evalId) {
         void recordStep(this.evalId, stepName, {
@@ -321,7 +339,14 @@ export async function convexScorer(
   );
   mkdirSync(outputProjectDir, { recursive: true });
 
-  const ctx = new ScoringContext(category, name, evalId, outputProjectDir, usage);
+  const ctx = new ScoringContext(
+    category,
+    name,
+    evalId,
+    outputProjectDir,
+    usage,
+    metadata,
+  );
 
   // ── Step 1: Write filesystem ──
   const fsStart = Date.now();
@@ -332,14 +357,15 @@ export async function convexScorer(
       void uploadEvalOutput(evalId, outputProjectDir);
     }
   } catch (e) {
+    const failureReason = filesystemFailureReason(String(e), metadata);
     ctx.recordStepResult(
       "filesystem",
       "Valid filesystem output",
       false,
       fsStart,
-      String(e),
+      failureReason,
     );
-    await ctx.reportEarlyExit("filesystem fail");
+    await ctx.reportEarlyExit(failureReason);
     return ctx.scores;
   }
 
@@ -560,10 +586,14 @@ class TestsFailedError extends Error {
 
 // ── Step implementations ──────────────────────────────────────────────
 
-function writeFilesystem(
+export function writeFilesystem(
   projectDir: string,
   output: Record<string, string>,
 ): void {
+  if (Object.keys(output).length === 0) {
+    throw new Error(EMPTY_PARSED_OUTPUT_ERROR);
+  }
+
   const absDir = resolve(projectDir);
   for (const [relativePath, content] of Object.entries(output)) {
     const filePath = resolve(join(absDir, relativePath));
@@ -575,6 +605,36 @@ function writeFilesystem(
     mkdirSync(join(filePath, ".."), { recursive: true });
     writeFileSync(filePath, content, "utf-8");
   }
+}
+
+function metadataRawResponseDebug(
+  metadata: Record<string, unknown>,
+): string | undefined {
+  const value = metadata.raw_model_response_debug;
+  return typeof value === "string" ? value : undefined;
+}
+
+function metadataRawResponseLength(
+  metadata: Record<string, unknown>,
+): number | undefined {
+  const value = metadata.raw_model_response_length;
+  return typeof value === "number" ? value : undefined;
+}
+
+function filesystemFailureReason(
+  error: string,
+  metadata: Record<string, unknown>,
+): string {
+  if (!error.includes(EMPTY_PARSED_OUTPUT_ERROR)) return error;
+
+  const rawLength = metadataRawResponseLength(metadata);
+  if (rawLength === 0) {
+    return "[infrastructure] empty provider response";
+  }
+  if (rawLength !== undefined) {
+    return `empty parsed model output: non-empty raw response (${rawLength} chars) did not contain parseable files`;
+  }
+  return "empty parsed model output";
 }
 
 /** Combine stdout and stderr from a shell result into a single string. */

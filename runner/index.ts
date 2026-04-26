@@ -581,13 +581,15 @@ async function processOneEval(
   let generateResult: {
     files: Record<string, string>;
     usage: LanguageModelUsage | undefined;
+    rawResponse: string;
   } | null = null;
   let lastError: unknown = null;
 
   for (let attempt = 0; attempt <= RATE_LIMIT_MAX_RETRIES; attempt++) {
     try {
-      const { files, usage } = await modelImpl.generate(taskDescription);
-      generateResult = { files, usage };
+      const { files, usage, rawResponse } =
+        await modelImpl.generate(taskDescription);
+      generateResult = { files, usage, rawResponse };
       break;
     } catch (e) {
       // Infrastructure failures always abort immediately - no retry.
@@ -608,10 +610,14 @@ async function processOneEval(
   }
 
   if (generateResult !== null) {
-    const { files: output, usage } = generateResult;
+    const { files: output, usage, rawResponse } = generateResult;
 
     if (usage) {
       metadata.usage = usage;
+    }
+    if (Object.keys(output).length === 0) {
+      metadata.raw_model_response_debug = truncateRawModelResponse(rawResponse);
+      metadata.raw_model_response_length = rawResponse.length;
     }
 
     const generateDuration = ((Date.now() - evalStartTime) / 1000).toFixed(1);
@@ -701,6 +707,12 @@ function hasZeroTotalTokens(usage: LanguageModelUsage | undefined): boolean {
     return true;
   }
   return false;
+}
+
+function truncateRawModelResponse(response: string): string {
+  const maxChars = 16_000;
+  if (response.length <= maxChars) return response;
+  return `${response.slice(0, maxChars)}\n\n[truncated ${response.length - maxChars} chars]`;
 }
 
 function parseExecutionMode(value: string | undefined): ExecutionMode {

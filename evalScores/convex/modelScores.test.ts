@@ -9,7 +9,7 @@
  * - Correct handling of multiple experiments
  * - Null cost when no cost data is present
  * - "Last 5 runs" cap is respected
- * - Rate-limit failures are excluded from scoring
+ * - Infrastructure failures are excluded from scoring
  */
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -36,6 +36,7 @@ async function createCompletedRun(
       name: string;
       passed: boolean;
       rateLimited?: boolean;
+      infrastructureFailure?: boolean;
       costUsd?: number;
       durationMs?: number;
     }>;
@@ -61,12 +62,14 @@ async function createCompletedRun(
     const usage =
       evalDef.costUsd !== undefined ? { raw: { cost: evalDef.costUsd } } : undefined;
 
-    if (evalDef.rateLimited) {
+    if (evalDef.rateLimited || evalDef.infrastructureFailure) {
       await t.mutation(internal.evals.completeEval, {
         evalId,
         status: {
           kind: "failed" as const,
-          failureReason: "[rate_limit] 429 too many requests",
+          failureReason: evalDef.rateLimited
+            ? "[rate_limit] 429 too many requests"
+            : "[infrastructure] empty provider response",
           durationMs: evalDef.durationMs ?? 100,
           usage,
         },
@@ -233,6 +236,26 @@ describe("recomputeModelScores", () => {
 
     const results = await t.query(api.runs.leaderboardScores, {});
     // Rate-limited eval excluded: 1/1 = 1.0
+    expect(results[0].totalScore).toBe(1.0);
+  });
+
+  it("excludes infrastructure eval failures from scoring", async () => {
+    const t = convexTest(schema, modules);
+
+    await createCompletedRun(t, {
+      model: "model-a",
+      evals: [
+        { category: "cat1", name: "eval1", passed: true },
+        {
+          category: "cat1",
+          name: "eval2",
+          infrastructureFailure: true,
+          passed: false,
+        },
+      ],
+    });
+
+    const results = await t.query(api.runs.leaderboardScores, {});
     expect(results[0].totalScore).toBe(1.0);
   });
 
