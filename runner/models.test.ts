@@ -28,7 +28,11 @@ describe("ALL_MODELS", () => {
   it("contains known models", () => {
     expect(ALL_MODELS).toContain("openai/gpt-5.2-codex");
     expect(ALL_MODELS).toContain("openai/gpt-5");
+    expect(ALL_MODELS).toContain("openai/gpt-5.5");
     expect(ALL_MODELS).toContain("anthropic/claude-opus-4.6");
+    expect(ALL_MODELS).toContain("anthropic/claude-opus-4.7");
+    expect(ALL_MODELS).toContain("deepseek/deepseek-v4-pro");
+    expect(ALL_MODELS).toContain("moonshotai/kimi-k2.6");
     expect(ALL_MODELS).toContain("google/gemini-2.5-flash");
   });
 });
