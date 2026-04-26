@@ -102,15 +102,20 @@ function formatDuration(ms: number): string {
 }
 
 function describeDecision(decision: SchedulingDecision, now: number): string {
+  const costSuffix =
+    decision.averageRunCostUsd !== null
+      ? `, average run cost $${decision.averageRunCostUsd.toFixed(2)}`
+      : "";
+
   if (decision.lastRunTime === null) {
-    return `never run before, target interval ${formatDuration(decision.targetIntervalMs)}`;
+    return `never run before, target interval ${formatDuration(decision.targetIntervalMs)}${costSuffix}`;
   }
 
   const elapsedMs = Math.max(0, now - decision.lastRunTime);
   const remainingMs = Math.max(0, decision.targetIntervalMs - elapsedMs);
   return decision.isDue
-    ? `last run ${formatDuration(elapsedMs)} ago, target interval ${formatDuration(decision.targetIntervalMs)}`
-    : `last run ${formatDuration(elapsedMs)} ago, target interval ${formatDuration(decision.targetIntervalMs)}, due in ${formatDuration(remainingMs)}`;
+    ? `last run ${formatDuration(elapsedMs)} ago, target interval ${formatDuration(decision.targetIntervalMs)}${costSuffix}`
+    : `last run ${formatDuration(elapsedMs)} ago, target interval ${formatDuration(decision.targetIntervalMs)}, due in ${formatDuration(remainingMs)}${costSuffix}`;
 }
 
 function shouldRetryPreflightFailure(error: unknown): boolean {

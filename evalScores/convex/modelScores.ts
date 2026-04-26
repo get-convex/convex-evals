@@ -79,6 +79,34 @@ export const getLatestRunTime = query({
   },
 });
 
+export const getSchedulingStats = query({
+  args: {
+    modelId: v.id("models"),
+    experiment: v.optional(experimentLiteral),
+  },
+  returns: v.union(
+    v.object({
+      latestRunTime: v.number(),
+      averageRunCostUsd: v.union(v.number(), v.null()),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("modelScores")
+      .withIndex("by_modelId_experiment", (q) =>
+        q.eq("modelId", args.modelId).eq("experiment", args.experiment),
+      )
+      .unique();
+
+    if (!row) return null;
+    return {
+      latestRunTime: row.latestRunTime,
+      averageRunCostUsd: row.averageRunCostUsd,
+    };
+  },
+});
+
 // ── Core recompute mutation ───────────────────────────────────────────
 
 export const recomputeModelScores = internalMutation({
