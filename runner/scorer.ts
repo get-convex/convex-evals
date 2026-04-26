@@ -38,6 +38,29 @@ const TIMEOUTS = {
   vitest: 120_000,
 } as const;
 
+const DEFAULT_CONVEX_TSCONFIG = `${JSON.stringify(
+  {
+    compilerOptions: {
+      allowJs: true,
+      strict: true,
+      moduleResolution: "Bundler",
+      jsx: "react-jsx",
+      skipLibCheck: true,
+      allowSyntheticDefaultImports: true,
+      target: "ESNext",
+      lib: ["ES2021", "dom"],
+      forceConsistentCasingInFileNames: true,
+      module: "ESNext",
+      isolatedModules: true,
+      noEmit: true,
+    },
+    include: ["./**/*"],
+    exclude: ["./_generated"],
+  },
+  null,
+  2,
+)}\n`;
+
 /** Race a promise against a timeout. */
 async function withTimeout<T>(
   promise: Promise<T>,
@@ -119,6 +142,22 @@ export function getTypecheckTargets(projectDir: string): string[] {
   if (existsSync(rootTsconfig)) return [rootTsconfig];
   if (existsSync(convexTsconfig)) return [convexTsconfig];
   return [convexDir];
+}
+
+export function ensureConvexTsconfig(projectDir: string): void {
+  const convexDir = resolve(join(projectDir, "convex"));
+  const rootTsconfig = resolve(join(projectDir, "tsconfig.json"));
+  const convexTsconfig = resolve(join(convexDir, "tsconfig.json"));
+
+  if (
+    !existsSync(convexDir) ||
+    existsSync(rootTsconfig) ||
+    existsSync(convexTsconfig)
+  ) {
+    return;
+  }
+
+  writeFileSync(convexTsconfig, DEFAULT_CONVEX_TSCONFIG, "utf-8");
 }
 
 // ── Scoring context ───────────────────────────────────────────────────
@@ -351,6 +390,7 @@ export async function convexScorer(
     }
 
     // Typecheck
+    ensureConvexTsconfig(outputProjectDir);
     const tscResult = await ctx.runStep(
       "tsc",
       "Passes tsc",

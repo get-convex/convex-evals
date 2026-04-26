@@ -11,6 +11,7 @@ import { join, resolve } from "path";
 import { tmpdir } from "os";
 import { rmSync } from "fs";
 import {
+  ensureConvexTsconfig,
   getTypecheckTargets,
   isInfrastructureStepFailure,
   walkAnswer,
@@ -269,6 +270,43 @@ describe("typecheck target selection", () => {
     expect(getTypecheckTargets(projectDir)).toEqual([
       resolve(join(projectDir, "convex")),
     ]);
+  });
+});
+
+describe("Convex tsconfig seeding", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), "convex-tsconfig-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("creates a default convex tsconfig when missing", () => {
+    const projectDir = join(tempDir, "project");
+    mkdirSync(join(projectDir, "convex"), { recursive: true });
+
+    ensureConvexTsconfig(projectDir);
+
+    expect(existsSync(join(projectDir, "convex", "tsconfig.json"))).toBe(true);
+    expect(getTypecheckTargets(projectDir)).toEqual([
+      resolve(join(projectDir, "convex", "tsconfig.json")),
+    ]);
+  });
+
+  it("preserves an existing root tsconfig", () => {
+    const projectDir = join(tempDir, "project");
+    mkdirSync(join(projectDir, "convex"), { recursive: true });
+    writeFileSync(join(projectDir, "tsconfig.json"), '{"compilerOptions":{}}');
+
+    ensureConvexTsconfig(projectDir);
+
+    expect(existsSync(join(projectDir, "convex", "tsconfig.json"))).toBe(false);
+    expect(readFileSync(join(projectDir, "tsconfig.json"), "utf-8")).toBe(
+      '{"compilerOptions":{}}',
+    );
   });
 });
 
