@@ -169,6 +169,7 @@ export const completeEval = mutation({
       v.object({
         kind: v.literal("passed"),
         durationMs: v.number(),
+        generationDurationMs: v.optional(v.number()),
         outputStorageId: v.optional(v.id("_storage")),
         usage: v.optional(languageModelUsage),
       }),
@@ -176,6 +177,7 @@ export const completeEval = mutation({
         kind: v.literal("failed"),
         failureReason: v.string(),
         durationMs: v.number(),
+        generationDurationMs: v.optional(v.number()),
         outputStorageId: v.optional(v.id("_storage")),
         usage: v.optional(languageModelUsage),
       }),

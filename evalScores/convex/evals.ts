@@ -67,8 +67,21 @@ export const completeEval = internalMutation({
   args: {
     evalId: v.id("evals"),
     status: v.union(
-      v.object({ kind: v.literal("passed"), durationMs: v.number(), outputStorageId: v.optional(v.id("_storage")), usage: v.optional(languageModelUsage) }),
-      v.object({ kind: v.literal("failed"), failureReason: v.string(), durationMs: v.number(), outputStorageId: v.optional(v.id("_storage")), usage: v.optional(languageModelUsage) }),
+      v.object({
+        kind: v.literal("passed"),
+        durationMs: v.number(),
+        generationDurationMs: v.optional(v.number()),
+        outputStorageId: v.optional(v.id("_storage")),
+        usage: v.optional(languageModelUsage),
+      }),
+      v.object({
+        kind: v.literal("failed"),
+        failureReason: v.string(),
+        durationMs: v.number(),
+        generationDurationMs: v.optional(v.number()),
+        outputStorageId: v.optional(v.id("_storage")),
+        usage: v.optional(languageModelUsage),
+      }),
     ),
   },
   returns: v.null(),

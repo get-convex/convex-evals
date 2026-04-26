@@ -62,16 +62,19 @@ export function computeRunCostUsd(evals: Doc<"evals">[]): number | null {
 }
 
 export function computeRunDurationMs(evals: Doc<"evals">[]): number | null {
+  // Leaderboard speed compares mean model generation time per completed eval.
+  // Older evals fall back to scorer duration until the generation backfill runs.
   let total = 0;
   let completedCount = 0;
   for (const evalDoc of evals) {
     const status = evalDoc.status;
     if (status.kind !== "passed" && status.kind !== "failed") continue;
-    if (!Number.isFinite(status.durationMs)) continue;
-    total += status.durationMs;
+    const durationMs = status.generationDurationMs ?? status.durationMs;
+    if (!Number.isFinite(durationMs)) continue;
+    total += durationMs;
     completedCount++;
   }
-  return completedCount > 0 ? total : null;
+  return completedCount > 0 ? total / completedCount : null;
 }
 
 export function computeRunScores(

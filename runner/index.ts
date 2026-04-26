@@ -611,16 +611,18 @@ async function processOneEval(
 
   if (generateResult !== null) {
     const { files: output, usage, rawResponse } = generateResult;
+    const generationDurationMs = Date.now() - evalStartTime;
 
     if (usage) {
       metadata.usage = usage;
     }
+    metadata.generationDurationMs = generationDurationMs;
     if (Object.keys(output).length === 0) {
       metadata.raw_model_response_debug = truncateRawModelResponse(rawResponse);
       metadata.raw_model_response_length = rawResponse.length;
     }
 
-    const generateDuration = ((Date.now() - evalStartTime) / 1000).toFixed(1);
+    const generateDuration = (generationDurationMs / 1000).toFixed(1);
     logInfo(
       `[${evalPathStr}] Model responded (${generateDuration}s), scoring...`,
     );
@@ -665,6 +667,7 @@ async function processOneEval(
       kind: "failed",
       failureReason: `${prefix}error: ${errorStr}`,
       durationMs: Date.now() - evalStartTime,
+      generationDurationMs: Date.now() - evalStartTime,
       usage: undefined,
     });
   }

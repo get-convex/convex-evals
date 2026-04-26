@@ -262,6 +262,7 @@ type EvalCompleteStatus =
   | {
       kind: "passed";
       durationMs: number;
+      generationDurationMs?: number;
       outputStorageId?: Id<"_storage">;
       usage?: LanguageModelUsage;
     }
@@ -269,6 +270,7 @@ type EvalCompleteStatus =
       kind: "failed";
       failureReason: string;
       durationMs: number;
+      generationDurationMs?: number;
       outputStorageId?: Id<"_storage">;
       usage?: LanguageModelUsage;
     };
@@ -276,8 +278,19 @@ type EvalCompleteStatus =
 export async function completeEval(
   evalId: string,
   status:
-    | { kind: "passed"; durationMs: number; usage?: LanguageModelUsage }
-    | { kind: "failed"; failureReason: string; durationMs: number; usage?: LanguageModelUsage },
+    | {
+        kind: "passed";
+        durationMs: number;
+        generationDurationMs?: number;
+        usage?: LanguageModelUsage;
+      }
+    | {
+        kind: "failed";
+        failureReason: string;
+        durationMs: number;
+        generationDurationMs?: number;
+        usage?: LanguageModelUsage;
+      },
   outputDir?: string,
 ): Promise<boolean> {
   let outputStorageId: Id<"_storage"> | undefined;

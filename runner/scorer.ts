@@ -179,6 +179,7 @@ class ScoringContext {
     readonly evalId: string | undefined,
     readonly outputProjectDir: string,
     readonly usage?: LanguageModelUsage,
+    readonly generationDurationMs?: number,
     readonly metadata: Record<string, unknown> = {},
   ) {
     this.evalPrefix = `${category}/${name}`;
@@ -243,6 +244,7 @@ class ScoringContext {
           kind: "failed",
           failureReason,
           durationMs: Date.now() - this.evalStartTime,
+          generationDurationMs: this.generationDurationMs,
           usage: this.usage,
         },
         this.outputProjectDir,
@@ -264,6 +266,7 @@ class ScoringContext {
         { 
           kind: "passed", 
           durationMs: evalDuration,
+          generationDurationMs: this.generationDurationMs,
           usage: this.usage,
         },
         this.outputProjectDir,
@@ -284,6 +287,7 @@ class ScoringContext {
           kind: "failed",
           failureReason: failureReasons[0] ?? "unknown fail",
           durationMs: evalDuration,
+          generationDurationMs: this.generationDurationMs,
           usage: this.usage,
         },
         this.outputProjectDir,
@@ -333,6 +337,9 @@ export async function convexScorer(
   const name = metadata.eval_name as string;
   const evalId = metadata.eval_id as string | undefined;
   const usage = metadata.usage as LanguageModelUsage | undefined;
+  const generationDurationMs = metadata.generationDurationMs as
+    | number
+    | undefined;
 
   const outputProjectDir = resolve(
     join(tempdir, "output", model, category, name),
@@ -345,6 +352,7 @@ export async function convexScorer(
     evalId,
     outputProjectDir,
     usage,
+    generationDurationMs,
     metadata,
   );
 

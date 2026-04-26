@@ -54,8 +54,21 @@ export const runStatus = v.union(
 export const evalStatus = v.union(
   v.object({ kind: v.literal("pending") }),
   v.object({ kind: v.literal("running"), outputStorageId: v.optional(v.id("_storage")) }),
-  v.object({ kind: v.literal("passed"), durationMs: v.number(), outputStorageId: v.optional(v.id("_storage")), usage: v.optional(languageModelUsage) }),
-  v.object({ kind: v.literal("failed"), failureReason: v.string(), durationMs: v.number(), outputStorageId: v.optional(v.id("_storage")), usage: v.optional(languageModelUsage) }),
+  v.object({
+    kind: v.literal("passed"),
+    durationMs: v.number(),
+    generationDurationMs: v.optional(v.number()),
+    outputStorageId: v.optional(v.id("_storage")),
+    usage: v.optional(languageModelUsage),
+  }),
+  v.object({
+    kind: v.literal("failed"),
+    failureReason: v.string(),
+    durationMs: v.number(),
+    generationDurationMs: v.optional(v.number()),
+    outputStorageId: v.optional(v.id("_storage")),
+    usage: v.optional(languageModelUsage),
+  }),
 );
 
 export const stepStatus = v.union(
