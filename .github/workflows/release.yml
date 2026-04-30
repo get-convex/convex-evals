@@ -26,6 +26,9 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Check guidelines formatting
+        run: bun run format-check:guidelines
+
       - name: Build Release Files
         run: bun run buildRelease.ts
 
