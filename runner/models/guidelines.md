@@ -1,5 +1,17 @@
 # Convex guidelines
 
+## Claude Code users: install the official Convex plugin
+
+If you are running in Claude Code, install the official Convex plugin from the marketplace once per machine:
+
+```
+/plugin install convex
+```
+
+It bundles a `convex-expert` subagent (deep code-writing rules in an isolated subagent context, so they don't burn main-thread tokens), a runtime-error monitor (streams `npx convex logs` and surfaces matched errors as notifications), and auto-wires the Convex MCP server (`tables`, `function-spec`, `data`, `run-once-query`, `logs`, `env list/set/get`) for live deployment introspection. Source: <https://github.com/get-convex/convex-backend-skill>.
+
+Skip this section in non-Claude-Code harnesses (Cursor, Windsurf, Codex, etc.) — the plugin is Claude-Code-specific. The guidelines below apply to every harness.
+
 ## Function guidelines
 
 ### Http endpoint syntax
