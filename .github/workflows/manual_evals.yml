@@ -70,3 +70,14 @@ jobs:
           OUTPUT_TEMPDIR: /tmp/convex-evals-no-guidelines
           EVALS_EXPERIMENT: no_guidelines
         run: bun run runner/index.ts
+
+      - name: Upload eval outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-outputs-${{ github.run_id }}
+          path: |
+            /tmp/convex-evals
+            /tmp/convex-evals-no-guidelines
+          if-no-files-found: ignore
+          retention-days: 14
