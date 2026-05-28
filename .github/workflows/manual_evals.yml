@@ -62,6 +62,7 @@ jobs:
       - name: Run evaluations
         env:
           OUTPUT_TEMPDIR: /tmp/convex-evals
+          OPENROUTER_CONCURRENCY: ${{ contains(inputs.models, 'claude-code') && '2' || '4' }}
         run: bun run runner/index.ts
 
       - name: Run evaluations (no_guidelines experiment)
@@ -69,6 +70,7 @@ jobs:
         env:
           OUTPUT_TEMPDIR: /tmp/convex-evals-no-guidelines
           EVALS_EXPERIMENT: no_guidelines
+          OPENROUTER_CONCURRENCY: ${{ contains(inputs.models, 'claude-code') && '2' || '4' }}
         run: bun run runner/index.ts
 
       - name: Upload eval outputs
