@@ -50,6 +50,7 @@ jobs:
         run: |
           npm install -g @anthropic-ai/claude-code
           claude --version
+          claude plugin marketplace update claude-plugins-official
           claude plugin install convex@claude-plugins-official
           ls -la "$HOME/.claude/plugins" || true
 
