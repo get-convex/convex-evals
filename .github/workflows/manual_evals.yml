@@ -29,6 +29,7 @@ jobs:
       ENVIRONMENT: ci
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
     steps:
       - uses: actions/checkout@v4

@@ -260,6 +260,30 @@ export async function resolveModel(modelName: string): Promise<{
     };
   }
 
+  const claudeCodeModels: Record<
+    string,
+    { runnableName: string; formattedName: string }
+  > = {
+    "claude-code/opus-4.7": {
+      runnableName: "claude-opus-4-7",
+      formattedName: "Claude Code (Opus 4.7)",
+    },
+  };
+  const claudeCodeModel = claudeCodeModels[modelName];
+  if (claudeCodeModel) {
+    return {
+      model: {
+        ...resolveModelDefaults(modelName),
+        runnableName: claudeCodeModel.runnableName,
+        formattedName: claudeCodeModel.formattedName,
+        baseURL: "claude-code",
+        apiKind: "claude-code",
+      },
+      discovered: true,
+      provider: "anthropic",
+    };
+  }
+
   const info = await discoverOpenRouterModel(modelName).catch(() => null);
   const defaults = resolveModelDefaults(modelName);
   return {

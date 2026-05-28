@@ -32,6 +32,7 @@ describe("ALL_MODELS", () => {
     expect(ALL_MODELS).toContain("anthropic/claude-opus-4.6");
     expect(ALL_MODELS).toContain("anthropic/claude-opus-4.7");
     expect(ALL_MODELS).toContain("anthropic/claude-opus-4.8");
+    expect(ALL_MODELS).toContain("claude-code/opus-4.7");
     expect(ALL_MODELS).toContain("deepseek/deepseek-v4-pro");
     expect(ALL_MODELS).toContain("moonshotai/kimi-k2.6");
     expect(ALL_MODELS).toContain("google/gemini-2.5-flash");

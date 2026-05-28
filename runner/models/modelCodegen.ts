@@ -11,7 +11,9 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import MarkdownIt from "markdown-it";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { readFileSync, existsSync } from "fs";
+import { mkdirSync, mkdtempSync, readFileSync, existsSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import {
   type ResolvedModel,
   OPENROUTER_BASE_URL,
@@ -322,7 +324,9 @@ export class Model {
     this.resolved = model;
     this.apiKey = apiKey;
     this.languageModel =
-      model.apiKind === "cursor-sdk" ? null : createLanguageModel(model, apiKey);
+      model.apiKind === "cursor-sdk" || model.apiKind === "claude-code"
+        ? null
+        : createLanguageModel(model, apiKey);
   }
 
   async generate(prompt: string): Promise<{
@@ -330,6 +334,13 @@ export class Model {
     usage?: LanguageModelUsage;
     rawResponse: string;
   }> {
+    if (this.resolved.apiKind === "claude-code") {
+      // Claude Code runs in agentic workspace mode: the agent's own system
+      // prompt is used (no override), no guidelines or file-format instructions
+      // are injected, and the raw task description is the user prompt.
+      return this.generateWithClaudeCode(prompt);
+    }
+
     const userPrompt = renderPrompt(prompt);
     const useWebSearch = isWebSearchEnabled();
 
@@ -471,6 +482,64 @@ export class Model {
         timeToFirstTokenMs: result.timeToFirstTokenMs,
       }),
       rawResponse: result.text,
+    };
+  }
+
+  private async generateWithClaudeCode(taskDescription: string): Promise<{
+    files: Record<string, string>;
+    usage?: LanguageModelUsage;
+    rawResponse: string;
+  }> {
+    const helperPath = fileURLToPath(
+      new URL("./claudeCodeGenerate.mjs", import.meta.url),
+    );
+
+    const workspaceRoot = join(tmpdir(), "convex-evals-claude-code");
+    mkdirSync(workspaceRoot, { recursive: true });
+    const workspacePath = mkdtempSync(join(workspaceRoot, "ws-"));
+
+    const raw = execFileSync("bun", [helperPath], {
+      input: JSON.stringify({
+        runnableName: this.resolved.runnableName,
+        formattedName: this.resolved.formattedName,
+        userPrompt: taskDescription,
+        workspacePath,
+      }),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        ANTHROPIC_API_KEY: this.apiKey,
+      },
+      maxBuffer: 50 * 1024 * 1024,
+    });
+
+    const result = JSON.parse(raw) as {
+      ok: boolean;
+      files: Record<string, string>;
+      usage?: LanguageModelUsage;
+      rawResponse: string;
+      timeToFirstTokenMs?: number;
+      numTurns?: number;
+      stopReason?: string | null;
+      resultSubtype?: string;
+      assistantError?: string;
+    };
+
+    if (!result.ok) {
+      const reason =
+        result.assistantError ??
+        result.resultSubtype ??
+        result.stopReason ??
+        "unknown";
+      logInfo(
+        `[claude-code] run completed without success: ${reason} (turns=${result.numTurns ?? "?"})`,
+      );
+    }
+
+    return {
+      files: result.files,
+      usage: result.usage,
+      rawResponse: result.rawResponse,
     };
   }
 }
