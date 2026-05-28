@@ -5,7 +5,6 @@
 
 export const OPENROUTER_API_KEY_VAR = "OPENROUTER_API_KEY";
 export const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
-export const ANTHROPIC_API_KEY_VAR = "ANTHROPIC_API_KEY";
 export const DEFAULT_MAX_CONCURRENCY = parseInt(
   process.env.OPENROUTER_CONCURRENCY ?? "4",
   10,
@@ -16,7 +15,7 @@ export interface ResolvedModel {
   runnableName: string;
   formattedName: string;
   baseURL: string;
-  apiKind: "chat" | "responses" | "cursor-sdk" | "claude-code";
+  apiKind: "chat" | "responses" | "cursor-sdk";
 }
 
 export function resolveModelDefaults(name: string): ResolvedModel {
@@ -41,7 +40,6 @@ export const ALL_MODELS: string[] = [
   "anthropic/claude-opus-4.6",
   "anthropic/claude-opus-4.7",
   "anthropic/claude-opus-4.8",
-  "claude-code/opus-4.7",
   "openai/o4-mini",
   "openai/gpt-4.1",
   "openai/gpt-5.1",

@@ -25,7 +25,6 @@ import {
   type ResolvedModel,
   resolveModelDefaults,
   OPENROUTER_API_KEY_VAR,
-  ANTHROPIC_API_KEY_VAR,
   DEFAULT_MAX_CONCURRENCY,
 } from "./models/index.js";
 import {
@@ -286,9 +285,7 @@ export async function runEvalsForModel(
         model.name,
         modelDisplayName,
         provider,
-        model.apiKind === "cursor-sdk" || model.apiKind === "claude-code"
-          ? "chat"
-          : model.apiKind,
+        model.apiKind === "cursor-sdk" ? "chat" : model.apiKind,
         metadata?.openRouterFirstSeenAt,
       );
       if (modelId) {
@@ -318,11 +315,7 @@ export async function runEvalsForModel(
     let modelApiKey: string | null = null;
     if (executionMode === "generate") {
       const apiKeyVar =
-        model.apiKind === "cursor-sdk"
-          ? CURSOR_API_KEY_VAR
-          : model.apiKind === "claude-code"
-            ? ANTHROPIC_API_KEY_VAR
-            : OPENROUTER_API_KEY_VAR;
+        model.apiKind === "cursor-sdk" ? CURSOR_API_KEY_VAR : OPENROUTER_API_KEY_VAR;
       const apiKey = process.env[apiKeyVar];
       if (!apiKey) {
         console.error(`${apiKeyVar} is not set`);
@@ -332,7 +325,7 @@ export async function runEvalsForModel(
     }
 
     if (executionMode === "generate" && modelApiKey) {
-      if (model.apiKind !== "cursor-sdk" && model.apiKind !== "claude-code") {
+      if (model.apiKind !== "cursor-sdk") {
         logInfo(`[preflight] Checking endpoint availability for ${model.name}...`);
         try {
           await preflightOpenRouterEndpoint(model, modelApiKey);
