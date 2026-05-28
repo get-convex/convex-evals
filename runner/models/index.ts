@@ -42,6 +42,7 @@ export const ALL_MODELS: string[] = [
   "anthropic/claude-opus-4.7",
   "anthropic/claude-opus-4.8",
   "claude-code/opus-4.7",
+  "claude-code-convex/opus-4.7",
   "openai/o4-mini",
   "openai/gpt-4.1",
   "openai/gpt-5.1",

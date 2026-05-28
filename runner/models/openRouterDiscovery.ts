@@ -268,6 +268,10 @@ export async function resolveModel(modelName: string): Promise<{
       runnableName: "claude-opus-4-7",
       formattedName: "Claude Code (Opus 4.7)",
     },
+    "claude-code-convex/opus-4.7": {
+      runnableName: "claude-opus-4-7",
+      formattedName: "Claude Code + Convex Plugin (Opus 4.7)",
+    },
   };
   const claudeCodeModel = claudeCodeModels[modelName];
   if (claudeCodeModel) {
