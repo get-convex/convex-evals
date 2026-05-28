@@ -511,6 +511,7 @@ export class Model {
         ANTHROPIC_API_KEY: this.apiKey,
       },
       maxBuffer: 50 * 1024 * 1024,
+      stdio: ["pipe", "pipe", "inherit"],
     });
 
     const result = JSON.parse(raw) as {

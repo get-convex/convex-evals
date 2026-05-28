@@ -63,6 +63,7 @@ const wallTimer = setTimeout(() => abortController.abort(), maxWallMs);
 const requestStartedAt = Date.now();
 let timeToFirstTokenMs;
 const assistantTextChunks = [];
+const toolCallCounts = {};
 let resultMessage;
 let assistantError;
 
@@ -74,6 +75,8 @@ try {
       model: runnableName,
       abortController,
       tools: { type: "preset", preset: "claude_code" },
+      permissionMode: "bypassPermissions",
+      allowDangerouslySkipPermissions: true,
       env: {
         ...process.env,
         ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
@@ -92,6 +95,8 @@ try {
       for (const block of message.message?.content ?? []) {
         if (block.type === "text" && typeof block.text === "string") {
           assistantTextChunks.push(block.text);
+        } else if (block.type === "tool_use" && typeof block.name === "string") {
+          toolCallCounts[block.name] = (toolCallCounts[block.name] ?? 0) + 1;
         }
       }
     } else if (message.type === "result") {
@@ -103,7 +108,6 @@ try {
         message.num_turns !== undefined &&
         message.num_turns >= maxTurns
       ) {
-        // SDK enforces max turns via options; keep this as a hard ceiling.
         abortController.abort();
       }
     }
@@ -111,6 +115,10 @@ try {
 } finally {
   clearTimeout(wallTimer);
 }
+
+process.stderr.write(
+  `[claude-code] ${formattedName} done: subtype=${resultMessage?.subtype ?? "none"} turns=${resultMessage?.num_turns ?? "?"} stop=${resultMessage?.stop_reason ?? "?"} tools=${JSON.stringify(toolCallCounts)} text=${assistantTextChunks.join("").length}ch\n`,
+);
 
 const SKIP_DIRS = new Set([
   "node_modules",
@@ -172,6 +180,7 @@ const usage = resultMessage?.usage
         numTurns: resultMessage.num_turns,
         stopReason: resultMessage.stop_reason,
         terminalReason: resultMessage.terminal_reason,
+        toolCallCounts,
         assistantError,
         formattedName,
         ...resultMessage.usage,
