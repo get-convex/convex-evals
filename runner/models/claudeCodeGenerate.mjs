@@ -4,8 +4,14 @@ import {
   writeFileSync,
   readdirSync,
   mkdirSync,
+  existsSync,
+  openSync,
+  closeSync,
+  unlinkSync,
+  cpSync,
 } from "fs";
-import { join, relative } from "path";
+import { execFileSync } from "node:child_process";
+import { join, relative, dirname } from "path";
 
 const stdinChunks = [];
 for await (const chunk of process.stdin) stdinChunks.push(chunk);
@@ -20,42 +26,92 @@ const {
   maxWallMs = 10 * 60 * 1000,
 } = input;
 
-mkdirSync(join(workspacePath, "convex"), { recursive: true });
-writeFileSync(
-  join(workspacePath, "package.json"),
-  JSON.stringify(
-    {
-      name: "convex-eval-workspace",
-      version: "0.0.0",
-      private: true,
-      type: "module",
-      dependencies: { convex: "^1.31.2" },
-      devDependencies: { typescript: "^5.7.3" },
-    },
-    null,
-    2,
-  ) + "\n",
-);
-writeFileSync(
-  join(workspacePath, "tsconfig.json"),
-  JSON.stringify(
-    {
-      compilerOptions: {
-        target: "ES2022",
-        module: "ESNext",
-        moduleResolution: "Bundler",
-        strict: true,
-        skipLibCheck: true,
-        forceConsistentCasingInFileNames: true,
-        esModuleInterop: true,
-        isolatedModules: true,
+// Pre-baked template directory: contains package.json, tsconfig.json,
+// a fully populated node_modules from `bun install`, and a stub
+// convex/_generated/ that satisfies TS imports.
+// The template is created by a workflow step before any eval runs;
+// per-eval we just copy it so the agent has a real environment and
+// doesn't spend its budget rerunning install/codegen.
+const TEMPLATE_DIR = process.env.CLAUDE_CODE_TEMPLATE_DIR ?? "/tmp/agent-template";
+
+function bakeTemplate() {
+  const readyMarker = join(TEMPLATE_DIR, ".ready");
+  if (existsSync(readyMarker)) return;
+
+  // Acquire exclusive lock so only one subprocess does the install.
+  // Sibling lockfile (not inside TEMPLATE_DIR) so it survives mkdir.
+  mkdirSync(dirname(TEMPLATE_DIR), { recursive: true });
+  const lockPath = `${TEMPLATE_DIR}.lock`;
+  let lockFd;
+  try {
+    lockFd = openSync(lockPath, "wx");
+  } catch (err) {
+    if (err.code !== "EEXIST") throw err;
+    // Another subprocess is baking; wait for the ready marker.
+    const start = Date.now();
+    while (!existsSync(readyMarker)) {
+      if (Date.now() - start > 5 * 60 * 1000) {
+        throw new Error("Timed out waiting for agent template bake");
+      }
+      execFileSync("sleep", ["1"]);
+    }
+    return;
+  }
+
+  try {
+    mkdirSync(join(TEMPLATE_DIR, "convex"), { recursive: true });
+  writeFileSync(
+    join(TEMPLATE_DIR, "package.json"),
+    JSON.stringify(
+      {
+        name: "convex-eval-workspace",
+        version: "0.0.0",
+        private: true,
+        type: "module",
+        dependencies: { convex: "^1.31.2" },
+        devDependencies: { typescript: "^5.7.3" },
       },
-      include: ["convex/**/*.ts"],
-    },
-    null,
-    2,
-  ) + "\n",
-);
+      null,
+      2,
+    ) + "\n",
+  );
+  writeFileSync(
+    join(TEMPLATE_DIR, "tsconfig.json"),
+    JSON.stringify(
+      {
+        compilerOptions: {
+          target: "ES2022",
+          module: "ESNext",
+          moduleResolution: "Bundler",
+          strict: true,
+          skipLibCheck: true,
+          forceConsistentCasingInFileNames: true,
+          esModuleInterop: true,
+          isolatedModules: true,
+        },
+        include: ["convex/**/*.ts"],
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+    execFileSync("bun", ["install"], {
+      cwd: TEMPLATE_DIR,
+      stdio: "inherit",
+    });
+    writeFileSync(readyMarker, "");
+  } finally {
+    closeSync(lockFd);
+    try {
+      unlinkSync(lockPath);
+    } catch {
+      // Best effort.
+    }
+  }
+}
+
+bakeTemplate();
+cpSync(TEMPLATE_DIR, workspacePath, { recursive: true });
 
 const abortController = new AbortController();
 const wallTimer = setTimeout(() => abortController.abort(), maxWallMs);

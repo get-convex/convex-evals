@@ -54,6 +54,39 @@ jobs:
           claude plugin install convex@claude-plugins-official
           ls -la "$HOME/.claude/plugins" || true
 
+      - name: Pre-bake claude-code agent workspace template
+        if: contains(inputs.models, 'claude-code')
+        run: |
+          mkdir -p /tmp/agent-template/convex
+          cat > /tmp/agent-template/package.json <<'EOF'
+          {
+            "name": "convex-eval-workspace",
+            "version": "0.0.0",
+            "private": true,
+            "type": "module",
+            "dependencies": { "convex": "^1.31.2" },
+            "devDependencies": { "typescript": "^5.7.3" }
+          }
+          EOF
+          cat > /tmp/agent-template/tsconfig.json <<'EOF'
+          {
+            "compilerOptions": {
+              "target": "ES2022",
+              "module": "ESNext",
+              "moduleResolution": "Bundler",
+              "strict": true,
+              "skipLibCheck": true,
+              "forceConsistentCasingInFileNames": true,
+              "esModuleInterop": true,
+              "isolatedModules": true
+            },
+            "include": ["convex/**/*.ts"]
+          }
+          EOF
+          cd /tmp/agent-template && bun install
+          touch /tmp/agent-template/.ready
+          du -sh /tmp/agent-template
+
       - name: Create temp directory
         run: mkdir -p /tmp/convex-evals
 
