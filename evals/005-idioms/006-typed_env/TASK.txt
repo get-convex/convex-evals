@@ -1,0 +1,15 @@
+Create a backend that exposes typed application configuration from Convex environment variables.
+
+Use Convex's typed environment variable API to declare these app environment variables:
+- `SUPPORT_EMAIL`: optional string
+- `DEPLOYMENT_STAGE`: optional literal union of `"dev"`, `"preview"`, or `"prod"`
+
+Create `convex/config.ts` with a public query `getSupportConfig` that:
+- Takes no arguments
+- Does not read these app-specific variables from `process.env`
+- Returns an object with:
+  - `supportEmail`: the configured support email, or `null` when it is not set
+  - `deploymentStage`: the configured deployment stage, or `"dev"` when it is not set
+  - `isConfigured`: `true` when `SUPPORT_EMAIL` is set, otherwise `false`
+
+No schema is required.

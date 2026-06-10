@@ -21,4 +21,11 @@ describe("guidelines", () => {
     expect(md).toContain("```typescript");
     expect(md).toContain("```ts");
   });
+
+  it("documents typed env and nullability guidance", () => {
+    const md = getGuidelines();
+    expect(md).toContain("convex/convex.config.ts");
+    expect(md).toContain('import { env } from "./_generated/server"');
+    expect(md).toContain("v.optional(v.union(v.null(), v.string()))");
+  });
 });
