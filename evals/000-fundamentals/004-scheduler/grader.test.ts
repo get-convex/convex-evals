@@ -1,6 +1,14 @@
 import { expect, test } from "vitest";
-import { responseClient, responseAdminClient } from "../../../grader";
+import {
+  compareFunctionSpec,
+  responseClient,
+  responseAdminClient,
+} from "../../../grader";
 import { api, internal } from "./answer/convex/_generated/api";
+
+test("compare function spec", async ({ skip }) => {
+  await compareFunctionSpec(skip);
+});
 
 test("callerMutation schedules tasks and returns null", async () => {
   expect(await responseClient.mutation(api.index.callerMutation, {})).toBe(
@@ -26,12 +34,6 @@ test("internal logMutation returns null and is private", async () => {
   ).toBe(null);
 
   await expect(
-    responseClient.mutation(internal.index.logMutation as any, {
-      message: "Hello, world!",
-    }),
-  ).rejects.toThrow(/Could not find public function/);
-
-  await expect(
     responseAdminClient.mutation(internal.index.logMutation as any, {
       message: 123 as unknown as string,
     }),
@@ -44,12 +46,6 @@ test("internal logAction returns null and is private", async () => {
       message: "Hello, world!",
     }),
   ).toBe(null);
-
-  await expect(
-    responseClient.action(internal.index.logAction as any, {
-      message: "Hello, world!",
-    }),
-  ).rejects.toThrow(/Could not find public function/);
 
   await expect(
     responseAdminClient.action(internal.index.logAction as any, {

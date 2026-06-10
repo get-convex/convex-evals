@@ -1,6 +1,13 @@
 import { expect, test } from "vitest";
-import { responseAdminClient, responseClient } from "../../../grader";
+import {
+  compareFunctionSpec,
+  responseAdminClient,
+} from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
+
+test("compare function spec", async ({ skip }) => {
+  await compareFunctionSpec(skip);
+});
 
 test("callerMutation chains calls correctly", async () => {
   const result = await responseAdminClient.mutation(
@@ -16,7 +23,6 @@ test("callerMutation chains calls correctly", async () => {
     responseAdminClient.mutation(api.index.callerMutation, { x: 1 } as any),
   ).rejects.toThrow(/ArgumentValidationError/);
 });
-
 test("callerAction chains calls correctly", async () => {
   const result = await responseAdminClient.action(api.index.callerAction, {});
   // calleeQuery(1,2) = 3
@@ -68,43 +74,4 @@ test("internal functions work correctly", async () => {
       y: 3,
     })
   ).rejects.toThrow(/ArgumentValidationError/);
-});
-
-test("functions are not accessible from wrong client type", async () => {
-  let error: any = undefined;
-
-  // Query should not be callable as mutation
-  try {
-    // @ts-ignore
-    await responseAdminClient.mutation(api.index.calleeQuery, {
-      x: 1,
-      y: 2,
-    });
-  } catch (e) {
-    error = e;
-  }
-  expect(error).toBeDefined();
-
-  // Mutation should not be callable as action
-  error = undefined;
-  try {
-    // @ts-ignore
-    await responseAdminClient.action(api.index.calleeMutation, {
-      x: 1,
-      y: 2,
-    });
-  } catch (e) {
-    error = e;
-  }
-  expect(error).toBeDefined();
-
-  // Action should not be callable as query
-  error = undefined;
-  try {
-    // @ts-ignore
-    await responseAdminClient.query(api.index.calleeAction, { x: 1, y: 2 });
-  } catch (e) {
-    error = e;
-  }
-  expect(error).toBeDefined();
 });

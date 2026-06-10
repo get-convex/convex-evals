@@ -6,6 +6,10 @@ import {
 } from "../../../grader";
 import { api, internal } from "./answer/convex/_generated/api";
 
+test("compare function spec", async ({ skip }) => {
+  await compareFunctionSpec(skip);
+});
+
 test("getPublicStats returns correct static data", async () => {
   const stats = await responseClient.query(api.index.getPublicStats, {});
 
@@ -52,26 +56,12 @@ test("logClientEvent handles different data types", async () => {
   }
 });
 
-test("dailyCleanup is not accessible to regular clients", async () => {
-  await expect(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    responseClient.action(internal.index.dailyCleanup as any, {}),
-  ).rejects.toThrow();
-});
-
 test("dailyCleanup is accessible to admin clients", async () => {
   // Should not throw
   await expect(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     responseAdminClient.action(internal.index.dailyCleanup as any, {}),
   ).resolves.toBeNull();
-});
-
-test("resetCounter is not accessible to regular clients", async () => {
-  await expect(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    responseClient.mutation(internal.index.resetCounter as any, {}),
-  ).rejects.toThrow();
 });
 
 test("resetCounter is accessible to admin clients", async () => {
@@ -118,17 +108,7 @@ test("function visibility is correctly set", async () => {
     }),
   ).resolves.toBeDefined();
 
-  // Internal functions should not be accessible to regular clients
-  await expect(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    responseClient.action(internal.index.dailyCleanup as any, {}),
-  ).rejects.toThrow();
-  await expect(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    responseClient.mutation(internal.index.resetCounter as any, {}),
-  ).rejects.toThrow();
-
-  // But should be accessible to admin clients
+  // Internal functions should be accessible to admin clients.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await expect(
     responseAdminClient.action(internal.index.dailyCleanup as any, {}),

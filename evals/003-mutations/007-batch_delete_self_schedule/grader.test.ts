@@ -34,23 +34,14 @@ test("deleteActivityLogs removes entries for the given workspace", async () => {
   // Small delay to allow any scheduled follow-ups to complete
   await new Promise((resolve) => setTimeout(resolve, 1000));
 
-  const ws1 = await responseClient.query(anyApi.index.listActivityLogs ?? anyApi.index.getActivityLogs, {
-    workspaceId: "ws-1",
-  }).catch(() => null);
-
-  // If the model didn't create a list/get query, check via admin client
-  if (ws1 === null) {
-    const allDocs = await responseAdminClient.query(
-      "_system/frontend/listTableScan" as any,
-      { table: "activityLog", limit: 100 },
-    );
-    const ws1Docs = allDocs.filter((d: any) => d.workspaceId === "ws-1");
-    const ws2Docs = allDocs.filter((d: any) => d.workspaceId === "ws-2");
-    expect(ws1Docs).toHaveLength(0);
-    expect(ws2Docs).toHaveLength(2);
-  } else {
-    expect(ws1).toHaveLength(0);
-  }
+  const allDocs = await responseAdminClient.query(
+    "_system/frontend/listTableScan" as any,
+    { table: "activityLog", limit: 100 },
+  );
+  const ws1Docs = allDocs.filter((d: any) => d.workspaceId === "ws-1");
+  const ws2Docs = allDocs.filter((d: any) => d.workspaceId === "ws-2");
+  expect(ws1Docs).toHaveLength(0);
+  expect(ws2Docs).toHaveLength(2);
 });
 
 test("deleteActivityLogs does nothing for a workspace with no entries", async () => {
