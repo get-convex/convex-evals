@@ -32,8 +32,10 @@ interface FrontendModelSearchResponse {
 interface OpenRouterModelCatalogEntry {
   id?: string;
   canonical_slug?: string;
+  name?: string;
   created?: number;
   architecture?: {
+    input_modalities?: string[];
     output_modalities?: string[];
   };
 }
@@ -44,6 +46,8 @@ interface OpenRouterModelCatalogResponse {
 
 interface OpenRouterCatalogData {
   createdAtBySlug: Map<string, number>;
+  formattedNameBySlug: Map<string, string>;
+  inputModalitiesBySlug: Map<string, string[]>;
   outputModalitiesBySlug: Map<string, string[]>;
 }
 
@@ -73,6 +77,8 @@ async function getOpenRouterCatalog(): Promise<OpenRouterCatalogData | null> {
     if (!Array.isArray(payload.data)) return null;
 
     const createdAtBySlug = new Map<string, number>();
+    const formattedNameBySlug = new Map<string, string>();
+    const inputModalitiesBySlug = new Map<string, string[]>();
     const outputModalitiesBySlug = new Map<string, string[]>();
 
     for (const entry of payload.data) {
@@ -80,9 +86,19 @@ async function getOpenRouterCatalog(): Promise<OpenRouterCatalogData | null> {
       if (typeof entry.id === "string") slugs.push(entry.id);
       if (typeof entry.canonical_slug === "string") slugs.push(entry.canonical_slug);
 
+      if (typeof entry.name === "string" && entry.name.trim().length > 0) {
+        const formattedName = entry.name.trim();
+        for (const slug of slugs) formattedNameBySlug.set(slug, formattedName);
+      }
+
       if (typeof entry.created === "number") {
         const createdMs = toUnixMs(entry.created);
         for (const slug of slugs) createdAtBySlug.set(slug, createdMs);
+      }
+
+      const inputModalities = entry.architecture?.input_modalities;
+      if (Array.isArray(inputModalities)) {
+        for (const slug of slugs) inputModalitiesBySlug.set(slug, inputModalities);
       }
 
       const modalities = entry.architecture?.output_modalities;
@@ -91,10 +107,38 @@ async function getOpenRouterCatalog(): Promise<OpenRouterCatalogData | null> {
       }
     }
 
-    return { createdAtBySlug, outputModalitiesBySlug };
+    return {
+      createdAtBySlug,
+      formattedNameBySlug,
+      inputModalitiesBySlug,
+      outputModalitiesBySlug,
+    };
   })();
 
   return openRouterCatalogPromise;
+}
+
+async function discoverOpenRouterModelFromCatalog(
+  modelName: string,
+): Promise<DiscoveredModelInfo | null> {
+  const catalog = await getOpenRouterCatalog();
+  const formattedName = catalog?.formattedNameBySlug.get(modelName);
+  const openRouterFirstSeenAt = catalog?.createdAtBySlug.get(modelName);
+  const inputModalities = catalog?.inputModalitiesBySlug.get(modelName);
+  const outputModalities = catalog?.outputModalitiesBySlug.get(modelName);
+
+  if (!formattedName && !openRouterFirstSeenAt && !inputModalities && !outputModalities) {
+    return null;
+  }
+
+  return {
+    formattedName,
+    provider: modelName.includes("/") ? modelName.split("/")[0] : "openrouter",
+    openRouterFirstSeenAt,
+    inputModalities,
+    outputModalities,
+    hasTextOutput: outputModalities ? outputModalities.includes("text") : undefined,
+  };
 }
 
 function inferApiKind(
@@ -167,9 +211,7 @@ export async function discoverOpenRouterModel(
   });
 
   if (!response.ok) {
-    throw new Error(
-      `Failed to discover OpenRouter model "${modelName}": ${response.status} ${response.statusText}`,
-    );
+    return await discoverOpenRouterModelFromCatalog(modelName);
   }
 
   const payload = (await response.json()) as FrontendModelSearchResponse;
@@ -181,22 +223,23 @@ export async function discoverOpenRouterModel(
   }
 
   const exactMatch = models.find((model) => model.slug === modelName);
-  if (!exactMatch) return null;
+  if (!exactMatch) return await discoverOpenRouterModelFromCatalog(modelName);
 
+  const catalog = await getOpenRouterCatalog();
   const formattedName =
     typeof exactMatch.name === "string" && exactMatch.name.trim().length > 0
       ? exactMatch.name.trim()
-      : undefined;
+      : catalog?.formattedNameBySlug.get(modelName);
 
   const provider =
     exactMatch.endpoint?.provider_slug ??
     (modelName.includes("/") ? modelName.split("/")[0] : "openrouter");
   const runnableName = exactMatch.endpoint?.model_variant_slug ?? undefined;
-  const catalog = await getOpenRouterCatalog();
   const openRouterFirstSeenAt = catalog?.createdAtBySlug.get(modelName);
-  const inputModalities = Array.isArray(exactMatch.input_modalities)
-    ? exactMatch.input_modalities
-    : undefined;
+  const inputModalities =
+    Array.isArray(exactMatch.input_modalities)
+      ? exactMatch.input_modalities
+      : catalog?.inputModalitiesBySlug.get(modelName);
   const outputModalities =
     Array.isArray(exactMatch.output_modalities)
       ? exactMatch.output_modalities
