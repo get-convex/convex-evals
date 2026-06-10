@@ -9,10 +9,15 @@ afterEach(() => {
 
 describe("resolveModel", () => {
   it("falls back to the OpenRouter catalog when frontend search misses", async () => {
-    const mockFetch = async (input: RequestInfo | URL) => {
-      const url = String(input);
+    const mockFetch = async (
+      input: RequestInfo | URL,
+    ): Promise<Response> => {
+      const url = input instanceof Request ? input.url : input.toString();
       if (url.includes("/api/frontend/models/find")) {
-        return new Response("not found", { status: 404, statusText: "Not Found" });
+        return new Response("not found", {
+          status: 404,
+          statusText: "Not Found",
+        });
       }
 
       if (url.includes("/api/v1/models")) {
