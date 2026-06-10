@@ -81,7 +81,8 @@ test("organization data model works correctly", async () => {
   const janeId = (employees.at(-1) as { _id: string })._id;
   expect(janeId).toBeDefined();
 
-  // Update department with manager (handle either managerId or manager string)
+  // Update department with manager. The task says manager is optional and
+  // relationships should use ids, so accept both managerId and manager id.
   try {
     await addDocuments(responseAdminClient, deptTable, [
       {
@@ -91,13 +92,23 @@ test("organization data model works correctly", async () => {
       },
     ]);
   } catch (_e) {
-    await addDocuments(responseAdminClient, deptTable, [
-      {
-        name: "Engineering",
-        organizationId: orgId,
-        manager: "Jane",
-      },
-    ]);
+    try {
+      await addDocuments(responseAdminClient, deptTable, [
+        {
+          name: "Engineering",
+          organizationId: orgId,
+          manager: janeId as unknown as string,
+        },
+      ]);
+    } catch (_e) {
+      await addDocuments(responseAdminClient, deptTable, [
+        {
+          name: "Engineering",
+          organizationId: orgId,
+          manager: "Jane",
+        },
+      ]);
+    }
   }
 });
 
