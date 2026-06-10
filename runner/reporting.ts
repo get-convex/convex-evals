@@ -392,12 +392,12 @@ export function printEvalSummary(
     const cat = stats.get(r.category) ?? { count: 0, score: 0, passed: 0 };
     cat.count++;
     cat.score += r.tests_pass_score;
-    if (r.tests_pass_score >= 1) cat.passed++;
+    if (r.passed) cat.passed++;
     stats.set(r.category, cat);
 
     totalTests++;
     totalScore += r.tests_pass_score;
-    if (r.tests_pass_score >= 1) totalPassed++;
+    if (r.passed) totalPassed++;
     
     if (r.usage) {
       runInputTokens += r.usage.inputTokens ?? 0;
@@ -405,22 +405,25 @@ export function printEvalSummary(
     }
   }
 
-  const overallRate = totalTests > 0 ? totalScore / totalTests : 0;
+  const overallPassRate = totalTests > 0 ? totalPassed / totalTests : 0;
+  const averageTestsScore = totalTests > 0 ? totalScore / totalTests : 0;
 
   logInfo("");
   logInfo("=== Eval Summary ===");
   logInfo(`Model: ${modelName}`);
   logInfo(
-    `Overall: ${(overallRate * 100).toFixed(2)}% (${totalPassed} pass, ${totalTests - totalPassed} fail)`,
+    `Overall: ${(overallPassRate * 100).toFixed(2)}% (${totalPassed} pass, ${totalTests - totalPassed} fail)`,
   );
+  logInfo(`Average tests score: ${(averageTestsScore * 100).toFixed(2)}%`);
   if (runInputTokens > 0 || runOutputTokens > 0) {
     logInfo(`Tokens: ${runInputTokens.toLocaleString()} input, ${runOutputTokens.toLocaleString()} output`);
   }
 
   for (const [category, cat] of [...stats.entries()].sort()) {
-    const rate = cat.count > 0 ? cat.score / cat.count : 0;
+    const passRate = cat.count > 0 ? cat.passed / cat.count : 0;
+    const averageTestsScore = cat.count > 0 ? cat.score / cat.count : 0;
     logInfo(
-      `- ${category}: ${(rate * 100).toFixed(2)}% (${cat.passed} pass, ${cat.count - cat.passed} fail)`,
+      `- ${category}: ${(passRate * 100).toFixed(2)}% (${cat.passed} pass, ${cat.count - cat.passed} fail), tests score ${(averageTestsScore * 100).toFixed(2)}%`,
     );
   }
 }
