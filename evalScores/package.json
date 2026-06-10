@@ -22,7 +22,7 @@
   "dependencies": {
     "@convex-dev/migrations": "^0.3.1",
     "@types/jszip": "^3.4.1",
-    "convex": "^1.31.2",
+    "convex": "^1.41.0",
     "jszip": "^3.10.1",
     "zod": "^4.2.1"
   }

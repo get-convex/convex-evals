@@ -40,6 +40,8 @@ The evalScores backend has two Convex deployments:
 + **Production**: `https://fabulous-panther-525.convex.cloud` — used by CI/GitHub Actions. The GitHub secret `CONVEX_EVAL_URL` must point to this URL.
 + **Development**: `https://brazen-pelican-414.convex.cloud` — used for local development (`bun run dev` in evalScores/).
 
+Codex worktree setup runs `.codex/environments/setup.mjs`, which installs dependencies and creates ignored `.env.local` files pointing `evalScores` and the visualizer at the development deployment. For existing worktrees or manual repair, run `bun run setup:convex`. `bun run dev` also runs this setup automatically.
+
 The Convex LLM leaderboard (https://www.convex.dev/llm-leaderboard/) uses the dat from the production version of this convex deployment.
 
 The runner communicates with the Convex backend via `ConvexClient` using the public mutations/queries in `evalScores/convex/admin.ts`. Authentication is done via a bearer token passed as an argument to each function (validated against the `authTokens` table). The GitHub secret `CONVEX_AUTH_TOKEN` holds this token for CI.

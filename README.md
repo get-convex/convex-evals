@@ -30,7 +30,14 @@ bun install
 
 echo "ANTHROPIC_API_KEY=<your ANTHROPIC_API_KEY>" > .env
 echo "OPENAI_API_KEY=<your OPENAI_API_KEY>" >> .env
+bun run setup:convex
 ```
+
+`bun run setup:convex` creates ignored `.env.local` files for the shared Convex
+development deployment. Codex worktrees run this automatically via
+`.codex/environments/environment.toml`; run it manually in existing worktrees or
+non-Codex clones before using `evalScores` codegen or the visualizer. `bun run
+dev` also runs it automatically.
 
 ### Using the CLI (recommended)
 

@@ -550,7 +550,7 @@ ${FILE_FORMAT_EXAMPLE}`,
 - Do NOT write to the \`convex/_generated\` folder. You can assume that \`npx convex dev\` will populate this folder.
 - It's VERY IMPORTANT to output files to the correct paths, as specified in the task description.
 - Always start with \`package.json\` and \`tsconfig.json\` files.
-- Use Convex version "^1.31.2".
+- Use Convex version "^1.41.0".
 - Use Typescript version "^5.7.3".`);
 
   sections.push(
