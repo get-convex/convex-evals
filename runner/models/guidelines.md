@@ -1,11 +1,8 @@
 # Convex guidelines
 
+These guidelines target Convex `^1.41.0`.
+
 ## Function guidelines
-
-### Convex package version and generated guidance
-
-- These guidelines target Convex `^1.41.0`. Prefer current Convex APIs from this package version over older examples you may have seen elsewhere.
-- Treat generated Convex AI guidance files as helpful context, but not as a reason to use deprecated or older patterns when these guidelines specify a newer one.
 
 ### Http endpoint syntax
 
@@ -80,14 +77,6 @@ export default defineSchema({
   | Array | Array | `[1, 3.2, "abc"]` | `v.array(values)` | Arrays can have at most 8192 values. |
   | Object | Object | `{a: "abc"}` | `v.object({property: value})` | Convex only supports "plain old JavaScript objects" (objects that do not have a custom prototype). Objects can have at most 1024 entries. Field names must be nonempty and not start with "$" or "_". |
 | Record      | Record      | `{"a": "1", "b": "2"}` | `v.record(keys, values)`                       | Records are objects at runtime, but can have dynamic keys. Keys must be only ASCII characters, nonempty, and not start with "$" or "\_". |
-
-### Null, undefined, and optional fields
-
-- Use `null` when a value is explicitly empty and should be serialized through Convex. Use `v.null()` or `v.union(v.null(), ...)` to validate this.
-- Use `v.optional(...)` when an object field may be missing. An optional field is `undefined` in TypeScript when omitted.
-- To allow both missing and explicitly null values, combine them: `v.optional(v.union(v.null(), v.string()))`.
-- Do not put `undefined` inside arrays or return it as part of a Convex value. Use `null` for explicit empty array elements or return values.
-- When using `ctx.db.patch`, setting a field to `undefined` removes that field. Setting a field to `null` stores `null`.
 
 ### Function registration
 
@@ -240,44 +229,8 @@ export const exampleQuery = query({
 
 ## Environment variable guidelines
 
-- For app-specific Convex environment variables, declare them in `convex/convex.config.ts` with `defineApp({ env: { ... } })` and validators from `convex/values`.
-- Import typed environment variables from `./_generated/server` with `import { env } from "./_generated/server";` and prefer `env.MY_KEY` over `process.env.MY_KEY` for declared app variables.
-- Use `v.optional(...)` for env vars that are allowed to be absent. Required env vars must be set in every deployment before deploy.
-- `env` works in queries, mutations, actions, and HTTP actions. It gives build-time typo checking and deploy-time validation.
-- System environment variables like `CONVEX_CLOUD_URL` and `CONVEX_SITE_URL` are always available through `process.env`.
-- Do not conditionally define Convex function exports based on environment variables. Convex decides which functions exist at deployment time, not when env vars later change.
-
-Example:
-
-```ts
-// convex/convex.config.ts
-import { defineApp } from "convex/server";
-import { v } from "convex/values";
-
-export default defineApp({
-  env: {
-    SUPPORT_EMAIL: v.optional(v.string()),
-    LOG_LEVEL: v.optional(
-      v.union(v.literal("debug"), v.literal("info"), v.literal("error")),
-    ),
-  },
-});
-```
-
-```ts
-// convex/config.ts
-import { query, env } from "./_generated/server";
-
-export const getSupportConfig = query({
-  args: {},
-  handler: async () => {
-    return {
-      supportEmail: env.SUPPORT_EMAIL ?? null,
-      logLevel: env.LOG_LEVEL ?? "info",
-    };
-  },
-});
-```
+- Declare app-specific Convex environment variables in `convex/convex.config.ts` with `defineApp({ env: { MY_KEY: v.optional(v.string()) } })`.
+- Read declared app variables with `env` from `./_generated/server`, e.g. `import { query, env } from "./_generated/server";`. Use `process.env` for system variables like `CONVEX_SITE_URL`.
 
 ## Full text search guidelines
 
