@@ -24,7 +24,7 @@ export const createEval = internalMutation({
     });
     
     // Update experiment total evals count
-    const run = await ctx.db.get(args.runId);
+    const run = await ctx.db.get("runs", args.runId);
     if (run) {
       const expName = run.experiment ?? "default";
       const experiment = await ctx.db
@@ -33,7 +33,7 @@ export const createEval = internalMutation({
         .unique();
       
       if (experiment) {
-        await ctx.db.patch(experiment._id, {
+        await ctx.db.patch("experiments", experiment._id, {
           totalEvals: experiment.totalEvals + 1,
         });
       }
@@ -50,12 +50,12 @@ export const updateEvalOutput = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const evalDoc = await ctx.db.get(args.evalId);
+    const evalDoc = await ctx.db.get("evals", args.evalId);
     if (!evalDoc) return null;
 
     // Only update if the eval is still running
     if (evalDoc.status.kind === "running") {
-      await ctx.db.patch(args.evalId, {
+      await ctx.db.patch("evals", args.evalId, {
         status: { ...evalDoc.status, outputStorageId: args.outputStorageId },
       });
     }
@@ -86,16 +86,16 @@ export const completeEval = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const evalDoc = await ctx.db.get(args.evalId);
+    const evalDoc = await ctx.db.get("evals", args.evalId);
     if (!evalDoc) return null;
     
-    await ctx.db.patch(args.evalId, {
+    await ctx.db.patch("evals", args.evalId, {
       status: args.status,
     });
     
     // Update experiment passed evals count if this eval passed
     if (args.status.kind === "passed") {
-      const run = await ctx.db.get(evalDoc.runId);
+      const run = await ctx.db.get("runs", evalDoc.runId);
       if (run) {
         const expName = run.experiment ?? "default";
         const experiment = await ctx.db
@@ -104,7 +104,7 @@ export const completeEval = internalMutation({
           .unique();
         
         if (experiment) {
-          await ctx.db.patch(experiment._id, {
+          await ctx.db.patch("experiments", experiment._id, {
             passedEvals: experiment.passedEvals + 1,
           });
         }

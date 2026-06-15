@@ -64,7 +64,7 @@ export const validateToken = internalMutation({
     }
 
     // Update the lastUsed timestamp
-    await ctx.db.patch(token._id, {
+    await ctx.db.patch("authTokens", token._id, {
       lastUsed: Date.now(),
     });
 
@@ -107,13 +107,13 @@ export const deleteToken = internalMutation({
   },
   returns: v.boolean(),
   handler: async (ctx, args) => {
-    const token = await ctx.db.get(args.tokenId);
+    const token = await ctx.db.get("authTokens", args.tokenId);
 
     if (!token) {
       return false;
     }
 
-    await ctx.db.delete(args.tokenId);
+    await ctx.db.delete("authTokens", args.tokenId);
     return true;
   },
 });

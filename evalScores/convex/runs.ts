@@ -80,7 +80,7 @@ export const createRun = internalMutation({
       const models = existing.models.includes(modelId)
         ? existing.models
         : [...existing.models, modelId];
-      await ctx.db.patch(existing._id, {
+      await ctx.db.patch("experiments", existing._id, {
         runCount: existing.runCount + 1,
         models,
         latestRunTime: now,
@@ -111,10 +111,10 @@ export const completeRun = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const run = await ctx.db.get(args.runId);
+    const run = await ctx.db.get("runs", args.runId);
     if (!run) return null;
     
-    await ctx.db.patch(args.runId, {
+    await ctx.db.patch("runs", args.runId, {
       status: args.status,
     });
     
@@ -126,7 +126,7 @@ export const completeRun = internalMutation({
       .unique();
     
     if (experiment && args.status.kind === "completed") {
-      await ctx.db.patch(experiment._id, {
+      await ctx.db.patch("experiments", experiment._id, {
         completedRuns: experiment.completedRuns + 1,
       });
     }
@@ -149,7 +149,7 @@ export const deleteRun = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const run = await ctx.db.get(args.runId);
+    const run = await ctx.db.get("runs", args.runId);
     if (!run) return null;
 
     // Collect all evals for this run
@@ -186,11 +186,11 @@ export const deleteRun = internalMutation({
         .withIndex("by_evalId", (q) => q.eq("evalId", evalDoc._id))
         .collect();
       for (const step of steps) {
-        await ctx.db.delete(step._id);
+        await ctx.db.delete("steps", step._id);
       }
 
       // Delete the eval
-      await ctx.db.delete(evalDoc._id);
+      await ctx.db.delete("evals", evalDoc._id);
     }
 
     // Delete associated storage files (output zips)
@@ -208,7 +208,7 @@ export const deleteRun = internalMutation({
     if (experiment) {
       const wasCompleted =
         run.status.kind === "completed" || run.status.kind === "failed";
-      await ctx.db.patch(experiment._id, {
+      await ctx.db.patch("experiments", experiment._id, {
         runCount: Math.max(0, experiment.runCount - 1),
         completedRuns: Math.max(
           0,
@@ -220,7 +220,7 @@ export const deleteRun = internalMutation({
     }
 
     // Delete the run itself
-    await ctx.db.delete(args.runId);
+    await ctx.db.delete("runs", args.runId);
 
     // Recompute the leaderboard row for this model now that a run is gone
     if (run.modelId) {
@@ -239,9 +239,9 @@ export const getRunDetails = query({
     runId: v.id("runs"),
   },
   handler: async (ctx, args) => {
-    const run = await ctx.db.get(args.runId);
+    const run = await ctx.db.get("runs", args.runId);
     if (!run) return null;
-    const model = run.modelId ? await ctx.db.get(run.modelId) : null;
+    const model = run.modelId ? await ctx.db.get("models", run.modelId) : null;
 
     const evals = await ctx.db
       .query("evals")

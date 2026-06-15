@@ -74,7 +74,7 @@ export const updateRequest = internalMutation({
     completedAt: v.number(),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.requestId, {
+    await ctx.db.patch("requests", args.requestId, {
       status: args.status,
       completedAt: args.completedAt,
     });

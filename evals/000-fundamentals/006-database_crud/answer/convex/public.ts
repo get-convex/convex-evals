@@ -17,7 +17,7 @@ export const readLocation = query({
     id: v.id("locations"),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.id);
+    return await ctx.db.get("locations", args.id);
   },
 });
 
@@ -29,11 +29,11 @@ export const updateLocation = mutation({
     longitude: v.number(),
   },
   handler: async (ctx, args) => {
-    const existing = await ctx.db.get(args.id);
+    const existing = await ctx.db.get("locations", args.id);
     if (!existing) {
       throw new Error("Location not found");
     }
-    await ctx.db.replace(args.id, {
+    await ctx.db.replace("locations", args.id, {
       name: args.name,
       latitude: args.latitude,
       longitude: args.longitude,
@@ -47,7 +47,7 @@ export const patchLocation = mutation({
     name: v.string(),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.id, {
+    await ctx.db.patch("locations", args.id, {
       name: args.name,
     });
   },
@@ -58,6 +58,6 @@ export const deleteLocation = mutation({
     id: v.id("locations"),
   },
   handler: async (ctx, args) => {
-    await ctx.db.delete(args.id);
+    await ctx.db.delete("locations", args.id);
   },
 });

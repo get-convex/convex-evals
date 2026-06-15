@@ -167,7 +167,7 @@ export const recomputeModelScores = internalMutation({
       .unique();
 
     if (scoredRuns.length === 0) {
-      if (existing) await ctx.db.delete(existing._id);
+      if (existing) await ctx.db.delete("modelScores", existing._id);
       return null;
     }
 
@@ -219,7 +219,7 @@ export const recomputeModelScores = internalMutation({
     };
 
     if (existing) {
-      await ctx.db.patch(existing._id, row);
+      await ctx.db.patch("modelScores", existing._id, row);
     } else {
       await ctx.db.insert("modelScores", row);
     }

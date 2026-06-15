@@ -7,7 +7,7 @@ export const deleteUserAndDocuments = mutation({
   },
   handler: async (ctx, args) => {
     // First, verify the user exists
-    const user = await ctx.db.get(args.userId);
+    const user = await ctx.db.get("users", args.userId);
     if (!user) {
       throw new Error(`User with ID ${args.userId} not found`);
     }
@@ -20,11 +20,11 @@ export const deleteUserAndDocuments = mutation({
 
     // Delete all documents in parallel
     await Promise.all(
-      documents.map(async (doc) => ctx.db.delete(doc._id))
+      documents.map(async (doc) => ctx.db.delete("documents", doc._id))
     );
 
     // Delete the user
-    await ctx.db.delete(args.userId);
+    await ctx.db.delete("users", args.userId);
 
     return null;
   },

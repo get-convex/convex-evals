@@ -32,7 +32,7 @@ export const upsertFromSlug = internalMutation({
       .unique();
 
     if (existing) {
-      await ctx.db.patch(existing._id, {
+      await ctx.db.patch("models", existing._id, {
         formattedName: args.formattedName,
         provider,
         apiKind,

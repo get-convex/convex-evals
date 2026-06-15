@@ -4,7 +4,7 @@ import { v } from "convex/values";
 export const get = query({
   args: { id: v.id("users") },
   handler: async (ctx, args) => {
-    const user = await ctx.db.get(args.id);
+    const user = await ctx.db.get("users", args.id);
     if (!user) {
       throw new Error("User not found");
     }
@@ -31,11 +31,11 @@ export const destroy = mutation({
     id: v.id("users"),
   },
   handler: async (ctx, args) => {
-    const existing = await ctx.db.get(args.id);
+    const existing = await ctx.db.get("users", args.id);
     if (!existing) {
       throw new Error("User not found");
     }
-    await ctx.db.delete(args.id);
+    await ctx.db.delete("users", args.id);
     return null;
   },
 });

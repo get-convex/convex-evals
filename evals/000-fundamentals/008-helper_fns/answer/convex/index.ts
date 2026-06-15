@@ -14,7 +14,7 @@ async function getItemData(
   ctx: QueryCtx,
   itemId: Id<"items">,
 ): Promise<FormattedItemData | null> {
-  const item = await ctx.db.get(itemId);
+  const item = await ctx.db.get("items", itemId);
   if (!item) {
     return null;
   }
@@ -47,7 +47,7 @@ export const updateItem = mutation({
     quantity: v.number(),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.itemId, {
+    await ctx.db.patch("items", args.itemId, {
       quantity: args.quantity,
       lastModified: Date.now(),
     });

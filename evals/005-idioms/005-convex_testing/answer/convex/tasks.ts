@@ -31,7 +31,7 @@ export const complete = mutation({
   args: { id: v.id("tasks") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.id, { isCompleted: true });
+    await ctx.db.patch("tasks", args.id, { isCompleted: true });
     return null;
   },
 });
@@ -40,7 +40,7 @@ export const remove = mutation({
   args: { id: v.id("tasks") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await ctx.db.delete(args.id);
+    await ctx.db.delete("tasks", args.id);
     return null;
   },
 });

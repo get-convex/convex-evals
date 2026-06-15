@@ -7,11 +7,11 @@ export const updateUserEmail = mutation({
     email: v.string(),
   }),
   handler: async (ctx, args) => {
-    const user = await ctx.db.get(args.id);
+    const user = await ctx.db.get("users", args.id);
     if (user == null) {
       throw new Error("User not found");
     }
-    await ctx.db.patch(args.id, { email: args.email });
+    await ctx.db.patch("users", args.id, { email: args.email });
     return null;
   },
 });

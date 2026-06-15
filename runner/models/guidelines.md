@@ -244,7 +244,7 @@ q.search("body", "hello hi").eq("channel", "#general"),
 - Do NOT use `filter` in queries. Instead, define an index in the schema and use `withIndex` instead.
 - If the user does not explicitly tell you to return all results from a query you should ALWAYS return a bounded collection instead. So that is instead of using `.collect()` you should use `.take()` or paginate on database queries. This prevents future performance issues when tables grow in an unbounded way.
 - Never use `.collect().length` to count rows. Convex has no built-in count operator, so if you need a count that stays efficient at scale, maintain a denormalized counter in a separate document and update it in your mutations.
-- Convex queries do NOT support `.delete()`. If you need to delete all documents matching a query, use `.take(n)` to read them in batches, iterate over each batch calling `ctx.db.delete(row._id)`, and repeat until no more results are returned.
+- Convex queries do NOT support `.delete()`. If you need to delete all documents matching a query, use `.take(n)` to read them in batches, iterate over each batch calling `ctx.db.delete("tasks", row._id)`, and repeat until no more results are returned.
 - Convex mutations are transactions with limits on the number of documents read and written. If a mutation needs to process more documents than fit in a single transaction (e.g. bulk deletion on a large table), process a batch with `.take(n)` and then call `ctx.scheduler.runAfter(0, api.myModule.myMutation, args)` to schedule itself to continue. This way each invocation stays within transaction limits.
 - Use `.unique()` to get a single document from a query. This method will throw an error if there are multiple documents that match the query.
 - When using async iteration, don't use `.collect()` or `.take(n)` on the result of a query. Instead, use the `for await (const row of query)` syntax.
@@ -257,8 +257,8 @@ q.search("body", "hello hi").eq("channel", "#general"),
 
 ## Mutation guidelines
 
-- Use `ctx.db.replace` to fully replace an existing document. This method will throw an error if the document does not exist. Syntax: `await ctx.db.replace('tasks', taskId, { name: 'Buy milk', completed: false })`
-- Use `ctx.db.patch` to shallow merge updates into an existing document. This method will throw an error if the document does not exist. Syntax: `await ctx.db.patch('tasks', taskId, { completed: true })`
+- Use `ctx.db.replace` to fully replace an existing document. This method will throw an error if the document does not exist. Syntax: `await ctx.db.replace("tasks", taskId, { name: "Buy milk", completed: false })`
+- Use `ctx.db.patch` to shallow merge updates into an existing document. This method will throw an error if the document does not exist. Syntax: `await ctx.db.patch("tasks", taskId, { completed: true })`
 
 ## Action guidelines
 

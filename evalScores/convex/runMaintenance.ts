@@ -45,7 +45,7 @@ export const failStuckRuns = internalMutation({
       if (run.status.kind !== "pending" && run.status.kind !== "running") continue;
 
       const elapsedMs = now - run._creationTime;
-      await ctx.db.patch(run._id, {
+      await ctx.db.patch("runs", run._id, {
         status: {
           kind: "failed",
           failureReason: `Run stuck in "${run.status.kind}" state for ${Math.round(elapsedMs / 1000 / 60)} minutes — auto-failed by maintenance cron`,

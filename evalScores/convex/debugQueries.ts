@@ -8,7 +8,7 @@ import { v } from "convex/values";
 export const getEvalRecord = internalQuery({
   args: { evalId: v.id("evals") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.evalId);
+    return await ctx.db.get("evals", args.evalId);
   },
 });
 
@@ -25,14 +25,14 @@ export const getStepsForEval = internalQuery({
 export const getRunRecord = internalQuery({
   args: { runId: v.id("runs") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.runId);
+    return await ctx.db.get("runs", args.runId);
   },
 });
 
 export const getModelRecord = internalQuery({
   args: { modelId: v.id("models") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.modelId);
+    return await ctx.db.get("models", args.modelId);
   },
 });
 
@@ -44,7 +44,7 @@ export const getModelRecord = internalQuery({
 export const getFailedEvalsForRun = internalQuery({
   args: { runId: v.id("runs") },
   handler: async (ctx, args) => {
-    const run = await ctx.db.get(args.runId);
+    const run = await ctx.db.get("runs", args.runId);
     if (!run) return null;
 
     const evals = await ctx.db
@@ -85,7 +85,7 @@ export const getFailedEvalsForRun = internalQuery({
         };
       }),
     );
-    const modelDoc = run.modelId ? await ctx.db.get(run.modelId) : null;
+    const modelDoc = run.modelId ? await ctx.db.get("models", run.modelId) : null;
 
     return {
       run: {

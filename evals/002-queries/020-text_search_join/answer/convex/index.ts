@@ -11,10 +11,14 @@ export const searchPostsWithAuthors = query({
       .collect();
 
     // Transform the results to include author information
-    return await Promise.all(posts.map(async (post) => ({
-      title: post.title,
-      content: post.content,
-      author: (await ctx.db.get(post.authorId))?.name ?? "Unknown Author",
-    })));
+    return await Promise.all(
+      posts.map(async (post) => ({
+        title: post.title,
+        content: post.content,
+        author:
+          (await ctx.db.get("authors", post.authorId))?.name ??
+          "Unknown Author",
+      })),
+    );
   },
 });

@@ -10,7 +10,7 @@ export const recordHeartbeat = mutation({
       .unique();
 
     if (existing) {
-      await ctx.db.patch(existing._id, { lastHeartbeatMs: args.nowMs });
+      await ctx.db.patch("userPresence", existing._id, { lastHeartbeatMs: args.nowMs });
       return existing._id;
     }
 
@@ -36,7 +36,7 @@ export const listOnlineUsers = query({
 
     const joined = await Promise.all(
       activeRows.map(async (presence) => {
-        const user = await ctx.db.get(presence.userId);
+        const user = await ctx.db.get("users", presence.userId);
         if (!user) return null;
         return {
           userId: user._id,

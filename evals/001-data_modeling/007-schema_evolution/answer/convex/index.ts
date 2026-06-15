@@ -27,13 +27,13 @@ export const migrateProduct = mutation({
     productId: v.id("products"),
   },
   handler: async (ctx, args) => {
-    const product = await ctx.db.get(args.productId);
+    const product = await ctx.db.get("products", args.productId);
     if (!product) {
       throw new Error("Product not found");
     }
 
     const updates = migrateProductHelper(product);
-    await ctx.db.patch(product._id, updates);
+    await ctx.db.patch("products", product._id, updates);
   },
 });
 
@@ -45,7 +45,7 @@ export const getProduct = query({
     productId: v.id("products"),
   },
   handler: async (ctx, args) => {
-    const product = await ctx.db.get(args.productId);
+    const product = await ctx.db.get("products", args.productId);
     if (!product) {
       throw new Error("Product not found");
     }

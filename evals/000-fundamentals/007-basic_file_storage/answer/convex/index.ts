@@ -25,7 +25,7 @@ export const getFileUrl = query({
     fileId: v.id("files"),
   },
   handler: async (ctx, args) => {
-    const file = await ctx.db.get(args.fileId);
+    const file = await ctx.db.get("files", args.fileId);
     if (!file) {
       throw new Error("File not found");
     }
@@ -42,11 +42,11 @@ export const getFileMetadata = query({
     fileId: v.id("files"),
   },
   handler: async (ctx, args) => {
-    const file = await ctx.db.get(args.fileId);
+    const file = await ctx.db.get("files", args.fileId);
     if (!file) {
       throw new Error("File not found");
     }
-    const metadata = await ctx.db.system.get(file.storageId);
+    const metadata = await ctx.db.system.get("_storage", file.storageId);
     if (!metadata) {
       throw new Error("File not found");
     }
@@ -59,11 +59,11 @@ export const deleteFile = mutation({
     fileId: v.id("files"),
   },
   handler: async (ctx, args) => {
-    const file = await ctx.db.get(args.fileId);
+    const file = await ctx.db.get("files", args.fileId);
     if (!file) {
       throw new Error("File not found");
     }
     await ctx.storage.delete(file.storageId);
-    await ctx.db.delete(args.fileId);
+    await ctx.db.delete("files", args.fileId);
   },
 });

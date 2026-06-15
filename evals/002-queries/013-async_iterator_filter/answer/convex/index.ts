@@ -9,7 +9,7 @@ export const getTeamsWithDeletedAdmins = query({
     // Get all teams using async iteration
     for await (const team of ctx.db.query("teams")) {
       // Look up the admin user for this team
-      const admin = await ctx.db.get(team.adminId);
+      const admin = await ctx.db.get("users", team.adminId);
 
       // If admin exists and is marked as deleted, add team to results
       if (admin?.deleted) {
