@@ -226,11 +226,7 @@ export const exampleQuery = query({
 ```
 
 - Be strict with types, particularly around id's of documents. For example, if a function takes in an id for a document in the 'users' table, take in `Id<'users'>` rather than `string`.
-
-## Environment variable guidelines
-
-- Declare app-specific Convex environment variables in `convex/convex.config.ts` with `defineApp({ env: { MY_KEY: v.optional(v.string()) } })`.
-- Read declared app variables with `env` from `./_generated/server`, e.g. `import { query, env } from "./_generated/server";`. Use `process.env` for system variables like `CONVEX_SITE_URL`.
+- For typed app environment variables, declare them in `convex/convex.config.ts` with `defineApp({ env: { MY_KEY: v.optional(v.string()) } })` and read them with `env` from `./_generated/server` instead of `process.env`.
 
 ## Full text search guidelines
 
