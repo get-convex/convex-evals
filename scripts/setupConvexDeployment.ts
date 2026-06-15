@@ -2,13 +2,14 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 const devDeployment = "brazen-pelican-414";
+const devDeploymentEnv = `dev:${devDeployment}`;
 const devUrl = `https://${devDeployment}.convex.cloud`;
 
 const envTargets = [
   {
     path: "evalScores/.env.local",
     values: {
-      CONVEX_DEPLOYMENT: devDeployment,
+      CONVEX_DEPLOYMENT: devDeploymentEnv,
       CONVEX_URL: devUrl,
     },
   },
