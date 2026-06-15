@@ -8,7 +8,7 @@ import { internal } from "./_generated/api";
 export const getDocument = mutation({
   args: { documentId: v.id("documents") },
   handler: async (ctx, args) => {
-    const document = await ctx.db.get(args.documentId);
+    const document = await ctx.db.get("documents", args.documentId);
 
     if (!document) {
       throw new Error("Document not found");

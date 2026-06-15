@@ -1,0 +1,53 @@
+Build a small Convex contacts backend that uses the explicit table-name form for all ID-based database reads and writes.
+
+Write this schema to `convex/schema.ts`:
+
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  contacts: defineTable({
+    name: v.string(),
+    email: v.string(),
+    archived: v.boolean(),
+  }),
+});
+```
+
+Implement these functions in `convex/contacts.ts`:
+
+1. A mutation `create` that:
+   - Takes arguments `{ name: string, email: string }`
+   - Inserts a contact with `archived: false`
+   - Returns the new contact ID
+
+2. A query `get` that:
+   - Takes `{ id: Id<"contacts"> }`
+   - Returns the contact document or `null`
+   - Must call `ctx.db.get("contacts", id)`
+
+3. A mutation `rename` that:
+   - Takes `{ id: Id<"contacts">, name: string }`
+   - Throws if the contact does not exist
+   - Updates only the contact name
+   - Must call `ctx.db.patch("contacts", id, ...)`
+
+4. A mutation `replaceContact` that:
+   - Takes `{ id: Id<"contacts">, name: string, email: string, archived: boolean }`
+   - Throws if the contact does not exist
+   - Fully replaces the contact document
+   - Must call `ctx.db.replace("contacts", id, ...)`
+
+5. A mutation `remove` that:
+   - Takes `{ id: Id<"contacts"> }`
+   - Deletes the contact if it exists
+   - Returns `true` if a contact was deleted and `false` otherwise
+   - Must call `ctx.db.delete("contacts", id)`
+
+Important: Use the literal table name `"contacts"` as the first argument to every `ctx.db.get`, `ctx.db.patch`, `ctx.db.replace`, and `ctx.db.delete` call. Do not use legacy forms like `ctx.db.get(id)` or `ctx.db.patch(id, value)`.
+
+Create only these files:
+- `package.json`
+- `convex/schema.ts`
+- `convex/contacts.ts`

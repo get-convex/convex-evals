@@ -18,7 +18,7 @@ export const createTicket = mutation({
       .withIndex("by_orgId", (q) => q.eq("orgId", args.orgId))
       .unique();
     if (existing) {
-      await ctx.db.patch(existing._id, { count: existing.count + 1 });
+      await ctx.db.patch("ticketCounts", existing._id, { count: existing.count + 1 });
     } else {
       await ctx.db.insert("ticketCounts", { orgId: args.orgId, count: 1 });
     }

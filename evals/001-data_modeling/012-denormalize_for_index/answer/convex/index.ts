@@ -13,7 +13,7 @@ export const createDog = mutation({
   },
   handler: async (ctx, args) => {
     // Fetch owner to ensure they exist and get their age
-    const owner = await ctx.db.get(args.ownerId);
+    const owner = await ctx.db.get("owners", args.ownerId);
     if (!owner) {
       throw new Error("Owner not found");
     }
@@ -40,13 +40,13 @@ export const updateOwnerAge = mutation({
   },
   handler: async (ctx, args) => {
     // Check if owner exists
-    const owner = await ctx.db.get(args.ownerId);
+    const owner = await ctx.db.get("owners", args.ownerId);
     if (!owner) {
       throw new Error("Owner not found");
     }
 
     // Update owner's age
-    await ctx.db.patch(args.ownerId, { age: args.newAge });
+    await ctx.db.patch("owners", args.ownerId, { age: args.newAge });
 
     // Update all dogs owned by this owner
     const dogsToUpdate = await ctx.db
@@ -56,7 +56,7 @@ export const updateOwnerAge = mutation({
 
     // Update each dog's denormalized owner age
     for (const dog of dogsToUpdate) {
-      await ctx.db.patch(dog._id, { ownerAge: args.newAge });
+      await ctx.db.patch("dogs", dog._id, { ownerAge: args.newAge });
     }
 
     return null;

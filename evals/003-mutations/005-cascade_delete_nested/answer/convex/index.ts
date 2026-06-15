@@ -5,7 +5,7 @@ export const deleteUser = mutation({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
     // Verify user exists
-    const user = await ctx.db.get(args.userId);
+    const user = await ctx.db.get("users", args.userId);
     if (!user) {
       throw new Error("User not found");
     }
@@ -44,11 +44,11 @@ export const deleteUser = mutation({
 
       // Flatten arrays and delete
       for (const commentId of commentsOnPosts.flat()) {
-        await ctx.db.delete(commentId);
+        await ctx.db.delete("comments", commentId);
       }
 
       for (const likeId of likesOnPosts.flat()) {
-        await ctx.db.delete(likeId);
+        await ctx.db.delete("likes", likeId);
       }
     }
 
@@ -59,7 +59,7 @@ export const deleteUser = mutation({
       .collect();
 
     for (const comment of userComments) {
-      await ctx.db.delete(comment._id);
+      await ctx.db.delete("comments", comment._id);
     }
 
     // Delete all likes made by the user on any post
@@ -69,16 +69,16 @@ export const deleteUser = mutation({
       .collect();
 
     for (const like of userLikes) {
-      await ctx.db.delete(like._id);
+      await ctx.db.delete("likes", like._id);
     }
 
     // Delete all user's posts
     for (const post of userPosts) {
-      await ctx.db.delete(post._id);
+      await ctx.db.delete("posts", post._id);
     }
 
     // Finally, delete the user
-    await ctx.db.delete(args.userId);
+    await ctx.db.delete("users", args.userId);
 
     return null;
   },

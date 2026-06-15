@@ -17,7 +17,7 @@ export const deleteActivityLogs = mutation({
       .take(BATCH_SIZE);
 
     for (const entry of batch) {
-      await ctx.db.delete(entry._id);
+      await ctx.db.delete("activityLog", entry._id);
     }
 
     if (batch.length === BATCH_SIZE) {

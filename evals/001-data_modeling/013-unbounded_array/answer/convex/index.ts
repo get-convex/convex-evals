@@ -33,9 +33,9 @@ export const toggleChecklistItem = mutation({
     itemId: v.id("checklistItems"),
   },
   handler: async (ctx, args) => {
-    const item = await ctx.db.get(args.itemId);
+    const item = await ctx.db.get("checklistItems", args.itemId);
     if (!item) throw new Error("Checklist item not found");
-    await ctx.db.patch(args.itemId, { completed: !item.completed });
+    await ctx.db.patch("checklistItems", args.itemId, { completed: !item.completed });
   },
 });
 

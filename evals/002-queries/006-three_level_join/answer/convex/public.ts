@@ -22,7 +22,7 @@ export const getProAdminsByOrg = query({
             q.eq("teamId", team._id).eq("role", "admin"),
           )
           .collect();
-        return Promise.all(members.map((member) => ctx.db.get(member.userId)));
+        return Promise.all(members.map((member) => ctx.db.get("users", member.userId)));
       }),
     );
 

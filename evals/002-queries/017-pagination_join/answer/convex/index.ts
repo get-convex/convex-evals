@@ -13,7 +13,7 @@ export const paginateMessagesWithAuthors = query({
 
     // Combine message data with author data
     const messagesWithAuthors = await Promise.all(messagesPage.page.map(async (message) => {
-      const author = await ctx.db.get(message.authorId);
+      const author = await ctx.db.get("users", message.authorId);
       if (!author) {
         throw new Error("Author not found");
       }

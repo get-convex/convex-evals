@@ -15,7 +15,7 @@ export const getPost = query({
     authorId: v.id("users"),
   }),
   handler: async (ctx, args) => {
-    const post = await ctx.db.get(args.postId);
+    const post = await ctx.db.get("posts", args.postId);
     if (!post) {
       throw new Error("Post not found");
     }
@@ -46,7 +46,7 @@ export const getPostWithStatus = query({
     }),
   ),
   handler: async (ctx, args) => {
-    const post = await ctx.db.get(args.postId);
+    const post = await ctx.db.get("posts", args.postId);
 
     if (!post) {
       return {
@@ -93,12 +93,12 @@ export const getPostWithAuthor = query({
     ),
   ),
   handler: async (ctx, args) => {
-    const post = await ctx.db.get(args.postId);
+    const post = await ctx.db.get("posts", args.postId);
     if (!post) {
       throw new Error("Post not found");
     }
 
-    const author = await ctx.db.get(post.authorId);
+    const author = await ctx.db.get("users", post.authorId);
     if (!author) {
       throw new Error("Author not found");
     }

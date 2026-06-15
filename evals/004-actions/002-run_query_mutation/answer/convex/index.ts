@@ -25,7 +25,7 @@ export const saveFetchResult = mutation({
       .withIndex("by_url", (q) => q.eq("url", args.url))
       .first();
     if (existing) {
-      await ctx.db.patch(existing._id, { data: args.data });
+      await ctx.db.patch("fetchRequests", existing._id, { data: args.data });
       return existing._id;
     }
     const { url, data } = args;

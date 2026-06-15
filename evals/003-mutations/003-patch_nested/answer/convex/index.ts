@@ -33,12 +33,12 @@ export const patchDocumentMetadata = mutation({
     metadata: schema.tables.documents.validator.fields.metadata,
   },
   handler: async (ctx, args) => {
-    const document = await ctx.db.get(args.documentId);
+    const document = await ctx.db.get("documents", args.documentId);
     if (!document) {
       throw new Error(`Document ${args.documentId} not found`);
     }
 
-    await ctx.db.patch(args.documentId, {
+    await ctx.db.patch("documents", args.documentId, {
       metadata: args.metadata,
     });
     return null;
@@ -51,12 +51,12 @@ export const patchAuthorInfo = mutation({
     author: schema.tables.documents.validator.fields.metadata.fields.author,
   },
   handler: async (ctx, args) => {
-    const document = await ctx.db.get(args.documentId);
+    const document = await ctx.db.get("documents", args.documentId);
     if (!document) {
       throw new Error(`Document ${args.documentId} not found`);
     }
 
-    await ctx.db.patch(args.documentId, {
+    await ctx.db.patch("documents", args.documentId, {
       metadata: {
         ...document.metadata,
         author: args.author,
@@ -71,7 +71,7 @@ export const getDocument = query({
     documentId: v.id("documents"),
   },
   handler: async (ctx, args) => {
-    const document = await ctx.db.get(args.documentId);
+    const document = await ctx.db.get("documents", args.documentId);
     return document;
   },
 });
