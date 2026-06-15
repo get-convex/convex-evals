@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Output top OpenRouter models as JSON for use in CI workflows.
- * We fetch OpenRouter's "top daily" ordering, take the first N unique model
+ * We fetch OpenRouter's top weekly ordering, take the first N unique model
  * slugs, then keep only the models that are due according to the shared model
  * scheduling policy and still look runnable on OpenRouter.
  *
@@ -18,7 +18,7 @@ import {
 import { loadSchedulingDecisions } from "./modelScheduling.js";
 
 const OPENROUTER_TOP_MODELS_URL =
-  "https://openrouter.ai/api/frontend/models/find?order=top-day";
+  "https://openrouter.ai/api/v1/models?sort=top-weekly";
 const DEFAULT_LIMIT = 15;
 
 export interface TopOpenRouterSelectorOptions {
@@ -28,14 +28,12 @@ export interface TopOpenRouterSelectorOptions {
   runnableOnly?: boolean;
 }
 
-interface OpenRouterFrontendModel {
-  slug?: string;
+interface OpenRouterModel {
+  id?: string;
 }
 
-interface OpenRouterFrontendResponse {
-  data?: {
-    models?: OpenRouterFrontendModel[];
-  };
+interface OpenRouterModelsResponse {
+  data?: OpenRouterModel[];
 }
 
 export function shouldSkipForProviderError(error: unknown): boolean {
@@ -81,20 +79,20 @@ export async function fetchTopDailySlugs(): Promise<string[]> {
 
   if (!response.ok) {
     throw new Error(
-      `Failed to fetch OpenRouter top daily models: ${response.status} ${response.statusText}`,
+      `Failed to fetch OpenRouter top weekly models: ${response.status} ${response.statusText}`,
     );
   }
 
-  const payload = (await response.json()) as OpenRouterFrontendResponse;
-  const models = payload.data?.models;
+  const payload = (await response.json()) as OpenRouterModelsResponse;
+  const models = payload.data;
 
   if (!Array.isArray(models)) {
-    throw new Error("Unexpected OpenRouter response shape (missing data.models)");
+    throw new Error("Unexpected OpenRouter response shape (missing data)");
   }
 
   return models
-    .map((model) => model.slug)
-    .filter((slug): slug is string => typeof slug === "string" && slug.length > 0);
+    .map((model) => model.id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
 }
 
 export function selectTopModels(slugs: string[], limit: number): string[] {

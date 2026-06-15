@@ -88,14 +88,14 @@ describe("periodic selector helpers", () => {
     expect(
       mergeModelSources([
         ["curated", ["a", "b"]],
-        ["top-day", ["b", "c", "a"]],
+        ["top-weekly", ["b", "c", "a"]],
       ]),
     ).toEqual({
       models: ["a", "b", "c"],
       modelSources: {
-        a: ["curated", "top-day"],
-        b: ["curated", "top-day"],
-        c: ["top-day"],
+        a: ["curated", "top-weekly"],
+        b: ["curated", "top-weekly"],
+        c: ["top-weekly"],
       },
     });
   });
