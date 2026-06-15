@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "convex": "^1.41.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vitest": "^4.0.0"
+  }
+}

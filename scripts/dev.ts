@@ -2,7 +2,7 @@
  * Dev script that runs evalScores and visualizer concurrently with prefixed output.
  * Usage: bun run dev
  */
-export {};
+import { setupConvexDeployment } from "./setupConvexDeployment";
 
 const services = [
   { name: "evalScores", cmd: ["bun", "run", "dev"], cwd: "evalScores" },
@@ -41,7 +41,9 @@ async function pipeOutput(
   }
 }
 
-console.log("Starting dev servers...\n");
+await setupConvexDeployment();
+
+console.log("\nStarting dev servers...\n");
 
 const procs = services.map((svc, i) => {
   const color = colors[i % colors.length];

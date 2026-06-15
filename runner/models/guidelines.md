@@ -1,5 +1,7 @@
 # Convex guidelines
 
+These guidelines target Convex `^1.41.0`.
+
 ## Function guidelines
 
 ### Http endpoint syntax
@@ -224,6 +226,7 @@ export const exampleQuery = query({
 ```
 
 - Be strict with types, particularly around id's of documents. For example, if a function takes in an id for a document in the 'users' table, take in `Id<'users'>` rather than `string`.
+- For typed app environment variables, declare them in `convex/convex.config.ts` with `defineApp({ env: { MY_KEY: v.optional(v.string()) } })` and read them with `env` from `./_generated/server` instead of `process.env`.
 
 ## Full text search guidelines
 
