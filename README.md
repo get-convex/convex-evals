@@ -234,7 +234,7 @@ bun run scripts/listModels.ts --due-only --format json
 The repo has one scheduled periodic eval workflow:
 
 - `periodic_evals.yml` runs every 4 hours
-- each run unions candidates from curated models, top-day non-curated OpenRouter models, and top OpenRouter benchmark models
+- each run unions candidates from curated models, top-weekly non-curated OpenRouter models, and top OpenRouter benchmark models
 - the combined candidate list is deduped before the workflow matrix expands
 
 The periodic workflow uses the same scheduling policy before it actually queues a model:

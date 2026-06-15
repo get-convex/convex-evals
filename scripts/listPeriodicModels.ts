@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Output periodic workflow models as JSON for use in CI workflows.
- * We gather raw candidates from curated and top-day OpenRouter sources,
+ * We gather raw candidates from curated and top-weekly OpenRouter sources,
  * dedupe once, then apply due and selector preflight filters with detailed
  * logging so it is obvious why each model was kept or skipped.
  *
@@ -35,7 +35,7 @@ const TOP_DAY_LIMIT = 15;
 const PREFLIGHT_MAX_ATTEMPTS = 3;
 const PREFLIGHT_RETRY_DELAYS_MS = [1_000, 2_000];
 
-type ModelSourceName = "curated" | "top-day";
+type ModelSourceName = "curated" | "top-weekly";
 
 export interface MergeModelsResult {
   models: string[];
@@ -126,33 +126,38 @@ async function collectCuratedModels(): Promise<string[]> {
 
 async function collectTopDayModels(): Promise<string[]> {
   logInfo(
-    `[periodic] fetching top-day OpenRouter models, target ${TOP_DAY_LIMIT}`,
+    `[periodic] fetching top-weekly OpenRouter models, target ${TOP_DAY_LIMIT}`,
   );
   const knownModels = new Set(ALL_MODELS);
-  const topSlugs = await fetchTopDailySlugs();
+  const topSlugs = await fetchTopDailySlugs().catch((error) => {
+    logError(
+      `[periodic] top-weekly OpenRouter source unavailable, continuing with curated models only: ${String(error)}`,
+    );
+    return [];
+  });
   const selected: string[] = [];
 
   for (const slug of topSlugs) {
     if (knownModels.has(slug)) {
       logWarning(
-        `[periodic] [top-day] skipping ${slug}: already covered by curated models`,
+        `[periodic] [top-weekly] skipping ${slug}: already covered by curated models`,
       );
       continue;
     }
 
     if (selected.includes(slug)) {
-      logWarning(`[periodic] [top-day] skipping duplicate ${slug}`);
+      logWarning(`[periodic] [top-weekly] skipping duplicate ${slug}`);
       continue;
     }
 
     selected.push(slug);
     logSuccess(
-      `[periodic] [top-day] selected ${slug} (${selected.length}/${TOP_DAY_LIMIT})`,
+      `[periodic] [top-weekly] selected ${slug} (${selected.length}/${TOP_DAY_LIMIT})`,
     );
     if (selected.length >= TOP_DAY_LIMIT) break;
   }
 
-  logInfo(`[periodic] top-day source produced ${selected.length} models`);
+  logInfo(`[periodic] top-weekly source produced ${selected.length} models`);
   return selected;
 }
 
@@ -362,7 +367,7 @@ export async function selectPeriodicModels(): Promise<string[]> {
 
   const sourceEntries: Array<[ModelSourceName, string[]]> = [
     ["curated", curatedModels],
-    ["top-day", topOpenRouterModels],
+    ["top-weekly", topOpenRouterModels],
   ];
   const merged = mergeModelSources(sourceEntries);
 
