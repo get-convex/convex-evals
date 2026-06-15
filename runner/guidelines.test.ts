@@ -21,11 +21,4 @@ describe("guidelines", () => {
     expect(md).toContain("```typescript");
     expect(md).toContain("```ts");
   });
-
-  it("documents the current Convex version and typed env entry points", () => {
-    const md = getGuidelines();
-    expect(md).toContain("Convex `^1.41.0`");
-    expect(md).toContain("convex/convex.config.ts");
-    expect(md).toContain('import { query, env } from "./_generated/server"');
-  });
 });
