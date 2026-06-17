@@ -64,15 +64,15 @@ export async function closeClient(): Promise<void> {
 
 /**
  * Execute a Convex mutation with the auth token.
- * Returns null if the client is not configured.
+ * Returns undefined if the client is not configured.
  */
 async function mutate<T>(
   mutation: Parameters<ConvexClient["mutation"]>[0],
   args: Record<string, unknown>,
-): Promise<T | null> {
+): Promise<T | undefined> {
   const client = getClient();
   const convexAuthToken = getConvexAuthToken();
-  if (!client || !convexAuthToken) return null;
+  if (!client || !convexAuthToken) return undefined;
 
   return (await client.mutation(mutation, {
     token: convexAuthToken,
@@ -82,20 +82,20 @@ async function mutate<T>(
 
 /**
  * Execute a Convex mutation, catching and logging errors.
- * Returns null on failure.
+ * Returns undefined on failure or when reporting is not configured.
  */
 async function safeMutate<T>(
   label: string,
   mutation: Parameters<ConvexClient["mutation"]>[0],
   args: Record<string, unknown>,
-): Promise<T | null> {
+): Promise<T | undefined> {
   try {
     const result = await mutate<T>(mutation, args);
-    if (result !== null) logInfo(`Successfully called ${label}`);
+    if (result !== undefined) logInfo(`Successfully called ${label}`);
     return result;
   } catch (e) {
     logInfo(`Error calling ${label}: ${String(e)}`);
-    return null;
+    return undefined;
   }
 }
 
@@ -112,7 +112,7 @@ export async function startRun(
     return null;
   }
 
-  return safeMutate<string>("startRun", api.admin.startRun, {
+  return (await safeMutate<string>("startRun", api.admin.startRun, {
     modelId: modelId as Id<"models">,
     plannedEvals,
     provider,
@@ -121,7 +121,7 @@ export async function startRun(
       | "web_search"
       | "web_search_no_guidelines"
       | undefined,
-  });
+  })) ?? null;
 }
 
 export async function ensureModelFromSlug(
@@ -163,14 +163,14 @@ export async function completeRun(
     api.admin.completeRun,
     { runId: runId as Id<"runs">, status },
   );
-  return result !== null;
+  return result !== undefined;
 }
 
 export async function deleteRunRecord(runId: string): Promise<boolean> {
   const result = await safeMutate("deleteRun", api.admin.deleteRun, {
     runId: runId as Id<"runs">,
   });
-  return result !== null;
+  return result !== undefined;
 }
 
 // ── Eval lifecycle ────────────────────────────────────────────────────
@@ -183,14 +183,14 @@ export async function startEval(
   task?: string,
   evalSourceStorageId?: string,
 ): Promise<string | null> {
-  return safeMutate<string>("startEval", api.admin.startEval, {
+  return (await safeMutate<string>("startEval", api.admin.startEval, {
     runId: runId as Id<"runs">,
     evalPath,
     category,
     name,
     task,
     evalSourceStorageId: evalSourceStorageId as Id<"_storage"> | undefined,
-  });
+  })) ?? null;
 }
 
 type StepName =
@@ -315,7 +315,7 @@ export async function completeEval(
     api.admin.completeEval,
     { evalId: evalId as Id<"evals">, status: fullStatus },
   );
-  return result !== null;
+  return result !== undefined;
 }
 
 // ── Eval source upload with dedup ─────────────────────────────────────
@@ -586,8 +586,8 @@ async function registerAsset(
     api.admin.registerAsset,
     { hash, assetType, storageId: storageId as Id<"_storage"> },
   );
-  if (result !== null) evalSourceCache.set(hash, storageId);
-  return result !== null;
+  if (result !== undefined) evalSourceCache.set(hash, storageId);
+  return result !== undefined;
 }
 
 function readTaskContent(evalPath: string): string | null {

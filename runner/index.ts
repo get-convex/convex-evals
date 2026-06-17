@@ -39,7 +39,6 @@ import {
   ensureModelFromSlug,
   startRun,
   completeRun,
-  deleteRunRecord,
   startEval,
   completeEval,
   getOrUploadEvalSource,
@@ -415,7 +414,8 @@ export async function runEvalsForModel(
     }
 
     // Invalidate the entire run if any eval reports zero total tokens.
-    // This is treated as corrupted telemetry and should not be stored.
+    // Keep the failed run as scheduling evidence so periodic evals do not
+    // retry the same provider failure on every tick.
     if (executionMode === "generate" && runId) {
       const zeroTokenEval = allResults.find((result) =>
         hasZeroTotalTokens(result.usage),
@@ -423,15 +423,13 @@ export async function runEvalsForModel(
       if (zeroTokenEval) {
         const evalPath = `${zeroTokenEval.category}/${zeroTokenEval.name}`;
         const reason = `[infrastructure] [zero_tokens] Zero total token usage detected for ${evalPath}`;
-        console.error(`Run invalid, deleting ${runId}: ${reason}`);
-        const deleted = await deleteRunRecord(runId);
-        if (deleted) {
-          logInfo(`Deleted run ${runId} due to zero-token eval usage`);
-        } else {
-          logInfo(
-            `Failed to delete run ${runId} after zero-token eval usage detected`,
-          );
-        }
+        console.error(`Run invalid, marking ${runId} failed: ${reason}`);
+        await completeRun(runId, {
+          kind: "failed",
+          failureReason: reason,
+          durationMs: Date.now() - runStartTime,
+        });
+        logInfo(`Marked run ${runId} as failed due to zero-token eval usage`);
         runId = null;
         throw new InfrastructureError(reason);
       }
