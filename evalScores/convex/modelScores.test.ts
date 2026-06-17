@@ -115,6 +115,40 @@ async function createCompletedRun(
   return runId;
 }
 
+async function createFailedRun(
+  t: ReturnType<typeof convexTest>,
+  opts: {
+    model: string;
+    formattedName?: string;
+    experiment?: "no_guidelines";
+    failureReason?: string;
+  },
+): Promise<Id<"runs">> {
+  const runId = await t.mutation(internal.runs.createRun, {
+    model: opts.model,
+    formattedName: opts.formattedName ?? opts.model,
+    provider: "test",
+    plannedEvals: ["cat1/eval1"],
+    experiment: opts.experiment,
+  });
+
+  await t.mutation(internal.runs.completeRun, {
+    runId,
+    status: {
+      kind: "failed",
+      failureReason:
+        opts.failureReason ??
+        "[infrastructure] [zero_tokens] Zero total token usage detected",
+      durationMs: 5000,
+    },
+  });
+
+  vi.runAllTimers();
+  await t.finishInProgressScheduledFunctions();
+
+  return runId;
+}
+
 // ── recomputeModelScores ──────────────────────────────────────────────
 
 describe("recomputeModelScores", () => {
@@ -370,6 +404,57 @@ describe("recomputeModelScores", () => {
     );
     expect(latestNoGuidelinesRunTime).not.toBeNull();
     expect(latestNoGuidelinesRunTime).toBeGreaterThan(defaultLatestRunTime);
+  });
+
+  it("uses failed attempts for scheduling cooldown without changing leaderboard scores", async () => {
+    const t = convexTest(schema, modules);
+
+    vi.setSystemTime(new Date("2026-04-01T00:00:00Z"));
+    await createCompletedRun(t, {
+      model: "model-a",
+      evals: [
+        { category: "cat1", name: "eval1", passed: true, costUsd: 2 },
+      ],
+    });
+
+    const before = await t.query(api.runs.leaderboardScores, {});
+    const modelId = before[0].modelId;
+    const scoredLatestRunId = before[0].latestRunId;
+    const scoredLatestRunTime = before[0].latestRunTime;
+
+    vi.setSystemTime(new Date("2026-04-02T00:00:00Z"));
+    await createFailedRun(t, { model: "model-a" });
+
+    const schedulingStats = await t.query(api.modelScores.getSchedulingStats, {
+      modelId,
+    });
+    expect(schedulingStats?.latestRunTime).toBeGreaterThan(scoredLatestRunTime);
+    expect(schedulingStats?.averageRunCostUsd).toBe(2);
+
+    const after = await t.query(api.runs.leaderboardScores, {});
+    expect(after[0].latestRunId).toBe(scoredLatestRunId);
+    expect(after[0].runCount).toBe(1);
+    expect(after[0].totalScore).toBe(1);
+  });
+
+  it("returns scheduling stats for failed-only models", async () => {
+    const t = convexTest(schema, modules);
+
+    vi.setSystemTime(new Date("2026-04-03T00:00:00Z"));
+    await createFailedRun(t, { model: "model-a" });
+
+    const model = await t.query(api.models.getBySlug, { slug: "model-a" });
+    expect(model).not.toBeNull();
+    const runs = await t.query(api.runs.listRuns, { limit: 1 });
+
+    const schedulingStats = await t.query(api.modelScores.getSchedulingStats, {
+      modelId: model!._id,
+    });
+    expect(schedulingStats?.latestRunTime).toBe(runs[0]._creationTime);
+    expect(schedulingStats?.averageRunCostUsd).toBeNull();
+
+    const leaderboard = await t.query(api.runs.leaderboardScores, {});
+    expect(leaderboard).toHaveLength(0);
   });
 
   it("keeps separate rows per model", async () => {

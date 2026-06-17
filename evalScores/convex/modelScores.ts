@@ -92,6 +92,15 @@ export const getSchedulingStats = query({
     v.null(),
   ),
   handler: async (ctx, args) => {
+    const latestRuns = await ctx.db
+      .query("runs")
+      .withIndex("by_modelId", (q) => q.eq("modelId", args.modelId))
+      .order("desc")
+      .take(50);
+    const latestAttempt = latestRuns.find(
+      (run) => run.experiment === args.experiment,
+    );
+
     const row = await ctx.db
       .query("modelScores")
       .withIndex("by_modelId_experiment", (q) =>
@@ -99,10 +108,10 @@ export const getSchedulingStats = query({
       )
       .unique();
 
-    if (!row) return null;
+    if (!row && !latestAttempt) return null;
     return {
-      latestRunTime: row.latestRunTime,
-      averageRunCostUsd: row.averageRunCostUsd,
+      latestRunTime: latestAttempt?._creationTime ?? row!.latestRunTime,
+      averageRunCostUsd: row?.averageRunCostUsd ?? null,
     };
   },
 });
