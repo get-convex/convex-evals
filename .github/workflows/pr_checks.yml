@@ -15,7 +15,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
 
       - name: Install Bun
         run: npm install -g bun@1.3.8
@@ -30,6 +30,9 @@ jobs:
       - name: Install visualizer dependencies
         working-directory: visualizer
         run: bun install
+
+      - name: Smoke test Cursor SDK import
+        run: bun run smoke:cursor-sdk
 
       - name: Typecheck (runner + evalScores + visualizer)
         run: bun run typecheck
@@ -46,7 +49,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
 
       - name: Install Bun
         run: npm install -g bun@1.3.8
@@ -73,7 +76,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
 
       - name: Install Bun
         run: npm install -g bun@1.3.8
