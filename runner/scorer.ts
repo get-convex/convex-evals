@@ -147,6 +147,76 @@ export function getTypecheckTargets(projectDir: string): string[] {
   return [convexDir];
 }
 
+interface PackageJson {
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  [key: string]: unknown;
+}
+
+/**
+ * The testing guidelines instruct models to add `/// <reference types="vite/client" />`
+ * (required for convex-test's `import.meta.glob`). Models sometimes surface a
+ * `vite/client` reference in a project that never installs vite — as a triple-slash
+ * directive in a non-test file, or as `compilerOptions.types: ["vite/client"]` in a
+ * tsconfig. Either makes tsc fail with TS2688 ("Cannot find type definition file for
+ * 'vite/client'") before the actual Convex code is ever checked, which unfairly tanks
+ * a model's score on otherwise-correct output.
+ *
+ * When the generated project references `vite/client` but has no vite dependency, add
+ * vite as a devDependency so the typecheck measures Convex correctness rather than
+ * tooling-config hygiene. Runs before `bun install`. Returns true if package.json was
+ * modified.
+ */
+export function ensureViteClientTypesResolvable(projectDir: string): boolean {
+  const pkgPath = resolve(join(projectDir, "package.json"));
+  if (!existsSync(pkgPath)) return false;
+  if (!projectReferencesViteClient(projectDir)) return false;
+
+  let pkg: PackageJson;
+  try {
+    pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as PackageJson;
+  } catch {
+    return false;
+  }
+
+  const hasVite =
+    Boolean(pkg.dependencies?.vite) || Boolean(pkg.devDependencies?.vite);
+  if (hasVite) return false;
+
+  pkg.devDependencies = { ...(pkg.devDependencies ?? {}), vite: "latest" };
+  writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`, "utf-8");
+  return true;
+}
+
+/** Whether any source/config file in the project references `vite/client`. */
+function projectReferencesViteClient(projectDir: string): boolean {
+  const stack = [resolve(projectDir)];
+  while (stack.length > 0) {
+    const dir = stack.pop()!;
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (entry.name === "node_modules" || entry.name === "_generated") continue;
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(full);
+        continue;
+      }
+      if (!/\.(ts|tsx|mts|cts|json)$/.test(entry.name)) continue;
+      try {
+        if (readFileSync(full, "utf-8").includes("vite/client")) return true;
+      } catch {
+        // Unreadable file — ignore.
+      }
+    }
+  }
+  return false;
+}
+
 export function ensureConvexTsconfig(projectDir: string): void {
   const convexDir = resolve(join(projectDir, "convex"));
   const rootTsconfig = resolve(join(projectDir, "tsconfig.json"));
@@ -360,6 +430,12 @@ export async function convexScorer(
   const fsStart = Date.now();
   try {
     writeFilesystem(outputProjectDir, output);
+    if (ensureViteClientTypesResolvable(outputProjectDir)) {
+      appendLog(
+        ctx.runLogPath,
+        "[setup] added vite devDependency so a vite/client type reference resolves",
+      );
+    }
     ctx.recordStepResult("filesystem", "Valid filesystem output", true, fsStart);
     if (evalId) {
       void uploadEvalOutput(evalId, outputProjectDir);

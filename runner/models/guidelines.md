@@ -336,6 +336,8 @@ test("some behavior", async () => {
 
 The `modules` argument is required so convex-test can discover and load function files. The `/// <reference types="vite/client" />` directive is needed for TypeScript to recognize `import.meta.glob`.
 
+- Only add the `/// <reference types="vite/client" />` directive at the top of test files that call `import.meta.glob`. Do NOT add it to non-test files, and do NOT add `"vite/client"` to `compilerOptions.types` in `tsconfig.json` — vite is only available in projects that install it for testing, so referencing it elsewhere will fail typechecking.
+
 ## File storage guidelines
 
 - The `ctx.storage.getUrl()` method returns a signed URL for a given file. It returns `null` if the file doesn't exist.
