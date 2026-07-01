@@ -147,74 +147,79 @@ export function getTypecheckTargets(projectDir: string): string[] {
   return [convexDir];
 }
 
-interface PackageJson {
-  dependencies?: Record<string, string>;
-  devDependencies?: Record<string, string>;
+interface Tsconfig {
+  compilerOptions?: { types?: unknown } & Record<string, unknown>;
   [key: string]: unknown;
 }
 
 /**
- * The testing guidelines instruct models to add `/// <reference types="vite/client" />`
- * (required for convex-test's `import.meta.glob`). Models sometimes surface a
- * `vite/client` reference in a project that never installs vite — as a triple-slash
- * directive in a non-test file, or as `compilerOptions.types: ["vite/client"]` in a
- * tsconfig. Either makes tsc fail with TS2688 ("Cannot find type definition file for
- * 'vite/client'") before the actual Convex code is ever checked, which unfairly tanks
- * a model's score on otherwise-correct output.
+ * Models sometimes author a `tsconfig.json` whose `compilerOptions.types` lists type
+ * packages that the project never installs — e.g. `["node"]` without `@types/node`, or
+ * `["vite/client"]` without vite. Any such entry makes tsc fail hard with TS2688
+ * ("Cannot find type definition file for 'X' ... specified in compilerOptions") before
+ * the actual Convex code is ever checked, which unfairly tanks the score on otherwise
+ * correct output.
  *
- * When the generated project references `vite/client` but has no vite dependency, add
- * vite as a devDependency so the typecheck measures Convex correctness rather than
- * tooling-config hygiene. Runs before `bun install`. Returns true if package.json was
- * modified.
+ * A `types` allowlist is essentially never what these evals need (the reference answers
+ * ship no such field). Drop any listed type package that doesn't resolve in the
+ * project's `node_modules`, so the typecheck reflects Convex correctness rather than
+ * tsconfig hygiene. Legitimately-needed types (a model that installs `@types/node` and
+ * lists `node`, or installs vitest — which brings vite — and lists `vite/client`) still
+ * resolve and are kept. Runs after install, before tsc. Returns the removed entries.
  */
-export function ensureViteClientTypesResolvable(projectDir: string): boolean {
-  const pkgPath = resolve(join(projectDir, "package.json"));
-  if (!existsSync(pkgPath)) return false;
-  if (!projectReferencesViteClient(projectDir)) return false;
+export function sanitizeModelTsconfigTypes(projectDir: string): string[] {
+  const nodeModules = resolve(join(projectDir, "node_modules"));
+  const removed: string[] = [];
 
-  let pkg: PackageJson;
-  try {
-    pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as PackageJson;
-  } catch {
-    return false;
+  const tsconfigPaths = [
+    resolve(join(projectDir, "tsconfig.json")),
+    resolve(join(projectDir, "convex", "tsconfig.json")),
+  ];
+
+  for (const tsconfigPath of tsconfigPaths) {
+    if (!existsSync(tsconfigPath)) continue;
+
+    let parsed: Tsconfig;
+    try {
+      parsed = JSON.parse(readFileSync(tsconfigPath, "utf-8")) as Tsconfig;
+    } catch {
+      continue; // Non-strict JSON (comments/trailing commas) — leave untouched.
+    }
+
+    const types = parsed.compilerOptions?.types;
+    if (!Array.isArray(types)) continue;
+
+    const kept = types.filter((entry) => {
+      if (typeof entry !== "string") return true;
+      if (typeReferenceResolvable(nodeModules, entry)) return true;
+      removed.push(entry);
+      return false;
+    });
+    if (kept.length === types.length) continue;
+
+    const compilerOptions = parsed.compilerOptions as Record<string, unknown>;
+    if (kept.length === 0) {
+      delete compilerOptions.types;
+    } else {
+      compilerOptions.types = kept;
+    }
+    writeFileSync(tsconfigPath, `${JSON.stringify(parsed, null, 2)}\n`, "utf-8");
   }
 
-  const hasVite =
-    Boolean(pkg.dependencies?.vite) || Boolean(pkg.devDependencies?.vite);
-  if (hasVite) return false;
-
-  pkg.devDependencies = { ...(pkg.devDependencies ?? {}), vite: "latest" };
-  writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`, "utf-8");
-  return true;
+  return removed;
 }
 
-/** Whether any source/config file in the project references `vite/client`. */
-function projectReferencesViteClient(projectDir: string): boolean {
-  const stack = [resolve(projectDir)];
-  while (stack.length > 0) {
-    const dir = stack.pop()!;
-    let entries;
-    try {
-      entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      if (entry.name === "node_modules" || entry.name === "_generated") continue;
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        stack.push(full);
-        continue;
-      }
-      if (!/\.(ts|tsx|mts|cts|json)$/.test(entry.name)) continue;
-      try {
-        if (readFileSync(full, "utf-8").includes("vite/client")) return true;
-      } catch {
-        // Unreadable file — ignore.
-      }
-    }
-  }
-  return false;
+/** Whether a `compilerOptions.types` entry resolves to an installed package. */
+function typeReferenceResolvable(nodeModules: string, entry: string): boolean {
+  const pkg = entry.startsWith("@")
+    ? entry.split("/").slice(0, 2).join("/")
+    : entry.split("/")[0];
+  const atTypes = pkg.startsWith("@")
+    ? `@types/${pkg.slice(1).replace("/", "__")}`
+    : `@types/${pkg}`;
+  return (
+    existsSync(join(nodeModules, pkg)) || existsSync(join(nodeModules, atTypes))
+  );
 }
 
 export function ensureConvexTsconfig(projectDir: string): void {
@@ -430,12 +435,6 @@ export async function convexScorer(
   const fsStart = Date.now();
   try {
     writeFilesystem(outputProjectDir, output);
-    if (ensureViteClientTypesResolvable(outputProjectDir)) {
-      appendLog(
-        ctx.runLogPath,
-        "[setup] added vite devDependency so a vite/client type reference resolves",
-      );
-    }
     ctx.recordStepResult("filesystem", "Valid filesystem output", true, fsStart);
     if (evalId) {
       void uploadEvalOutput(evalId, outputProjectDir);
@@ -501,6 +500,13 @@ export async function convexScorer(
 
     // Typecheck
     ensureConvexTsconfig(outputProjectDir);
+    const removedTypes = sanitizeModelTsconfigTypes(outputProjectDir);
+    if (removedTypes.length > 0) {
+      appendLog(
+        ctx.runLogPath,
+        `[setup] dropped unresolvable tsconfig types: ${removedTypes.join(", ")}`,
+      );
+    }
     const tscResult = await ctx.runStep(
       "tsc",
       "Passes tsc",
