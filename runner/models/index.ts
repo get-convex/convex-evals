@@ -73,6 +73,7 @@ export const ALL_MODELS: string[] = [
   "google/gemini-2.5-pro",
   "google/gemini-3.1-pro-preview",
   "minimax/minimax-m2.5",
+  "x-ai/grok-4.5",
   "x-ai/grok-4",
   "x-ai/grok-3-mini-beta",
   "xiaomi/mimo-v2-pro",
