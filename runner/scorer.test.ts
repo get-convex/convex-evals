@@ -294,6 +294,13 @@ describe("Convex tsconfig seeding", () => {
 describe("model tsconfig types sanitization", () => {
   let tempDir: string;
 
+  type TestTsconfig = {
+    compilerOptions: {
+      strict?: boolean;
+      types?: string[];
+    };
+  };
+
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), "tsconfig-types-test-"));
   });
@@ -310,15 +317,19 @@ describe("model tsconfig types sanitization", () => {
     );
   }
 
+  function readTsconfig(projectDir: string): TestTsconfig {
+    return JSON.parse(
+      readFileSync(join(projectDir, "tsconfig.json"), "utf-8"),
+    ) as TestTsconfig;
+  }
+
   it("drops types with no installed backing package", () => {
     const projectDir = join(tempDir, "project");
     writeTsconfig(projectDir, ["node", "vite/client"]);
 
     expect(sanitizeModelTsconfigTypes(projectDir)).toEqual(["node", "vite/client"]);
 
-    const parsed = JSON.parse(
-      readFileSync(join(projectDir, "tsconfig.json"), "utf-8"),
-    );
+    const parsed = readTsconfig(projectDir);
     expect(parsed.compilerOptions.types).toBeUndefined();
     expect(parsed.compilerOptions.strict).toBe(true);
   });
@@ -331,9 +342,7 @@ describe("model tsconfig types sanitization", () => {
 
     expect(sanitizeModelTsconfigTypes(projectDir)).toEqual([]);
 
-    const parsed = JSON.parse(
-      readFileSync(join(projectDir, "tsconfig.json"), "utf-8"),
-    );
+    const parsed = readTsconfig(projectDir);
     expect(parsed.compilerOptions.types).toEqual(["node", "vite/client"]);
   });
 
