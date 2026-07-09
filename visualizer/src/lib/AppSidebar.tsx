@@ -12,6 +12,7 @@ import {
 } from "./types";
 import { formatCategoryName } from "./evalComponents";
 import { formatRunLabel } from "./breadcrumbs";
+import { useResolvedModelId } from "./useResolvedModelId";
 
 type SidebarLevel = 
   | "home" 
@@ -716,11 +717,14 @@ function EvalLinkRow({
 // Model-based sidebar components
 
 function SidebarModel({ model }: { model: string }) {
-  const runs = useQuery(api.runs.listRuns, {
-    modelId: model as Id<"models">,
-  });
+  const modelId = useResolvedModelId(model);
+  const runs = useQuery(api.runs.listRuns, modelId ? { modelId } : "skip");
 
-  if (runs === undefined) {
+  if (modelId === null) {
+    return <div className="p-4 text-slate-400 text-sm">Model not found.</div>;
+  }
+
+  if (modelId === undefined || runs === undefined) {
     return (
       <div className="p-4 text-slate-400 text-sm">Loading runs...</div>
     );
@@ -793,9 +797,12 @@ function SidebarModelExperiment({
   model: string;
   experimentId: string;
 }) {
-  const runs = useQuery(api.runs.listRuns, {
-    modelId: model as Id<"models">,
-  });
+  const modelId = useResolvedModelId(model);
+  const runs = useQuery(api.runs.listRuns, modelId ? { modelId } : "skip");
+
+  if (modelId === null) {
+    return <div className="p-4 text-slate-400 text-sm">Model not found.</div>;
+  }
 
   const filteredRuns =
     runs === undefined

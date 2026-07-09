@@ -81,6 +81,7 @@ type QueryRef<
  */
 export const api = anyApi as unknown as {
   models: {
+    getBySlug: QueryRef<{ slug: string }, ModelDoc | null>;
     listModels: QueryRef<
       { paginationOpts: PaginationOptions },
       PaginationResult<ModelDoc>

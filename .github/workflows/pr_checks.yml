@@ -85,6 +85,10 @@ jobs:
         working-directory: visualizer
         run: bun install
 
+      - name: Test visualizer
+        working-directory: visualizer
+        run: bun run test
+
       - name: Build visualizer
         working-directory: visualizer
         run: bun run build
