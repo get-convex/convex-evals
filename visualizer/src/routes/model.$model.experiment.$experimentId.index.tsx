@@ -3,7 +3,7 @@ import { useQuery } from "convex/react";
 import { api } from "../convex/api";
 import { getRunStatusIcon, formatDuration, type Run } from "../lib/types";
 import { shortRunId } from "../lib/breadcrumbs";
-import type { Id } from "../convex/types";
+import { useResolvedModelId } from "../lib/useResolvedModelId";
 
 export const Route = createFileRoute("/model/$model/experiment/$experimentId/")({
   component: ModelExperimentRunsPage,
@@ -14,9 +14,18 @@ function ModelExperimentRunsPage() {
     from: "/model/$model/experiment/$experimentId/",
   });
 
-  const runs = useQuery(api.runs.listRuns, { modelId: model as Id<"models"> });
+  const modelId = useResolvedModelId(model);
+  const runs = useQuery(api.runs.listRuns, modelId ? { modelId } : "skip");
 
-  if (runs === undefined) {
+  if (modelId === null) {
+    return (
+      <main className="flex-1 overflow-auto p-6">
+        <div className="text-slate-400">Model not found.</div>
+      </main>
+    );
+  }
+
+  if (modelId === undefined || runs === undefined) {
     return (
       <main className="flex-1 overflow-auto p-6">
         <div className="text-slate-400">Loading runs...</div>
