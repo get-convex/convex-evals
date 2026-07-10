@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { resolveModel } from "./openRouterDiscovery.js";
+import {
+  preflightOpenRouterEndpoint,
+  resolveModel,
+} from "./openRouterDiscovery.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -50,5 +53,31 @@ describe("resolveModel", () => {
     expect(resolved.outputModalities).toEqual(["text"]);
     expect(resolved.model.formattedName).toBe("Anthropic: Claude Fable 5");
     expect(resolved.model.runnableName).toBe("anthropic/claude-fable-5");
+  });
+});
+
+describe("preflightOpenRouterEndpoint", () => {
+  it("requests at least the OpenAI minimum output token count", async () => {
+    let requestBody: unknown;
+    globalThis.fetch = (async (_input, init) => {
+      if (typeof init?.body !== "string") {
+        throw new Error("Expected a JSON request body");
+      }
+      requestBody = JSON.parse(init.body);
+      return new Response(null, { status: 200 });
+    }) as typeof fetch;
+
+    await preflightOpenRouterEndpoint(
+      {
+        name: "openai/gpt-5.6-sol",
+        runnableName: "openai/gpt-5.6-sol",
+        formattedName: "OpenAI: GPT-5.6 Sol",
+        baseURL: "https://openrouter.ai/api/v1",
+        apiKind: "chat",
+      },
+      "test-api-key",
+    );
+
+    expect(requestBody).toMatchObject({ max_tokens: 16 });
   });
 });

@@ -29,6 +29,9 @@ describe("ALL_MODELS", () => {
     expect(ALL_MODELS).toContain("openai/gpt-5.2-codex");
     expect(ALL_MODELS).toContain("openai/gpt-5");
     expect(ALL_MODELS).toContain("openai/gpt-5.5");
+    expect(ALL_MODELS).toContain("openai/gpt-5.6-sol");
+    expect(ALL_MODELS).toContain("openai/gpt-5.6-terra");
+    expect(ALL_MODELS).toContain("openai/gpt-5.6-luna");
     expect(ALL_MODELS).toContain("anthropic/claude-opus-4.6");
     expect(ALL_MODELS).toContain("anthropic/claude-opus-4.7");
     expect(ALL_MODELS).toContain("anthropic/claude-opus-4.8");
