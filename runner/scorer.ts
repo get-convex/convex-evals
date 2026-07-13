@@ -38,7 +38,11 @@ const TIMEOUTS = {
   tsc: 120_000,
   eslint: 120_000,
   deploy: 90_000,
-  vitest: 120_000,
+  // Must exceed the summed per-test timeouts of the slowest grader, so a
+  // failing candidate exhausts individual test timeouts (reported as test
+  // failures) instead of the whole vitest run being killed. Current worst
+  // case is 004-actions/003 with two 90s poll-based tests.
+  vitest: 300_000,
 } as const;
 
 const DEFAULT_CONVEX_TSCONFIG = `${JSON.stringify(
