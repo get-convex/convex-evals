@@ -252,7 +252,3 @@ The periodic workflow uses the same scheduling policy before it actually queues 
 - the due check uses the latest completed default-experiment leaderboard run, so failed runs and `no_guidelines` runs do not delay the next periodic default run
 
 The OpenRouter-derived selectors also do a lightweight preflight check so obviously dead models are skipped before entering the matrix.
-
-# Outstanding Evals
-
-- [ordering](https://docs.convex.dev/database/reading-data#ordering)
