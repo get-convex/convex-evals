@@ -52,7 +52,7 @@
     "typecheck": "tsc --noEmit && cd evalScores && bunx tsc -p convex/tsconfig.json && cd ../visualizer && bunx tsc",
     "lint": "eslint runner/ evalScores/convex/",
     "smoke:cursor-sdk": "node scripts/smokeCursorSdkImport.mjs",
-    "test": "bun test runner scripts grader/outputDir.test.ts && cd evalScores && bun run test:once",
+    "test": "bun test runner scripts grader/outputDir.test.ts grader/pollUntil.test.ts && cd evalScores && bun run test:once",
     "test:runner": "bun test runner scripts",
     "evals": "bun run scripts/runEvals.ts",
     "evalScores": "cd evalScores && bun run",

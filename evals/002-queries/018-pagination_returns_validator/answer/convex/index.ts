@@ -1,6 +1,9 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
-import { paginationOptsValidator } from "convex/server";
+import {
+  paginationOptsValidator,
+  paginationResultValidator,
+} from "convex/server";
 
 /**
  * Paginated query for posts that's compatible with usePaginatedQuery.
@@ -11,20 +14,14 @@ export const paginatePosts = query({
     paginationOpts: paginationOptsValidator,
   },
   // Properly typed return validator matching usePaginatedQuery expectations
-  returns: v.object({
-    page: v.array(
-      v.object({
-        _id: v.id("posts"),
-        _creationTime: v.number(),
-        title: v.string(),
-        content: v.string(),
-      })
-    ),
-    isDone: v.boolean(),
-    continueCursor: v.string(),
-    splitCursor: v.optional(v.union(v.string(), v.null())),
-    pageStatus: v.optional(v.union(v.literal("SplitRecommended"), v.literal("SplitRequired"), v.null())),
-  }),
+  returns: paginationResultValidator(
+    v.object({
+      _id: v.id("posts"),
+      _creationTime: v.number(),
+      title: v.string(),
+      content: v.string(),
+    }),
+  ),
   handler: async (ctx, args) => {
     // Query posts with pagination
     const posts = await ctx.db

@@ -5,6 +5,7 @@ import {
   compareSchema,
   deleteAllDocuments,
   listTable,
+  pollUntil,
 } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
 import { beforeEach } from "vitest";
@@ -58,32 +59,37 @@ test("initiateRequest reuses existing request", async () => {
   expect(requests).toHaveLength(1);
 });
 
-test("request eventually completes", async () => {
+test("request eventually completes", { timeout: 90_000 }, async () => {
   const testUrl = "https://httpbin.org/post";
 
   const requestId = await responseClient.mutation(api.index.initiateRequest, {
     url: testUrl,
   });
 
-  // Wait for the request to complete
+  // Wait for the scheduled action to complete the request.
+  await pollUntil(
+    async () => {
+      const requests = (await listTable(
+        responseAdminClient,
+        "requests",
+      )) as Doc<"requests">[];
+      const request = requests.find((r) => r._id === requestId);
+      expect(request).toBeDefined();
+      return request?.status === "completed";
+    },
+    { timeoutMs: 60_000, intervalMs: 250 },
+  );
 
-  const start = Date.now();
-  while (Date.now() - start < 2000) {
-    const requests = (await listTable(
-      responseAdminClient,
-      "requests",
-    )) as Doc<"requests">[];
-    const request = requests.find((r) => r._id === requestId);
-    expect(request).toBeDefined();
-    if (request?.status === "completed") {
-      expect(request?.completedAt).toBeTypeOf("number");
-      break;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
+  const requests = (await listTable(
+    responseAdminClient,
+    "requests",
+  )) as Doc<"requests">[];
+  const request = requests.find((r) => r._id === requestId);
+  expect(request?.status).toBe("completed");
+  expect(request?.completedAt).toBeTypeOf("number");
 });
 
-test("handles multiple concurrent requests", async () => {
+test("handles multiple concurrent requests", { timeout: 90_000 }, async () => {
   const urls = [
     "https://httpbin.org/post",
     "https://httpbin.org/post?test=1",
@@ -100,8 +106,20 @@ test("handles multiple concurrent requests", async () => {
 
   expect(new Set(requestIds).size).toBe(urls.length);
 
-  // Wait for requests to complete
-  await new Promise((resolve) => setTimeout(resolve, 2000));
+  // Wait for every scheduled action to complete its request.
+  await pollUntil(
+    async () => {
+      const requests = (await listTable(
+        responseAdminClient,
+        "requests",
+      )) as Doc<"requests">[];
+      return (
+        requests.length === urls.length &&
+        requests.every((r) => r.status === "completed")
+      );
+    },
+    { timeoutMs: 60_000, intervalMs: 250 },
+  );
 
   const requests = (await listTable(
     responseAdminClient,
