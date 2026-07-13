@@ -1,0 +1,39 @@
+Build a backend for transferring credits between accounts with idempotency support.
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  accounts: defineTable({
+    name: v.string(),
+    balance: v.number(),
+  }),
+  transfers: defineTable({
+    fromAccountId: v.id("accounts"),
+    toAccountId: v.id("accounts"),
+    amount: v.number(),
+    idempotencyKey: v.string(),
+  }).index("by_idempotencyKey", ["idempotencyKey"]),
+});
+```
+
+Create a public mutation `transfer` in `convex/index.ts` that:
+- Takes arguments `{ fromAccountId: Id<"accounts">, toAccountId: Id<"accounts">, amount: number, idempotencyKey: string }`
+- Returns the ID of the transfer record (`Id<"transfers">`)
+
+A successful call debits `amount` from the `fromAccountId` account's balance, credits it to the `toAccountId` account's balance, and inserts exactly one record into `transfers` - all in the same mutation.
+
+Validation rules (throw an error when violated):
+- `amount` must be positive
+- Both accounts must exist
+- `fromAccountId` and `toAccountId` must be different accounts
+- The debit account must have a balance of at least `amount`
+
+Idempotency rules:
+- An idempotency key is globally unique across all transfers.
+- Calling `transfer` again with an idempotency key that was already used, with the identical `fromAccountId`, `toAccountId`, and `amount`, must return the ID of the original transfer record without moving any money - even if the account balances have changed since the original call.
+- Calling `transfer` with an idempotency key that was already used but with different `fromAccountId`, `toAccountId`, or `amount` must throw an error.
+
+The mutation may be called multiple times concurrently with the same arguments; money must never be moved more than once for the same idempotency key.
