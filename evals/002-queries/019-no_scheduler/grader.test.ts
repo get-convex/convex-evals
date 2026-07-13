@@ -6,6 +6,7 @@ import {
   addDocuments,
   deleteAllDocuments,
   listTable,
+  pollUntil,
 } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
 import { beforeEach } from "vitest";
@@ -82,8 +83,13 @@ test("getDocument creates access log entry", async () => {
     documentId: docId,
   });
 
-  // Wait a short time for async operation
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  // Wait for the access log entry to appear
+  await pollUntil(
+    async () =>
+      ((await listTable(responseAdminClient, "accessLogs")) as
+        Doc<"accessLogs">[]).length === 1,
+    { timeoutMs: 5_000, intervalMs: 50 },
+  );
 
   // Check access logs
   const logs = (await listTable(
@@ -116,8 +122,13 @@ test("getDocument creates multiple access logs for multiple accesses", async () 
     responseClient.mutation(api.index.getDocument, { documentId: docId }),
   ]);
 
-  // Wait a short time for async operations
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  // Wait for all access log entries to appear
+  await pollUntil(
+    async () =>
+      ((await listTable(responseAdminClient, "accessLogs")) as
+        Doc<"accessLogs">[]).length === 3,
+    { timeoutMs: 5_000, intervalMs: 50 },
+  );
 
   // Check access logs
   const logs = (await listTable(
@@ -171,8 +182,13 @@ test("access logs are created with correct structure", async () => {
     documentId: docId,
   });
 
-  // Wait a short time for async operation
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  // Wait for the access log entry to appear
+  await pollUntil(
+    async () =>
+      ((await listTable(responseAdminClient, "accessLogs")) as
+        Doc<"accessLogs">[]).length === 1,
+    { timeoutMs: 5_000, intervalMs: 50 },
+  );
 
   const logs = (await listTable(
     responseAdminClient,
@@ -202,8 +218,13 @@ test("getDocument handles concurrent access properly", async () => {
     responseClient.mutation(api.index.getDocument, { documentId: docs[1]._id }),
   ]);
 
-  // Wait a short time for async operations
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  // Wait for both access log entries to appear
+  await pollUntil(
+    async () =>
+      ((await listTable(responseAdminClient, "accessLogs")) as
+        Doc<"accessLogs">[]).length === 2,
+    { timeoutMs: 5_000, intervalMs: 50 },
+  );
 
   const logs = (await listTable(
     responseAdminClient,

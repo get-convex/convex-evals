@@ -2,6 +2,7 @@ import { ConvexClient } from "convex/browser";
 import { expect } from "vitest";
 import ts from "typescript";
 export { getLatestOutputProjectDir, readOutputFile } from "./outputDir.js";
+export { pollUntil } from "./pollUntil.js";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
