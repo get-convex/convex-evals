@@ -25,6 +25,7 @@ Create a public action `searchDocuments` in `convex/index.ts` that:
   `{ _id: Id<"documents">, title: string, category: string, status: string, _score: number }`
 
 Behavior:
+- Callers always supply a four-element `embedding` and an integer `limit` between 1 and 256; no input validation beyond the argument validators is required.
 - Search the vector index for the `limit` most similar documents, restricted to the requested `category`.
 - Only return documents whose status is `"published"`. Documents that are missing or not published are omitted from the results (so fewer than `limit` items may be returned).
 - Results must be in descending similarity order, and each document must be paired with its own similarity score as `_score`.

@@ -54,8 +54,10 @@ test("compare schema", async ({ skip }) => {
 });
 
 test("compare function spec", async ({ skip }) => {
-  // Return validators are not required by the task, so ignore them.
-  await compareFunctionSpec(skip, { ignoreReturns: true });
+  // The task dictates the public surface but not the internal hydration
+  // function's name or module, so compare public functions only, and return
+  // validators are not required.
+  await compareFunctionSpec(skip, { ignoreReturns: true, publicOnly: true });
 });
 
 test("returns published category matches in descending similarity order", async () => {
@@ -73,14 +75,69 @@ test("returns published category matches in descending similarity order", async 
     ids.get("mid-guide"),
     ids.get("far-guide"),
   ]);
-  for (let i = 1; i < results.length; i++) {
-    expect(results[i - 1]._score).toBeGreaterThanOrEqual(results[i]._score);
-  }
+  // Each document must carry its own cosine similarity, not just any
+  // non-increasing numbers.
+  expect(results[0]._score).toBeCloseTo(1.0, 3);
+  expect(results[1]._score).toBeCloseTo(0.8, 3);
+  expect(results[2]._score).toBeCloseTo(0.5, 3);
+  expect(results[3]._score).toBeCloseTo(0.0, 3);
   for (const result of results) {
     expect(result.status).toBe("published");
-    expect(result._score).toBeTypeOf("number");
   }
 });
+
+test("uses the caller-supplied embedding, pairing scores by document", async () => {
+  const ids = await seedDocuments();
+
+  // Against [0, 1, 0, 0] the ranking inverts: far-guide becomes the best
+  // match and exact-guide the worst.
+  const results = await responseClient.action(api.index.searchDocuments, {
+    embedding: [0, 1, 0, 0],
+    category: "guides",
+    limit: 10,
+  });
+
+  expect(results.map((r: { _id: string }) => r._id)).toEqual([
+    ids.get("far-guide"),
+    ids.get("near-guide"),
+    ids.get("mid-guide"),
+    ids.get("exact-guide"),
+  ]);
+  expect(results[0]._score).toBeCloseTo(1.0, 3);
+  expect(results[1]._score).toBeCloseTo(0.6, 3);
+  expect(results[2]._score).toBeCloseTo(0.5, 3);
+  expect(results[3]._score).toBeCloseTo(0.0, 3);
+});
+
+test(
+  "category filter is pushed into the vector search, not applied afterwards",
+  { timeout: 30_000 },
+  async () => {
+    const ids = await seedDocuments();
+
+    // Seed 260 perfect-scoring documents in another category. A solution
+    // that searches without the category filter and drops mismatches after
+    // hydration has its 256 vector hits crowded out by these and returns
+    // nothing for "guides".
+    const noise = Array.from({ length: 260 }, (_, i) => ({
+      title: `noise-${i}`,
+      category: "noise",
+      status: "published",
+      embedding: [1, 0, 0, 0],
+    }));
+    await addDocuments(responseAdminClient, "documents", noise);
+
+    const results = await responseClient.action(api.index.searchDocuments, {
+      embedding: QUERY_VECTOR,
+      category: "guides",
+      limit: 1,
+    });
+
+    expect(results.map((r: { _id: string }) => r._id)).toEqual([
+      ids.get("exact-guide"),
+    ]);
+  },
+);
 
 test("returned objects have exactly the specified fields", async () => {
   await seedDocuments();
@@ -150,6 +207,7 @@ function analyzeSource(sourceText: string): {
   hasVectorSearch: boolean;
   runQueryCount: number;
   runQueryInLoop: boolean;
+  scanConstructs: string[];
 } {
   const sourceFile = ts.createSourceFile(
     "index.ts",
@@ -161,6 +219,11 @@ function analyzeSource(sourceText: string): {
   let hasVectorSearch = false;
   let runQueryCount = 0;
   let runQueryInLoop = false;
+  // Constructs that would let an implementation enumerate the table and
+  // compute similarity in JavaScript instead of using vector search.
+  // Hydrating by ID needs none of these.
+  const scanMethods = new Set(["collect", "paginate", "take"]);
+  const scanConstructs: string[] = [];
 
   const isInsideLoopOrIterationCallback = (node: ts.Node): boolean => {
     const iterationCallbacks = new Set(["map", "forEach", "flatMap"]);
@@ -190,6 +253,9 @@ function analyzeSource(sourceText: string): {
       if (name === "vectorSearch") {
         hasVectorSearch = true;
       }
+      if (scanMethods.has(name)) {
+        scanConstructs.push(name);
+      }
       if (name === "runQuery") {
         runQueryCount++;
         if (isInsideLoopOrIterationCallback(node)) {
@@ -197,11 +263,14 @@ function analyzeSource(sourceText: string): {
         }
       }
     }
+    if (ts.isForOfStatement(node) && node.awaitModifier !== undefined) {
+      scanConstructs.push("for await");
+    }
     ts.forEachChild(node, visit);
   };
 
   visit(sourceFile);
-  return { hasVectorSearch, runQueryCount, runQueryInLoop };
+  return { hasVectorSearch, runQueryCount, runQueryInLoop, scanConstructs };
 }
 
 test("generated solution uses vector search and a single hydration query", () => {
@@ -210,7 +279,7 @@ test("generated solution uses vector search and a single hydration query", () =>
     "008-vector_search_hydration",
     "convex/index.ts",
   );
-  const { hasVectorSearch, runQueryCount, runQueryInLoop } =
+  const { hasVectorSearch, runQueryCount, runQueryInLoop, scanConstructs } =
     analyzeSource(sourceText);
   // Without ctx.vectorSearch, similarity scores would have to be computed
   // by scanning the table in JavaScript.
@@ -218,4 +287,7 @@ test("generated solution uses vector search and a single hydration query", () =>
   // The task requires one internal query for hydration, not one per hit.
   expect(runQueryCount).toBe(1);
   expect(runQueryInLoop).toBe(false);
+  // Hydration fetches by ID; table-enumeration constructs indicate a
+  // JavaScript-side similarity scan.
+  expect(scanConstructs).toEqual([]);
 });

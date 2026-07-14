@@ -45,6 +45,31 @@ test("strict boundary: only items expiring after `now`, soonest first", async ()
   expect(results.map((r) => r.name)).toEqual(["soon", "later"]);
 });
 
+test("the cutoff really comes from the argument", async () => {
+  // Same seed, different `now` values must produce different windows - an
+  // implementation that ignores args.now cannot pass all three.
+  await addDocuments(responseAdminClient, "items", [
+    { name: "later", expiresAt: NOW + 2000 },
+    { name: "past", expiresAt: NOW - 5000 },
+    { name: "soon", expiresAt: NOW + 1000 },
+  ]);
+
+  const midWindow = (await responseClient.query(api.index.listActive, {
+    now: NOW + 1500,
+  })) as Doc<"items">[];
+  expect(midWindow.map((r) => r.name)).toEqual(["later"]);
+
+  const wideWindow = (await responseClient.query(api.index.listActive, {
+    now: NOW - 6000,
+  })) as Doc<"items">[];
+  expect(wideWindow.map((r) => r.name)).toEqual(["past", "soon", "later"]);
+
+  const emptyWindow = (await responseClient.query(api.index.listActive, {
+    now: NOW + 3000,
+  })) as Doc<"items">[];
+  expect(emptyWindow).toEqual([]);
+});
+
 test("returns at most 100 items, the soonest-expiring ones", async () => {
   const items = Array.from({ length: 105 }, (_, i) => ({
     name: `item-${i + 1}`,
@@ -84,7 +109,11 @@ test("returns an empty array when everything has expired", async () => {
   expect(results).toEqual([]);
 });
 
-function queryHandlersReadWallClock(sourceText: string): boolean {
+function analyzeSource(sourceText: string): {
+  wallClockReads: string[];
+  disallowedCalls: string[];
+  hasIndexedTakeChain: boolean;
+} {
   const sourceFile = ts.createSourceFile(
     "index.ts",
     sourceText,
@@ -92,52 +121,88 @@ function queryHandlersReadWallClock(sourceText: string): boolean {
     true,
     ts.ScriptKind.TS,
   );
-  let found = false;
+  const wallClockReads: string[] = [];
+  // The task only asks for a single query, so the whole file must stay off
+  // the wall clock; a source-wide check also catches helper functions and
+  // module-level reads that a handler-scoped walk would miss.
+  const isDateRef = (expr: ts.Expression): boolean => {
+    if (ts.isIdentifier(expr) && expr.text === "Date") return true;
+    // globalThis.Date / window.Date
+    return (
+      ts.isPropertyAccessExpression(expr) &&
+      expr.name.text === "Date" &&
+      ts.isIdentifier(expr.expression) &&
+      (expr.expression.text === "globalThis" || expr.expression.text === "window")
+    );
+  };
 
-  const containsWallClockRead = (node: ts.Node): void => {
-    // Date.now()
+  // A correct solution expresses the whole predicate in the index range and
+  // bounds the result; these constructs indicate scanning or re-sorting.
+  const disallowed = new Set(["collect", "filter", "sort", "toSorted", "slice"]);
+  const disallowedCalls: string[] = [];
+  let hasIndexedTakeChain = false;
+
+  const chainParts = (
+    call: ts.CallExpression,
+  ): { name: string; firstStringArg?: string }[] => {
+    const parts: { name: string; firstStringArg?: string }[] = [];
+    let current: ts.Expression = call;
+    while (
+      ts.isCallExpression(current) &&
+      ts.isPropertyAccessExpression(current.expression)
+    ) {
+      const arg = current.arguments[0];
+      parts.push({
+        name: current.expression.name.text,
+        firstStringArg:
+          arg !== undefined && ts.isStringLiteralLike(arg)
+            ? arg.text
+            : undefined,
+      });
+      current = current.expression.expression;
+    }
+    return parts;
+  };
+
+  const visit = (node: ts.Node) => {
+    // Date.now(), globalThis.Date.now()
     if (
       ts.isCallExpression(node) &&
       ts.isPropertyAccessExpression(node.expression) &&
       node.expression.name.text === "now" &&
-      ts.isIdentifier(node.expression.expression) &&
-      node.expression.expression.text === "Date"
+      isDateRef(node.expression.expression)
     ) {
-      found = true;
-      return;
+      wallClockReads.push("Date.now()");
+    }
+    // Bare Date() call - returns the current time as a string.
+    if (ts.isCallExpression(node) && isDateRef(node.expression)) {
+      wallClockReads.push("Date()");
     }
     // new Date() with no arguments; new Date(value) is a deterministic
     // conversion and stays allowed.
     if (
       ts.isNewExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      node.expression.text === "Date" &&
+      isDateRef(node.expression) &&
       (node.arguments === undefined || node.arguments.length === 0)
     ) {
-      found = true;
-      return;
+      wallClockReads.push("new Date()");
     }
-    ts.forEachChild(node, containsWallClockRead);
-  };
-
-  // Scope the check to handlers of query()/internalQuery() registrations;
-  // Date.now() is valid in mutations and actions.
-  const visit = (node: ts.Node) => {
     if (
       ts.isCallExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      (node.expression.text === "query" ||
-        node.expression.text === "internalQuery") &&
-      node.arguments.length === 1 &&
-      ts.isObjectLiteralExpression(node.arguments[0])
+      ts.isPropertyAccessExpression(node.expression)
     ) {
-      for (const prop of node.arguments[0].properties) {
-        if (
-          ts.isPropertyAssignment(prop) &&
-          ts.isIdentifier(prop.name) &&
-          prop.name.text === "handler"
-        ) {
-          containsWallClockRead(prop.initializer);
+      const name = node.expression.name.text;
+      if (disallowed.has(name)) {
+        disallowedCalls.push(name);
+      }
+      if (name === "take") {
+        const parts = chainParts(node);
+        const has = (n: string, arg?: string) =>
+          parts.some(
+            (p) => p.name === n && (arg === undefined || p.firstStringArg === arg),
+          );
+        if (has("query", "items") && has("withIndex", "by_expiresAt")) {
+          hasIndexedTakeChain = true;
         }
       }
     }
@@ -145,14 +210,18 @@ function queryHandlersReadWallClock(sourceText: string): boolean {
   };
 
   visit(sourceFile);
-  return found;
+  return { wallClockReads, disallowedCalls, hasIndexedTakeChain };
 }
 
-test("generated solution does not read the wall clock inside a query", () => {
+test("generated solution uses an indexed bounded read and never the wall clock", () => {
   const sourceText = readOutputFile(
     "002-queries",
     "024-time_window_argument",
     "convex/index.ts",
   );
-  expect(queryHandlersReadWallClock(sourceText)).toBe(false);
+  const { wallClockReads, disallowedCalls, hasIndexedTakeChain } =
+    analyzeSource(sourceText);
+  expect(wallClockReads).toEqual([]);
+  expect(disallowedCalls).toEqual([]);
+  expect(hasIndexedTakeChain).toBe(true);
 });
