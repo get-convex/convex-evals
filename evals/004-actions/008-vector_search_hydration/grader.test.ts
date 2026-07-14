@@ -115,27 +115,32 @@ test(
   async () => {
     const ids = await seedDocuments();
 
-    // Seed 260 perfect-scoring documents in another category. A solution
-    // that searches without the category filter and drops mismatches after
-    // hydration has its 256 vector hits crowded out by these and returns
-    // nothing for "guides".
+    // Seed 260 documents in another category that match this query vector
+    // perfectly (cosine 1.0), STRICTLY above every guide document - the best
+    // guide, near-guide [0.8, 0.6, 0, 0], scores 0.96. A solution that
+    // searches without the category filter and drops mismatches after
+    // hydration has all 256 of its vector hits crowded out by these
+    // higher-scoring documents and returns nothing for "guides"; ties are
+    // deliberately avoided so tie-break order cannot rescue it.
+    const crowdOutVector = [0.6, 0.8, 0, 0];
     const noise = Array.from({ length: 260 }, (_, i) => ({
       title: `noise-${i}`,
       category: "noise",
       status: "published",
-      embedding: [1, 0, 0, 0],
+      embedding: crowdOutVector,
     }));
     await addDocuments(responseAdminClient, "documents", noise);
 
     const results = await responseClient.action(api.index.searchDocuments, {
-      embedding: QUERY_VECTOR,
+      embedding: crowdOutVector,
       category: "guides",
       limit: 1,
     });
 
     expect(results.map((r: { _id: string }) => r._id)).toEqual([
-      ids.get("exact-guide"),
+      ids.get("near-guide"),
     ]);
+    expect(results[0]._score).toBeCloseTo(0.96, 3);
   },
 );
 
