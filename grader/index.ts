@@ -136,14 +136,23 @@ async function getFunctionSpec(adminClient: any) {
   return result;
 }
 
-export async function compareFunctionSpec(skip: (note?: string) => void) {
+export async function compareFunctionSpec(
+  skip: (note?: string) => void,
+  options: { ignoreReturns?: boolean } = {},
+) {
   if (!answerAdminClient) {
     skip("Answer backend not available");
     return;
   }
   const responseFunctionSpec = await getFunctionSpec(responseAdminClient);
   const answerFunctionSpec = await getFunctionSpec(answerAdminClient);
-  expect(responseFunctionSpec).toEqual(answerFunctionSpec);
+  // Return validators are optional unless the task explicitly requires them,
+  // so graders can compare the public API surface while ignoring `returns`.
+  const normalize = (spec: any) =>
+    options.ignoreReturns && Array.isArray(spec)
+      ? spec.map(({ returns: _returns, ...rest }: any) => rest)
+      : spec;
+  expect(normalize(responseFunctionSpec)).toEqual(normalize(answerFunctionSpec));
 }
 
 /**

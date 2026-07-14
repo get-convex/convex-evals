@@ -46,7 +46,8 @@ test("compare schema", async ({ skip }) => {
 });
 
 test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
+  // Return validators are not required by the task, so ignore them.
+  await compareFunctionSpec(skip, { ignoreReturns: true });
 });
 
 test("returns top n by points descending with newest-first ties", async () => {
@@ -113,7 +114,7 @@ test("returned documents include the expected fields", async () => {
 
 function analyzeSource(sourceText: string): {
   disallowedCalls: string[];
-  hasOrderDesc: boolean;
+  hasDescIndexedTakeChain: boolean;
 } {
   const sourceFile = ts.createSourceFile(
     "index.ts",
@@ -124,7 +125,32 @@ function analyzeSource(sourceText: string): {
   );
   const disallowed = new Set(["collect", "sort", "toSorted", "reverse"]);
   const disallowedCalls: string[] = [];
-  let hasOrderDesc = false;
+  let hasDescIndexedTakeChain = false;
+
+  // Walk a method chain like ctx.db.query(...).withIndex(...).order(...)
+  // .take(...) from its outermost call inward, collecting each method name
+  // and its first argument when it is a string literal.
+  const chainParts = (
+    call: ts.CallExpression,
+  ): { name: string; firstStringArg?: string }[] => {
+    const parts: { name: string; firstStringArg?: string }[] = [];
+    let current: ts.Expression = call;
+    while (
+      ts.isCallExpression(current) &&
+      ts.isPropertyAccessExpression(current.expression)
+    ) {
+      const arg = current.arguments[0];
+      parts.push({
+        name: current.expression.name.text,
+        firstStringArg:
+          arg !== undefined && ts.isStringLiteralLike(arg)
+            ? arg.text
+            : undefined,
+      });
+      current = current.expression.expression;
+    }
+    return parts;
+  };
 
   const visit = (node: ts.Node) => {
     if (
@@ -135,20 +161,29 @@ function analyzeSource(sourceText: string): {
       if (disallowed.has(name)) {
         disallowedCalls.push(name);
       }
-      if (
-        name === "order" &&
-        node.arguments.length >= 1 &&
-        ts.isStringLiteralLike(node.arguments[0]) &&
-        node.arguments[0].text === "desc"
-      ) {
-        hasOrderDesc = true;
+      if (name === "take") {
+        // The consumed chain itself must query the scores table through the
+        // by_points index in descending order; a dead .order("desc") chain
+        // elsewhere doesn't count.
+        const parts = chainParts(node);
+        const has = (n: string, arg?: string) =>
+          parts.some(
+            (p) => p.name === n && (arg === undefined || p.firstStringArg === arg),
+          );
+        if (
+          has("query", "scores") &&
+          has("withIndex", "by_points") &&
+          has("order", "desc")
+        ) {
+          hasDescIndexedTakeChain = true;
+        }
       }
     }
     ts.forEachChild(node, visit);
   };
 
   visit(sourceFile);
-  return { disallowedCalls, hasOrderDesc };
+  return { disallowedCalls, hasDescIndexedTakeChain };
 }
 
 test("generated solution reads in database index order instead of re-sorting", () => {
@@ -157,7 +192,8 @@ test("generated solution reads in database index order instead of re-sorting", (
     "025-ordering_tiebreak",
     "convex/index.ts",
   );
-  const { disallowedCalls, hasOrderDesc } = analyzeSource(sourceText);
+  const { disallowedCalls, hasDescIndexedTakeChain } =
+    analyzeSource(sourceText);
   expect(disallowedCalls).toEqual([]);
-  expect(hasOrderDesc).toBe(true);
+  expect(hasDescIndexedTakeChain).toBe(true);
 });

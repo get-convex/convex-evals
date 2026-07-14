@@ -11,6 +11,7 @@ import {
 } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
 import { Doc, Id } from "./answer/convex/_generated/dataModel";
+import { anyApi } from "convex/server";
 import ts from "typescript";
 
 beforeEach(async () => {
@@ -43,7 +44,19 @@ test("compare schema", async ({ skip }) => {
 });
 
 test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
+  // Return validators are not required by the task, so ignore them.
+  await compareFunctionSpec(skip, { ignoreReturns: true });
+});
+
+test("writeDeliveries itself is not limited when called directly", async () => {
+  // The 5-document gate must come from the parent's transactionLimits, not
+  // from the child checking its own count.
+  const jobId = await seedJob("job-direct-child");
+  await responseAdminClient.mutation(anyApi.index.writeDeliveries as any, {
+    jobId,
+    count: 6,
+  });
+  expect(await getDeliveries(jobId)).toHaveLength(6);
 });
 
 test("fanout at the limit succeeds and completes the job", async () => {
@@ -112,7 +125,10 @@ test("jobs do not contaminate one another", async () => {
   expect(await getDeliveries(badJobId)).toHaveLength(0);
 });
 
-function hasRunMutationWithTransactionLimits(sourceText: string): boolean {
+function hasRunMutationWithDocumentsWrittenLimit(
+  sourceText: string,
+  expectedLimit: number,
+): boolean {
   const sourceFile = ts.createSourceFile(
     "index.ts",
     sourceText,
@@ -120,8 +136,51 @@ function hasRunMutationWithTransactionLimits(sourceText: string): boolean {
     true,
     ts.ScriptKind.TS,
   );
-  let found = false;
 
+  // Resolve identifiers through top-level `const X = ...` declarations so
+  // that `const LIMITS = { documentsWritten: 5 }` style answers still pass.
+  const topLevelConsts = new Map<string, ts.Expression>();
+  for (const stmt of sourceFile.statements) {
+    if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (ts.isIdentifier(decl.name) && decl.initializer !== undefined) {
+          topLevelConsts.set(decl.name.text, decl.initializer);
+        }
+      }
+    }
+  }
+  const resolve = (expr: ts.Expression): ts.Expression => {
+    let current = expr;
+    for (let i = 0; i < 5; i++) {
+      if (ts.isIdentifier(current) && topLevelConsts.has(current.text)) {
+        current = topLevelConsts.get(current.text)!;
+      } else if (ts.isAsExpression(current) || ts.isParenthesizedExpression(current)) {
+        current = current.expression;
+      } else {
+        break;
+      }
+    }
+    return current;
+  };
+  const getProperty = (
+    obj: ts.Expression,
+    name: string,
+  ): ts.Expression | undefined => {
+    const resolved = resolve(obj);
+    if (!ts.isObjectLiteralExpression(resolved)) return undefined;
+    for (const p of resolved.properties) {
+      if (
+        ts.isPropertyAssignment(p) &&
+        (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name)) &&
+        p.name.text === name
+      ) {
+        return p.initializer;
+      }
+    }
+    return undefined;
+  };
+
+  let found = false;
   const visit = (node: ts.Node) => {
     if (
       ts.isCallExpression(node) &&
@@ -129,18 +188,19 @@ function hasRunMutationWithTransactionLimits(sourceText: string): boolean {
       node.expression.name.text === "runMutation" &&
       node.arguments.length >= 3
     ) {
-      const options = node.arguments[2];
-      if (
-        ts.isObjectLiteralExpression(options) &&
-        options.properties.some(
-          (p) =>
-            p.name !== undefined &&
-            ts.isIdentifier(p.name) &&
-            p.name.text === "transactionLimits",
-        )
-      ) {
-        found = true;
-        return;
+      const limits = getProperty(node.arguments[2], "transactionLimits");
+      if (limits !== undefined) {
+        const documentsWritten = getProperty(limits, "documentsWritten");
+        if (documentsWritten !== undefined) {
+          const value = resolve(documentsWritten);
+          if (
+            ts.isNumericLiteral(value) &&
+            Number(value.text) === expectedLimit
+          ) {
+            found = true;
+            return;
+          }
+        }
       }
     }
     ts.forEachChild(node, visit);
@@ -150,11 +210,11 @@ function hasRunMutationWithTransactionLimits(sourceText: string): boolean {
   return found;
 }
 
-test("generated solution passes transactionLimits to the nested runMutation", () => {
+test("generated solution limits the nested runMutation to 5 documents written", () => {
   const sourceText = readOutputFile(
     "005-idioms",
     "008-nested_transaction_limits",
     "convex/index.ts",
   );
-  expect(hasRunMutationWithTransactionLimits(sourceText)).toBe(true);
+  expect(hasRunMutationWithDocumentsWrittenLimit(sourceText, 5)).toBe(true);
 });
