@@ -1,0 +1,38 @@
+Build a backend for fanning out delivery records for a job, where oversized fanouts are rejected without losing the job's status update.
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  jobs: defineTable({
+    name: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("completed"),
+      v.literal("rejected"),
+    ),
+  }),
+  deliveries: defineTable({
+    jobId: v.id("jobs"),
+    recipient: v.string(),
+  }).index("by_jobId", ["jobId"]),
+});
+```
+
+Create these functions in `convex/index.ts`:
+
+- An internal mutation `writeDeliveries` that:
+  - Takes arguments `{ jobId: Id<"jobs">, count: number }`
+  - Inserts `count` documents into `deliveries` for that job, with recipients `"recipient-0"` through `"recipient-{count-1}"`
+  - Does NOT update the job document
+
+- A public mutation `processFanout` that:
+  - Takes arguments `{ jobId: Id<"jobs">, count: number }`
+  - Returns `"completed"` or `"rejected"`
+  - Invokes `writeDeliveries` as a nested mutation call, limiting the nested call so that it may write at most 5 documents
+  - If the nested call succeeds, sets the job's status to `"completed"` and returns `"completed"`
+  - If the nested call exceeds its write limit, no delivery rows for the job may remain, the job's status must be set to `"rejected"`, and the mutation must return `"rejected"` normally rather than throwing
+
+A fanout of up to 5 deliveries succeeds. A fanout of 6 or more must be rejected: zero delivery rows for that job, the job marked `"rejected"`, and a normal return. Processing one job must never affect another job's status or deliveries.

@@ -1,0 +1,23 @@
+Build a backend for a game leaderboard query.
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  scores: defineTable({
+    player: v.string(),
+    points: v.number(),
+  }).index("by_points", ["points"]),
+});
+```
+
+Create a query `topScores` in `convex/index.ts` that:
+- Takes arguments `{ n: number }`
+- Returns an array of the top `n` score documents (including their system fields)
+
+Requirements:
+- Results are ordered by `points` descending.
+- When two scores have equal `points`, the more recently created score comes first.
+- The result must be selected in database index order. Do not collect the table (or an ascending prefix of it) and re-sort or reverse it in JavaScript - the scores table may contain millions of rows.
