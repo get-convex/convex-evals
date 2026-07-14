@@ -16,5 +16,3 @@ export default defineSchema({
 Create a query `listActive` in `convex/index.ts` that:
 - Takes arguments `{ now: number }`, where `now` is a Unix timestamp in milliseconds supplied by the caller
 - Returns an array of at most 100 item documents whose `expiresAt` is strictly greater than `now`, ordered by ascending expiration time (soonest-expiring first)
-
-The query must derive its result only from its arguments and the database - it must not read the current wall clock.
