@@ -265,9 +265,40 @@ q.search("body", "hello hi").eq("channel", "#general"),
 )
 .take(10);
 
+## Vector search guidelines
+
+- Store embeddings in a field validated with `v.array(v.float64())` and declare a vector index on it in the schema:
+
+```ts
+documents: defineTable({
+  title: v.string(),
+  category: v.string(),
+  embedding: v.array(v.float64()),
+}).vectorIndex("by_embedding", {
+  vectorField: "embedding",
+  dimensions: 1536,
+  filterFields: ["category"],
+}),
+```
+
+- `dimensions` must exactly match the length of the vectors you store and search with.
+- `ctx.vectorSearch` is ONLY available in actions - not in queries or mutations:
+
+```ts
+const results = await ctx.vectorSearch("documents", "by_embedding", {
+  vector: args.embedding,
+  limit: 10,
+  filter: (q) => q.eq("category", args.category),
+});
+```
+
+- The vector search `filter` supports only equality on declared `filterFields` and `q.or(...)` - there is no AND across different fields and no inequality. Push what you can into the vector filter and apply any remaining predicates after hydration.
+- Vector search returns only `{ _id, _score }` pairs ordered by descending similarity score - not full documents. Because actions have no `ctx.db`, hydrate the hits through an internal query, preserve the vector search's order, and pair each score with its document by ID.
+
 ## Query guidelines
 
 - Prefer `.withIndex()` and express every predicate supported by the index in its index range. A subsequent `.filter()` is acceptable for additional predicates that cannot be expressed by that index. Filtering happens after the index scan and does not reduce rows read, so it does not make an otherwise unbounded query scalable.
+- Time passing does not by itself create a reactive dependency, so do not read the wall clock inside a query: deriving results from `Date.now()` or a zero-argument `new Date()` in a query breaks caching and reactivity. Instead, pass the current time in as an argument and let the client refresh it, or materialize time-based state with scheduled mutations that update a flag field. (`Date.now()` is fine in mutations and actions.)
 - If the user does not explicitly tell you to return all results from a query you should ALWAYS return a bounded collection instead. So that is instead of using `.collect()` you should use `.take()` or paginate on database queries. This prevents future performance issues when tables grow in an unbounded way.
 - Never use `.collect().length` to count rows. Convex has no built-in count operator, so if you need a count that stays efficient at scale, maintain a denormalized counter in a separate document and update it in your mutations.
 - Convex queries do NOT support `.delete()`. If you need to delete all documents matching a query, use `.take(n)` to read them in batches, iterate over each batch calling `ctx.db.delete("tasks", row._id)`, and repeat until no more results are returned.

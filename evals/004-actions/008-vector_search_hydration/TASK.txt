@@ -1,0 +1,31 @@
+Build a backend for semantic document search.
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  documents: defineTable({
+    title: v.string(),
+    category: v.string(),
+    status: v.union(v.literal("published"), v.literal("draft")),
+    embedding: v.array(v.float64()),
+  }).vectorIndex("by_embedding", {
+    vectorField: "embedding",
+    dimensions: 4,
+    filterFields: ["category"],
+  }),
+});
+```
+
+Create a public action `searchDocuments` in `convex/index.ts` that:
+- Takes arguments `{ embedding: number[], category: string, limit: number }`
+- Returns an array of objects, each with exactly these fields:
+  `{ _id: Id<"documents">, title: string, category: string, status: string, _score: number }`
+
+Behavior:
+- Search the vector index for the `limit` most similar documents, restricted to the requested `category`.
+- Only return documents whose status is `"published"`. Documents that are missing or not published are omitted from the results (so fewer than `limit` items may be returned).
+- Results must be in descending similarity order, and each document must be paired with its own similarity score as `_score`.
+- Fetch the matched documents through a single internal query - do not fetch them one at a time.
