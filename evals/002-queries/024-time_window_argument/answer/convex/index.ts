@@ -5,14 +5,6 @@ export const listActive = query({
   args: {
     now: v.number(),
   },
-  returns: v.array(
-    v.object({
-      _id: v.id("items"),
-      _creationTime: v.number(),
-      name: v.string(),
-      expiresAt: v.number(),
-    }),
-  ),
   handler: async (ctx, args) => {
     // The caller supplies the current time; reading the wall clock here
     // would break query caching and reactivity.

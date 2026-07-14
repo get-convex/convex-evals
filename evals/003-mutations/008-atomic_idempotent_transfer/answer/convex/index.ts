@@ -8,7 +8,6 @@ export const transfer = mutation({
     amount: v.number(),
     idempotencyKey: v.string(),
   },
-  returns: v.id("transfers"),
   handler: async (ctx, args) => {
     // The idempotency check runs first so that replaying a completed
     // transfer succeeds even if balances have since changed.

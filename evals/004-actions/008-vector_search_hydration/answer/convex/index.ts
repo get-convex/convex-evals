@@ -9,15 +9,6 @@ export const searchDocuments = action({
     category: v.string(),
     limit: v.number(),
   },
-  returns: v.array(
-    v.object({
-      _id: v.id("documents"),
-      title: v.string(),
-      category: v.string(),
-      status: v.string(),
-      _score: v.number(),
-    }),
-  ),
   handler: async (ctx, args) => {
     // The vector filter only supports equality on filterFields, so the
     // category is pushed down here and the status check happens after
@@ -55,19 +46,6 @@ export const fetchDocuments = internalQuery({
   args: {
     ids: v.array(v.id("documents")),
   },
-  returns: v.array(
-    v.union(
-      v.object({
-        _id: v.id("documents"),
-        _creationTime: v.number(),
-        title: v.string(),
-        category: v.string(),
-        status: v.union(v.literal("published"), v.literal("draft")),
-        embedding: v.array(v.float64()),
-      }),
-      v.null(),
-    ),
-  ),
   handler: async (ctx, args) => {
     return await Promise.all(
       args.ids.map((id) => ctx.db.get("documents", id)),

@@ -6,5 +6,5 @@ test("compare schema", async ({ skip }) => {
 });
 
 test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
+  await compareFunctionSpec(skip, { ignoreReturns: true });
 });

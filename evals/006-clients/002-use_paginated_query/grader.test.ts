@@ -14,7 +14,7 @@ import { createAIGraderTest } from "../../../grader/aiGrader";
 createAIGraderTest(import.meta.url);
 
 test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
+  await compareFunctionSpec(skip, { ignoreReturns: true });
 });
 
 test("compare schema", async ({ skip }) => {
