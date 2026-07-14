@@ -137,23 +137,26 @@ function hasRunMutationWithDocumentsWrittenLimit(
     ts.ScriptKind.TS,
   );
 
-  // Resolve identifiers through top-level `const X = ...` declarations so
-  // that `const LIMITS = { documentsWritten: 5 }` style answers still pass.
-  const topLevelConsts = new Map<string, ts.Expression>();
-  for (const stmt of sourceFile.statements) {
-    if (ts.isVariableStatement(stmt)) {
-      for (const decl of stmt.declarationList.declarations) {
-        if (ts.isIdentifier(decl.name) && decl.initializer !== undefined) {
-          topLevelConsts.set(decl.name.text, decl.initializer);
-        }
-      }
+  // Resolve identifiers through `const X = ...` declarations anywhere in the
+  // file (including inside handlers) so that answers which factor the options
+  // or limits into a named constant still pass.
+  const constDeclarations = new Map<string, ts.Expression>();
+  const collectDeclarations = (node: ts.Node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer !== undefined
+    ) {
+      constDeclarations.set(node.name.text, node.initializer);
     }
-  }
+    ts.forEachChild(node, collectDeclarations);
+  };
+  collectDeclarations(sourceFile);
   const resolve = (expr: ts.Expression): ts.Expression => {
     let current = expr;
     for (let i = 0; i < 5; i++) {
-      if (ts.isIdentifier(current) && topLevelConsts.has(current.text)) {
-        current = topLevelConsts.get(current.text)!;
+      if (ts.isIdentifier(current) && constDeclarations.has(current.text)) {
+        current = constDeclarations.get(current.text)!;
       } else if (ts.isAsExpression(current) || ts.isParenthesizedExpression(current)) {
         current = current.expression;
       } else {
