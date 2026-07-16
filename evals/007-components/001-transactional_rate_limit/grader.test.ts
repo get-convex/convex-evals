@@ -10,7 +10,7 @@ import {
   withIdentity,
 } from "../../../grader";
 import { anyApi } from "convex/server";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 
@@ -152,42 +152,37 @@ test("generated solution installs and mounts the rate-limiter component", () => 
 });
 
 test("generated solution consumes the limit before semantic validation", () => {
-  const source = readOutputFile(CATEGORY, EVAL_NAME, "convex/index.ts");
-  const sourceFile = ts.createSourceFile(
-    "index.ts",
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TS,
-  );
+  // Analyze every authored convex source so limiter instances, helpers,
+  // and aliases factored into other files still count.
+  const projectDir = getLatestOutputProjectDir(CATEGORY, EVAL_NAME);
+  const convexDir = join(projectDir, "convex");
+  const sourceFiles = new Map<string, ts.SourceFile>();
+  for (const entry of readdirSync(convexDir, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith(".ts")) continue;
+    const text = readOutputFile(CATEGORY, EVAL_NAME, `convex/${entry.name}`);
+    const moduleName = entry.name.replace(/\.ts$/, "");
+    sourceFiles.set(
+      moduleName,
+      ts.createSourceFile(entry.name, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS),
+    );
+  }
+  expect(sourceFiles.has("index"), "create convex/index.ts").toBe(true);
 
-  let limitCallPos = -1;
-  let throwsTrue = false;
-  let keyedOnTokenIdentifier = false;
-  let trimPos = -1;
-  let insertPos = -1;
-
-  // Resolve identifiers (hoisted options objects) through const
-  // declarations anywhere in the file.
+  // Global collections across all authored files.
   const constDeclarations = new Map<string, ts.Expression>();
-  const collectDeclarations = (node: ts.Node) => {
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.initializer !== undefined
-    ) {
-      constDeclarations.set(node.name.text, node.initializer);
-    }
-    ts.forEachChild(node, collectDeclarations);
-  };
-  collectDeclarations(sourceFile);
+  const tokenIdentifierAliases = new Set<string>();
+  const rateLimiterCtors = new Set<string>();
+  const hourNames = new Set<string>();
+  // moduleName -> set of limiter variable names declared there
+  const limiterVarsByModule = new Map<string, Set<string>>();
+  // moduleName -> (functionName -> body)
+  const functionsByModule = new Map<string, Map<string, ts.Node>>();
+  let hasFixedWindowTwoPerHour = false;
+
   const resolve = (expression: ts.Expression): ts.Expression => {
     let current = expression;
     for (let i = 0; i < 5; i++) {
-      if (
-        ts.isParenthesizedExpression(current) ||
-        ts.isAsExpression(current)
-      ) {
+      if (ts.isParenthesizedExpression(current) || ts.isAsExpression(current)) {
         current = current.expression;
       } else if (
         ts.isIdentifier(current) &&
@@ -201,45 +196,6 @@ test("generated solution consumes the limit before semantic validation", () => {
     return current;
   };
 
-  // Locate the RateLimiter and HOUR local names imported from
-  // @convex-dev/rate-limiter (handling renamed imports).
-  const rateLimiterCtors = new Set<string>();
-  const hourNames = new Set<string>();
-  for (const statement of sourceFile.statements) {
-    if (
-      !ts.isImportDeclaration(statement) ||
-      !ts.isStringLiteral(statement.moduleSpecifier) ||
-      statement.moduleSpecifier.text !== "@convex-dev/rate-limiter"
-    ) {
-      continue;
-    }
-    const bindings = statement.importClause?.namedBindings;
-    if (bindings !== undefined && ts.isNamedImports(bindings)) {
-      for (const element of bindings.elements) {
-        const importedName = (element.propertyName ?? element.name).text;
-        if (importedName === "RateLimiter") {
-          rateLimiterCtors.add(element.name.text);
-        }
-        if (importedName === "HOUR") {
-          hourNames.add(element.name.text);
-        }
-      }
-    }
-  }
-
-  const isRateLimiterConstruction = (
-    expression: ts.Expression,
-  ): expression is ts.NewExpression => {
-    if (!ts.isNewExpression(expression)) return false;
-    const target = resolve(expression.expression);
-    return ts.isIdentifier(target) && rateLimiterCtors.has(target.text);
-  };
-
-  // Variables holding a RateLimiter instance, and whether any instance is
-  // configured with the required fixed-window 2/hour sendMessage limit.
-  const limiterVariables = new Set<string>();
-  let hasFixedWindowTwoPerHour = false;
-
   const resolvesToHour = (expression: ts.Expression): boolean => {
     const value = resolve(expression);
     if (ts.isIdentifier(value) && hourNames.has(value.text)) return true;
@@ -247,6 +203,14 @@ test("generated solution consumes the limit before semantic validation", () => {
       ts.isNumericLiteral(value) &&
       Number(value.text.replaceAll("_", "")) === 3_600_000
     );
+  };
+
+  const isRateLimiterConstruction = (
+    expression: ts.Expression,
+  ): expression is ts.NewExpression => {
+    if (!ts.isNewExpression(expression)) return false;
+    const target = resolve(expression.expression);
+    return ts.isIdentifier(target) && rateLimiterCtors.has(target.text);
   };
 
   const checkLimiterConfig = (construction: ts.NewExpression) => {
@@ -296,26 +260,123 @@ test("generated solution consumes the limit before semantic validation", () => {
     }
   };
 
-  const collectLimiters = (node: ts.Node) => {
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.initializer !== undefined
-    ) {
-      const initializer = resolve(node.initializer);
-      if (isRateLimiterConstruction(initializer)) {
-        limiterVariables.add(node.name.text);
-        checkLimiterConfig(initializer);
+  // Pass 1: imports, const declarations, destructuring aliases, functions.
+  for (const [moduleName, sourceFile] of sourceFiles) {
+    functionsByModule.set(moduleName, new Map());
+    for (const statement of sourceFile.statements) {
+      if (
+        ts.isImportDeclaration(statement) &&
+        ts.isStringLiteral(statement.moduleSpecifier) &&
+        statement.moduleSpecifier.text === "@convex-dev/rate-limiter"
+      ) {
+        const bindings = statement.importClause?.namedBindings;
+        if (bindings !== undefined && ts.isNamedImports(bindings)) {
+          for (const element of bindings.elements) {
+            const importedName = (element.propertyName ?? element.name).text;
+            if (importedName === "RateLimiter") rateLimiterCtors.add(element.name.text);
+            if (importedName === "HOUR") hourNames.add(element.name.text);
+          }
+        }
       }
     }
-    ts.forEachChild(node, collectLimiters);
-  };
-  collectLimiters(sourceFile);
+    const collect = (node: ts.Node) => {
+      if (ts.isVariableDeclaration(node) && node.initializer !== undefined) {
+        if (ts.isIdentifier(node.name)) {
+          constDeclarations.set(node.name.text, node.initializer);
+          if (
+            ts.isArrowFunction(node.initializer) ||
+            ts.isFunctionExpression(node.initializer)
+          ) {
+            functionsByModule
+              .get(moduleName)!
+              .set(node.name.text, node.initializer.body ?? node.initializer);
+          }
+        }
+        // const { tokenIdentifier } / { tokenIdentifier: alias } = identity
+        if (ts.isObjectBindingPattern(node.name)) {
+          for (const element of node.name.elements) {
+            const propertyName =
+              element.propertyName !== undefined &&
+              ts.isIdentifier(element.propertyName)
+                ? element.propertyName.text
+                : ts.isIdentifier(element.name)
+                  ? element.name.text
+                  : undefined;
+            if (propertyName === "tokenIdentifier" && ts.isIdentifier(element.name)) {
+              tokenIdentifierAliases.add(element.name.text);
+            }
+          }
+        }
+      }
+      if (
+        ts.isFunctionDeclaration(node) &&
+        node.name !== undefined &&
+        node.body !== undefined
+      ) {
+        functionsByModule.get(moduleName)!.set(node.name.text, node.body);
+      }
+      ts.forEachChild(node, collect);
+    };
+    collect(sourceFile);
+  }
+
+  // Pass 2: limiter constructions and their configs, per module.
+  for (const [moduleName, sourceFile] of sourceFiles) {
+    const vars = new Set<string>();
+    const collect = (node: ts.Node) => {
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        node.initializer !== undefined
+      ) {
+        const initializer = resolve(node.initializer);
+        if (isRateLimiterConstruction(initializer)) {
+          vars.add(node.name.text);
+          checkLimiterConfig(initializer);
+        }
+      }
+      ts.forEachChild(node, collect);
+    };
+    collect(sourceFile);
+    limiterVarsByModule.set(moduleName, vars);
+  }
+
+  // index.ts local-import map: localName -> { module, originalName }
+  const indexFile = sourceFiles.get("index")!;
+  const localImports = new Map<string, { module: string; originalName: string }>();
+  for (const statement of indexFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier) ||
+      !statement.moduleSpecifier.text.startsWith("./")
+    ) {
+      continue;
+    }
+    const module = statement.moduleSpecifier.text
+      .replace(/^\.\//, "")
+      .replace(/\.(ts|js)$/, "");
+    const bindings = statement.importClause?.namedBindings;
+    if (bindings !== undefined && ts.isNamedImports(bindings)) {
+      for (const element of bindings.elements) {
+        localImports.set(element.name.text, {
+          module,
+          originalName: (element.propertyName ?? element.name).text,
+        });
+      }
+    }
+  }
 
   const isLimiterReceiver = (expression: ts.Expression): boolean => {
     const receiver = resolve(expression);
-    if (ts.isIdentifier(receiver) && limiterVariables.has(receiver.text)) {
-      return true;
+    if (ts.isIdentifier(receiver)) {
+      if (limiterVarsByModule.get("index")!.has(receiver.text)) return true;
+      const imported = localImports.get(receiver.text);
+      if (
+        imported !== undefined &&
+        limiterVarsByModule.get(imported.module)?.has(imported.originalName)
+      ) {
+        return true;
+      }
     }
     if (isRateLimiterConstruction(receiver)) {
       checkLimiterConfig(receiver);
@@ -324,9 +385,6 @@ test("generated solution consumes the limit before semantic validation", () => {
     return false;
   };
 
-  // The key must reference the identity's tokenIdentifier: a property
-  // access ending in .tokenIdentifier, a destructured `tokenIdentifier`
-  // identifier, or a local alias resolving to either.
   const referencesTokenIdentifier = (expression: ts.Expression): boolean => {
     for (const candidate of [expression, resolve(expression)]) {
       if (
@@ -335,35 +393,26 @@ test("generated solution consumes the limit before semantic validation", () => {
       ) {
         return true;
       }
-      if (ts.isIdentifier(candidate) && candidate.text === "tokenIdentifier") {
+      if (
+        ts.isIdentifier(candidate) &&
+        (candidate.text === "tokenIdentifier" ||
+          tokenIdentifierAliases.has(candidate.text))
+      ) {
         return true;
       }
     }
     return false;
   };
 
-  // Locate the sendMessage handler and walk it in execution order,
-  // inlining calls to local helper functions - so a dead helper containing
-  // the limit call does not count, and a validation helper hoisted above
-  // the mutation does not wrongly anchor the ordering.
-  const localFunctions = new Map<string, ts.Node>();
-  const collectFunctions = (node: ts.Node) => {
-    if (ts.isFunctionDeclaration(node) && node.name !== undefined && node.body !== undefined) {
-      localFunctions.set(node.name.text, node.body);
-    }
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.initializer !== undefined &&
-      (ts.isArrowFunction(node.initializer) ||
-        ts.isFunctionExpression(node.initializer))
-    ) {
-      localFunctions.set(node.name.text, node.initializer.body ?? node.initializer);
-    }
-    ts.forEachChild(node, collectFunctions);
+  const resolveHelper = (name: string): ts.Node | undefined => {
+    const local = functionsByModule.get("index")!.get(name);
+    if (local !== undefined) return local;
+    const imported = localImports.get(name);
+    if (imported === undefined) return undefined;
+    return functionsByModule.get(imported.module)?.get(imported.originalName);
   };
-  collectFunctions(sourceFile);
 
+  // Locate the sendMessage handler in index.ts.
   let handlerBody: ts.Node | undefined;
   const findHandler = (node: ts.Node) => {
     if (
@@ -390,46 +439,52 @@ test("generated solution consumes the limit before semantic validation", () => {
     }
     ts.forEachChild(node, findHandler);
   };
-  findHandler(sourceFile);
+  findHandler(indexFile);
   expect(
     handlerBody,
     "register a public mutation sendMessage in convex/index.ts",
   ).toBeDefined();
 
-  // Execution-order counter: increments only when a limit call or a
-  // validation construct is encountered, following helper calls in place.
+  // Execution-order walk of the handler, inlining helpers (local or
+  // imported from authored modules) so limit/validation/insert count at
+  // their call sites and dead code counts nowhere.
+  let limitCallPos = -1;
+  let throwsTrue = false;
+  let keyedOnTokenIdentifier = false;
+  let trimPos = -1;
+  let insertPos = -1;
   let step = 0;
+
   const inspectLimitCall = (node: ts.CallExpression) => {
     step++;
-    if (limitCallPos === -1) {
-      limitCallPos = step;
-      const rawOptions = node.arguments[2] ?? node.arguments[1];
-      const options =
-        rawOptions === undefined ? undefined : resolve(rawOptions);
-      if (options !== undefined && ts.isObjectLiteralExpression(options)) {
-        for (const property of options.properties) {
-          if (
-            !ts.isPropertyAssignment(property) ||
-            !ts.isIdentifier(property.name)
-          ) {
-            continue;
-          }
-          if (
-            property.name.text === "throws" &&
-            property.initializer.kind === ts.SyntaxKind.TrueKeyword
-          ) {
-            throwsTrue = true;
-          }
-          if (
-            property.name.text === "key" &&
-            referencesTokenIdentifier(property.initializer)
-          ) {
-            keyedOnTokenIdentifier = true;
-          }
+    if (limitCallPos !== -1) return;
+    limitCallPos = step;
+    const rawOptions = node.arguments[2] ?? node.arguments[1];
+    const options = rawOptions === undefined ? undefined : resolve(rawOptions);
+    if (options !== undefined && ts.isObjectLiteralExpression(options)) {
+      for (const property of options.properties) {
+        if (
+          !ts.isPropertyAssignment(property) ||
+          !ts.isIdentifier(property.name)
+        ) {
+          continue;
+        }
+        if (
+          property.name.text === "throws" &&
+          property.initializer.kind === ts.SyntaxKind.TrueKeyword
+        ) {
+          throwsTrue = true;
+        }
+        if (
+          property.name.text === "key" &&
+          referencesTokenIdentifier(property.initializer)
+        ) {
+          keyedOnTokenIdentifier = true;
         }
       }
     }
   };
+
   const walked = new Set<ts.Node>();
   const walk = (node: ts.Node, depth: number) => {
     if (
@@ -455,16 +510,13 @@ test("generated solution consumes the limit before semantic validation", () => {
         if (insertPos === -1) insertPos = step;
       }
     }
-    // Inline local helper calls so limit/validation inside them count at
-    // the position of the call site.
     if (
       ts.isCallExpression(node) &&
       ts.isIdentifier(node.expression) &&
-      localFunctions.has(node.expression.text) &&
       depth < 4
     ) {
-      const body = localFunctions.get(node.expression.text)!;
-      if (!walked.has(body)) {
+      const body = resolveHelper(node.expression.text);
+      if (body !== undefined && !walked.has(body)) {
         walked.add(body);
         walk(body, depth + 1);
         walked.delete(body);
