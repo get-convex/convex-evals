@@ -79,21 +79,38 @@ test(
     // A different identity with the same subject has an untouched quota
     // (kills subject-only keys), and so does one with the same issuer but a
     // different subject (kills issuer-only keys).
-    await bob.mutation(anyApi.index.sendMessage, { body: "bob-first" });
-    await bob.mutation(anyApi.index.sendMessage, { body: "bob-second" });
+    const returned: Record<string, unknown> = { first, second };
+    returned["bob-first"] = await bob.mutation(anyApi.index.sendMessage, {
+      body: "bob-first",
+    });
+    returned["bob-second"] = await bob.mutation(anyApi.index.sendMessage, {
+      body: "bob-second",
+    });
     const carol = withIdentity({
       subject: "user-2",
       issuer: "https://issuer-a.example.com",
     });
-    await carol.mutation(anyApi.index.sendMessage, { body: "carol-first" });
-    await carol.mutation(anyApi.index.sendMessage, { body: "carol-second" });
+    returned["carol-first"] = await carol.mutation(anyApi.index.sendMessage, {
+      body: "carol-first",
+    });
+    returned["carol-second"] = await carol.mutation(anyApi.index.sendMessage, {
+      body: "carol-second",
+    });
 
-    // Exactly the six successful messages exist, attributed per identity.
+    // Exactly the six successful messages exist, attributed per identity,
+    // and every call returned the _id of the document it inserted.
     const messages = (await listTable(
       responseAdminClient,
       "messages",
       100,
-    )) as { authorTokenIdentifier: string; body: string }[];
+    )) as { _id: string; authorTokenIdentifier: string; body: string }[];
+    for (const message of messages) {
+      const key = message.body === "first" ? "first" : message.body === "second" ? "second" : message.body;
+      expect(
+        returned[key],
+        `sendMessage must return the inserted message ID for "${message.body}"`,
+      ).toBe(message._id);
+    }
     expect(messages).toHaveLength(6);
     expect(messages.map((m) => m.body).sort()).toEqual([
       "bob-first",
@@ -138,6 +155,40 @@ test("generated solution consumes the limit before semantic validation", () => {
   let keyedOnTokenIdentifier = false;
   let trimPos = -1;
 
+  // Resolve identifiers (hoisted options objects) through const
+  // declarations anywhere in the file.
+  const constDeclarations = new Map<string, ts.Expression>();
+  const collectDeclarations = (node: ts.Node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer !== undefined
+    ) {
+      constDeclarations.set(node.name.text, node.initializer);
+    }
+    ts.forEachChild(node, collectDeclarations);
+  };
+  collectDeclarations(sourceFile);
+  const resolve = (expression: ts.Expression): ts.Expression => {
+    let current = expression;
+    for (let i = 0; i < 5; i++) {
+      if (
+        ts.isParenthesizedExpression(current) ||
+        ts.isAsExpression(current)
+      ) {
+        current = current.expression;
+      } else if (
+        ts.isIdentifier(current) &&
+        constDeclarations.has(current.text)
+      ) {
+        current = constDeclarations.get(current.text)!;
+      } else {
+        break;
+      }
+    }
+    return current;
+  };
+
   // The key must reference the identity's tokenIdentifier: either a
   // property access ending in .tokenIdentifier or a destructured
   // `tokenIdentifier` identifier.
@@ -161,7 +212,9 @@ test("generated solution consumes the limit before semantic validation", () => {
       const name = node.expression.name.text;
       if (name === "limit" && limitCallPos === -1) {
         limitCallPos = node.getStart();
-        const options = node.arguments[2] ?? node.arguments[1];
+        const rawOptions = node.arguments[2] ?? node.arguments[1];
+        const options =
+          rawOptions === undefined ? undefined : resolve(rawOptions);
         if (options !== undefined && ts.isObjectLiteralExpression(options)) {
           for (const property of options.properties) {
             if (
