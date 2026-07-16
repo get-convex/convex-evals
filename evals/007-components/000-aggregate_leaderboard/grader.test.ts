@@ -541,8 +541,11 @@ function analyzeAuthoredConvexSources(): SourceAnalysis {
         if (
           method === "register" &&
           node.arguments[0] !== undefined &&
-          ts.isStringLiteralLike(node.arguments[0]) &&
-          node.arguments[0].text === "scores" &&
+          resolvesToStringLiteral(
+            node.arguments[0],
+            "scores",
+            fileDeclarations,
+          ) &&
           node.arguments[1] !== undefined &&
           containsAggregateTrigger(
             resolveExpression(node.arguments[1], fileDeclarations),
@@ -714,8 +717,7 @@ function chainQueriesScores(
     return (
       current.expression.name.text === "query" &&
       current.arguments[0] !== undefined &&
-      ts.isStringLiteralLike(current.arguments[0]) &&
-      current.arguments[0].text === "scores"
+      resolvesToStringLiteral(current.arguments[0], "scores", declarations)
     );
   });
 }
@@ -730,8 +732,7 @@ function chainUsesEqualityBoundedIndex(
     if (
       current.expression.name.text === "withIndex" &&
       current.arguments[0] !== undefined &&
-      ts.isStringLiteralLike(current.arguments[0]) &&
-      current.arguments[0].text === indexName &&
+      resolvesToStringLiteral(current.arguments[0], indexName, declarations) &&
       current.arguments[1] !== undefined
     ) {
       return rangeCallbackUsesEqualityBound(
@@ -810,8 +811,7 @@ function expressionChainUsesEqualityBound(
     if (
       current.expression.name.text === "eq" &&
       current.arguments[0] !== undefined &&
-      ts.isStringLiteralLike(current.arguments[0]) &&
-      current.arguments[0].text === fieldName
+      resolvesToStringLiteral(current.arguments[0], fieldName, declarations)
     ) {
       hasEqualityBound = true;
     }
@@ -827,6 +827,15 @@ function takesAtMostOne(
   if (call.arguments[0] === undefined) return false;
   const amount = resolveExpression(call.arguments[0], declarations);
   return ts.isNumericLiteral(amount) && Number(amount.text) <= 1;
+}
+
+function resolvesToStringLiteral(
+  expression: ts.Expression,
+  expected: string,
+  declarations: Map<string, ts.Expression>,
+): boolean {
+  const resolved = resolveExpression(expression, declarations);
+  return ts.isStringLiteralLike(resolved) && resolved.text === expected;
 }
 
 function callChainSome(
