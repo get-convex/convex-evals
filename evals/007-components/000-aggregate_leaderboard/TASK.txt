@@ -1,6 +1,6 @@
 Build a leaderboard backend where every user has one current score, using the `@convex-dev/aggregate` component for efficient counting and ranking.
 
-Create a `package.json` with exactly these dependencies:
+Create a `package.json` that pins these dependencies to exactly these versions (you may add other dependencies):
 ```json
 {
   "dependencies": {

@@ -11,12 +11,31 @@ import { tmpdir } from "os";
 import { rmSync } from "fs";
 import {
   ensureConvexTsconfig,
+  formatDeployFailure,
   getTypecheckTargets,
   isInfrastructureStepFailure,
   sanitizeModelTsconfigTypes,
   walkAnswer,
   writeFilesystem,
 } from "./scorer.js";
+
+describe("deploy diagnostics", () => {
+  it("preserves initial codegen diagnostics when convex dev also fails", () => {
+    const failure = formatDeployFailure(
+      {
+        exitCode: 1,
+        output: "convex.config.ts: Cannot resolve component definition",
+      },
+      "Failed to push deployment config",
+    );
+
+    expect(failure).toContain("Initial codegen (exit 1)");
+    expect(failure).toContain(
+      "convex.config.ts: Cannot resolve component definition",
+    );
+    expect(failure).toContain("convex dev:\nFailed to push deployment config");
+  });
+});
 
 describe("writeFilesystem pattern", () => {
   let tempDir: string;
