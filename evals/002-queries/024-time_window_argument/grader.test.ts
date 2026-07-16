@@ -1,7 +1,6 @@
 import { expect, test, beforeEach } from "vitest";
 import {
   addDocuments,
-  compareFunctionSpec,
   compareSchema,
   deleteAllDocuments,
   listTable,
@@ -9,7 +8,7 @@ import {
   responseAdminClient,
   responseClient,
 } from "../../../grader";
-import { api } from "./answer/convex/_generated/api";
+import { anyApi } from "convex/server";
 import { Doc } from "./answer/convex/_generated/dataModel";
 import ts from "typescript";
 
@@ -19,16 +18,66 @@ beforeEach(async () => {
   await deleteAllDocuments(responseAdminClient, ["items"]);
 });
 
+/**
+ * The task deliberately does not dictate the query's arguments: choosing to
+ * take the current time as a caller-supplied argument (rather than reading
+ * the wall clock) IS the concept under test. Discover the numeric argument
+ * the solution declared - whatever it is named - and drive every behavioral
+ * test through it.
+ */
+async function getTimeArgName(): Promise<string> {
+  const spec = (await responseAdminClient.query(
+    "_system/cli/modules:apiSpec" as any,
+    {},
+  )) as any[];
+  const entry = spec.find((f: any) => f.identifier === "index.js:listActive");
+  expect(entry, "listActive is not defined in convex/index.ts").toBeDefined();
+  expect(entry.functionType).toBe("Query");
+  expect(entry.visibility?.kind).toBe("public");
+
+  let args = entry.args;
+  if (typeof args === "string") {
+    args = JSON.parse(args);
+  }
+  expect(
+    args?.type,
+    "listActive must declare an arguments object",
+  ).toBe("object");
+  const fields = Object.entries(args.value ?? {}) as [string, any][];
+  const numericFields = fields.filter(([, field]) =>
+    ["number", "float64"].includes(field?.fieldType?.type),
+  );
+  expect(
+    numericFields,
+    "listActive must take exactly one caller-supplied numeric (timestamp) argument",
+  ).toHaveLength(1);
+  const otherRequired = fields.filter(
+    ([name, field]) => name !== numericFields[0][0] && !field?.optional,
+  );
+  expect(
+    otherRequired,
+    "listActive must not require arguments beyond its timestamp",
+  ).toHaveLength(0);
+  return numericFields[0][0];
+}
+
+async function listActive(now: number): Promise<Doc<"items">[]> {
+  const argName = await getTimeArgName();
+  return (await responseClient.query(anyApi.index.listActive, {
+    [argName]: now,
+  })) as Doc<"items">[];
+}
+
 test("compare schema", async ({ skip }) => {
   await compareSchema(skip);
 });
 
-test("compare function spec", async ({ skip }) => {
-  // Return validators are not required by the task, so ignore them.
-  await compareFunctionSpec(skip, { ignoreReturns: true });
+test("declares a caller-supplied timestamp argument", async () => {
+  const argName = await getTimeArgName();
+  expect(argName).toBeTruthy();
 });
 
-test("strict boundary: only items expiring after `now`, soonest first", async () => {
+test("strict boundary: only items expiring after the supplied time, soonest first", async () => {
   // Inserted deliberately out of expiration order.
   await addDocuments(responseAdminClient, "items", [
     { name: "later", expiresAt: NOW + 2000 },
@@ -37,36 +86,28 @@ test("strict boundary: only items expiring after `now`, soonest first", async ()
     { name: "boundary", expiresAt: NOW },
   ]);
 
-  const results = (await responseClient.query(api.index.listActive, {
-    now: NOW,
-  })) as Doc<"items">[];
+  const results = await listActive(NOW);
 
   // "boundary" (expiresAt === now) is excluded: strictly greater only.
   expect(results.map((r) => r.name)).toEqual(["soon", "later"]);
 });
 
 test("the cutoff really comes from the argument", async () => {
-  // Same seed, different `now` values must produce different windows - an
-  // implementation that ignores args.now cannot pass all three.
+  // Same seed, different supplied times must produce different windows - an
+  // implementation that ignores its argument cannot pass all three.
   await addDocuments(responseAdminClient, "items", [
     { name: "later", expiresAt: NOW + 2000 },
     { name: "past", expiresAt: NOW - 5000 },
     { name: "soon", expiresAt: NOW + 1000 },
   ]);
 
-  const midWindow = (await responseClient.query(api.index.listActive, {
-    now: NOW + 1500,
-  })) as Doc<"items">[];
+  const midWindow = await listActive(NOW + 1500);
   expect(midWindow.map((r) => r.name)).toEqual(["later"]);
 
-  const wideWindow = (await responseClient.query(api.index.listActive, {
-    now: NOW - 6000,
-  })) as Doc<"items">[];
+  const wideWindow = await listActive(NOW - 6000);
   expect(wideWindow.map((r) => r.name)).toEqual(["past", "soon", "later"]);
 
-  const emptyWindow = (await responseClient.query(api.index.listActive, {
-    now: NOW + 3000,
-  })) as Doc<"items">[];
+  const emptyWindow = await listActive(NOW + 3000);
   expect(emptyWindow).toEqual([]);
 });
 
@@ -83,9 +124,7 @@ test("returns at most 100 items, the soonest-expiring ones", async () => {
   )) as Doc<"items">[];
   expect(seeded).toHaveLength(105);
 
-  const results = (await responseClient.query(api.index.listActive, {
-    now: NOW,
-  })) as Doc<"items">[];
+  const results = await listActive(NOW);
 
   expect(results).toHaveLength(100);
   expect(results.map((r) => r.name)).toEqual(
@@ -102,9 +141,7 @@ test("returns an empty array when everything has expired", async () => {
     { name: "old-2", expiresAt: NOW - 2000 },
   ]);
 
-  const results = (await responseClient.query(api.index.listActive, {
-    now: NOW,
-  })) as Doc<"items">[];
+  const results = await listActive(NOW);
 
   expect(results).toEqual([]);
 });
