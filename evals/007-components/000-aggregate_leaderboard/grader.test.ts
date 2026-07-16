@@ -33,8 +33,25 @@ test(
   "counts and ranks stay correct through inserts, ties, and updates",
   { timeout: 30_000 },
   async () => {
-    const submit = (userId: string, score: number) =>
-      responseClient.mutation(anyApi.index.submitScore, { userId, score });
+    const submit = async (userId: string, score: number) => {
+      const returnedId = await responseClient.mutation(
+        anyApi.index.submitScore,
+        { userId, score },
+      );
+      const currentScores = await listTable(responseAdminClient, "scores", 100);
+      const currentForUser = currentScores.filter(
+        (stored: { userId?: unknown }) => stored.userId === userId,
+      );
+      expect(
+        currentForUser,
+        `${userId} must have exactly one current scores document after submitScore`,
+      ).toHaveLength(1);
+      expect(
+        returnedId,
+        `submitScore must return ${userId}'s current scores document ID`,
+      ).toBe(currentForUser[0]._id);
+      return returnedId;
+    };
     const rankOf = (userId: string) =>
       responseClient.query(anyApi.index.getRank, { userId });
     const count = () => responseClient.query(anyApi.index.getCount, {});
