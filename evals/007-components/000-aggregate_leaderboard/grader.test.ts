@@ -549,7 +549,22 @@ function analyzeAuthoredConvexSources(): SourceAnalysis {
 
     const visit = (node: ts.Node) => {
       if (ts.isForOfStatement(node) && node.awaitModifier !== undefined) {
-        scanConstructs.push(`${path}: for await`);
+        // Async-iterating the by_userId equality lookup is O(1) under the
+        // one-current-score invariant - equivalent to the bounded
+        // collect/take allowances below. Anything else stays flagged.
+        const iterated = resolveExpression(node.expression, fileDeclarations);
+        const boundedIteration =
+          ts.isCallExpression(iterated) &&
+          chainUsesEqualityBoundedIndex(
+            iterated,
+            "by_userId",
+            "userId",
+            declarations,
+            checker,
+          );
+        if (!boundedIteration) {
+          scanConstructs.push(`${path}: for await`);
+        }
       }
       if (
         ts.isCallExpression(node) &&
