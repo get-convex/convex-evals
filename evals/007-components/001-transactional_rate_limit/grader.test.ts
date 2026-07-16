@@ -157,15 +157,24 @@ test("generated solution consumes the limit before semantic validation", () => {
   const projectDir = getLatestOutputProjectDir(CATEGORY, EVAL_NAME);
   const convexDir = join(projectDir, "convex");
   const sourceFiles = new Map<string, ts.SourceFile>();
-  for (const entry of readdirSync(convexDir, { withFileTypes: true })) {
-    if (!entry.isFile() || !entry.name.endsWith(".ts")) continue;
-    const text = readOutputFile(CATEGORY, EVAL_NAME, `convex/${entry.name}`);
-    const moduleName = entry.name.replace(/\.ts$/, "");
-    sourceFiles.set(
-      moduleName,
-      ts.createSourceFile(entry.name, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS),
-    );
-  }
+  const loadSources = (relativeDir: string) => {
+    for (const entry of readdirSync(join(convexDir, relativeDir), {
+      withFileTypes: true,
+    })) {
+      const relativePath = relativeDir === "" ? entry.name : `${relativeDir}/${entry.name}`;
+      if (entry.isDirectory() && entry.name !== "_generated") {
+        loadSources(relativePath);
+      }
+      if (!entry.isFile() || !entry.name.endsWith(".ts")) continue;
+      const text = readOutputFile(CATEGORY, EVAL_NAME, `convex/${relativePath}`);
+      const moduleName = relativePath.replace(/\.ts$/, "");
+      sourceFiles.set(
+        moduleName,
+        ts.createSourceFile(relativePath, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS),
+      );
+    }
+  };
+  loadSources("");
   expect(sourceFiles.has("index"), "create convex/index.ts").toBe(true);
 
   // Global collections across all authored files.
@@ -173,6 +182,7 @@ test("generated solution consumes the limit before semantic validation", () => {
   const tokenIdentifierAliases = new Set<string>();
   const rateLimiterCtors = new Set<string>();
   const hourNames = new Set<string>();
+  const timeConstants = new Map<string, number>();
   // moduleName -> set of limiter variable names declared there
   const limiterVarsByModule = new Map<string, Set<string>>();
   // moduleName -> (functionName -> body)
@@ -196,13 +206,31 @@ test("generated solution consumes the limit before semantic validation", () => {
     return current;
   };
 
+  const evaluateNumeric = (
+    expression: ts.Expression,
+    depth = 0,
+  ): number | undefined => {
+    if (depth > 6) return undefined;
+    const value = resolve(expression);
+    if (ts.isNumericLiteral(value)) {
+      return Number(value.text.replaceAll("_", ""));
+    }
+    if (ts.isIdentifier(value) && timeConstants.has(value.text)) {
+      return timeConstants.get(value.text);
+    }
+    if (ts.isBinaryExpression(value)) {
+      const left = evaluateNumeric(value.left, depth + 1);
+      const right = evaluateNumeric(value.right, depth + 1);
+      if (left === undefined || right === undefined) return undefined;
+      if (value.operatorToken.kind === ts.SyntaxKind.AsteriskToken) return left * right;
+      if (value.operatorToken.kind === ts.SyntaxKind.PlusToken) return left + right;
+    }
+    return undefined;
+  };
   const resolvesToHour = (expression: ts.Expression): boolean => {
     const value = resolve(expression);
     if (ts.isIdentifier(value) && hourNames.has(value.text)) return true;
-    return (
-      ts.isNumericLiteral(value) &&
-      Number(value.text.replaceAll("_", "")) === 3_600_000
-    );
+    return evaluateNumeric(expression) === 3_600_000;
   };
 
   const isRateLimiterConstruction = (
@@ -275,6 +303,15 @@ test("generated solution consumes the limit before semantic validation", () => {
             const importedName = (element.propertyName ?? element.name).text;
             if (importedName === "RateLimiter") rateLimiterCtors.add(element.name.text);
             if (importedName === "HOUR") hourNames.add(element.name.text);
+            const timeValues: Record<string, number> = {
+              SECOND: 1000,
+              MINUTE: 60_000,
+              HOUR: 3_600_000,
+              DAY: 86_400_000,
+            };
+            if (importedName in timeValues) {
+              timeConstants.set(element.name.text, timeValues[importedName]);
+            }
           }
         }
       }
