@@ -105,6 +105,7 @@ When investigating a model's performance or deciding whether to adjust eval requ
 
 Conventions established during the 2026-07 eval-roadmap work (waves tracked in GitHub issues):
 
+- Every eval issue and PR must include a "Why this matters" section: what Convex-specific knowledge is being measured and what silently breaks in production when a model lacks it. If you cannot articulate the why, the eval is probably testing trivia.
 - One concept per eval. If a task needs auth AND concurrency AND error shapes, split it - see the README's eval-writing rules.
 - Do NOT put `returns:` validators in reference answers unless the task explicitly tests them (only `000-fundamentals/009-returns_validator` and `002-queries/018-pagination_returns_validator`). Answers are likely training data and the guidelines deliberately mandate only argument validators.
 - Graders must be returns-neutral: use `compareFunctionSpec(skip, { ignoreReturns: true })`, plus `publicOnly: true` when the task does not dictate internal function names/modules.
