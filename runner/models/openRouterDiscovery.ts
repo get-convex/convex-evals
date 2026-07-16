@@ -365,7 +365,6 @@ export async function preflightOpenRouterEndpoint(
           model: model.runnableName,
           messages: [{ role: "user", content: "ping" }],
           max_tokens: 16,
-          temperature: 0,
         };
 
   const abortController = new AbortController();

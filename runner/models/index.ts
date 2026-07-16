@@ -70,6 +70,7 @@ export const ALL_MODELS: string[] = [
   "moonshotai/kimi-k2-0905",
   "moonshotai/kimi-k2.5",
   "moonshotai/kimi-k2.6",
+  "moonshotai/kimi-k3",
   "google/gemini-2.5-flash",
   "google/gemini-3-flash-preview",
   "google/gemini-3.1-flash-lite-preview",
