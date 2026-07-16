@@ -7,7 +7,6 @@ export const writeDeliveries = internalMutation({
     jobId: v.id("jobs"),
     count: v.number(),
   },
-  returns: v.null(),
   handler: async (ctx, args) => {
     for (let i = 0; i < args.count; i++) {
       await ctx.db.insert("deliveries", {
@@ -24,7 +23,6 @@ export const processFanout = mutation({
     jobId: v.id("jobs"),
     count: v.number(),
   },
-  returns: v.union(v.literal("completed"), v.literal("rejected")),
   handler: async (ctx, args) => {
     try {
       await ctx.runMutation(

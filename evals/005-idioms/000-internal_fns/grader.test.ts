@@ -7,7 +7,7 @@ import {
 import { api, internal } from "./answer/convex/_generated/api";
 
 test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
+  await compareFunctionSpec(skip, { ignoreReturns: true });
 });
 
 test("getPublicStats returns correct static data", async () => {

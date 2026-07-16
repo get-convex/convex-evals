@@ -6,7 +6,7 @@ import {
 import { api } from "./answer/convex/_generated/api";
 
 test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
+  await compareFunctionSpec(skip, { ignoreReturns: true });
 });
 
 test("callerMutation chains calls correctly", async () => {

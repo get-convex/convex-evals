@@ -21,7 +21,7 @@ beforeEach(async () => {
 // `returns` validator as a best practice).  Behavioral correctness is verified
 // by the remaining tests.
 // test("compare function spec", async ({ skip }) => {
-//   await compareFunctionSpec(skip);
+//   await compareFunctionSpec(skip, { ignoreReturns: true });
 // });
 
 test("compare schema", async ({ skip }) => {

@@ -138,7 +138,7 @@ async function getFunctionSpec(adminClient: any) {
 
 export async function compareFunctionSpec(
   skip: (note?: string) => void,
-  options: { ignoreReturns?: boolean } = {},
+  options: { ignoreReturns?: boolean; publicOnly?: boolean } = {},
 ) {
   if (!answerAdminClient) {
     skip("Answer backend not available");
@@ -148,10 +148,21 @@ export async function compareFunctionSpec(
   const answerFunctionSpec = await getFunctionSpec(answerAdminClient);
   // Return validators are optional unless the task explicitly requires them,
   // so graders can compare the public API surface while ignoring `returns`.
-  const normalize = (spec: any) =>
-    options.ignoreReturns && Array.isArray(spec)
-      ? spec.map(({ returns: _returns, ...rest }: any) => rest)
-      : spec;
+  // With `publicOnly`, internal helper functions are excluded entirely - use
+  // this when the task does not dictate internal function names or modules.
+  const normalize = (spec: any) => {
+    if (!Array.isArray(spec)) return spec;
+    let entries = spec;
+    if (options.publicOnly) {
+      entries = entries.filter(
+        (entry: any) => entry?.visibility?.kind === "public",
+      );
+    }
+    if (options.ignoreReturns) {
+      entries = entries.map(({ returns: _returns, ...rest }: any) => rest);
+    }
+    return entries;
+  };
   expect(normalize(responseFunctionSpec)).toEqual(normalize(answerFunctionSpec));
 }
 

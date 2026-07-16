@@ -1,0 +1,19 @@
+Build a backend for listing items that have not yet expired.
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  items: defineTable({
+    name: v.string(),
+    expiresAt: v.number(),
+  }).index("by_expiresAt", ["expiresAt"]),
+});
+```
+
+Create a query `listActive` in `convex/index.ts` that:
+- Returns an array of at most 100 item documents that have not yet expired (their `expiresAt` is strictly in the future), ordered by ascending expiration time (soonest-expiring first)
+
+`expiresAt` values are Unix timestamps in milliseconds.
