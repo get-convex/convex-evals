@@ -8,7 +8,7 @@ import {
 } from "../../../grader";
 import { anyApi } from "convex/server";
 import { readFileSync, readdirSync } from "node:fs";
-import { join, relative } from "node:path";
+import { dirname, join, normalize, relative } from "node:path";
 import ts from "typescript";
 
 const CATEGORY = "007-components";
@@ -197,16 +197,27 @@ type SourceAnalysis = {
 
 function analyzeAuthoredConvexSources(): SourceAnalysis {
   const sources = readAuthoredConvexSources();
+  const sourcePaths = new Set(sources.map(({ path }) => normalize(path)));
   const tableAggregateConstructors = new Map<ts.SourceFile, Set<string>>();
   const tableAggregateNamespaces = new Map<ts.SourceFile, Set<string>>();
   const aggregateVariables = new Map<ts.SourceFile, Set<string>>();
+  const localModuleNamespaces = new Map<ts.SourceFile, Map<string, string>>();
   const declarations = new Map<ts.SourceFile, Map<string, ts.Expression>>();
-  const exportedAggregateNames = new Set<string>();
+  const aggregateExports = new Map<
+    string,
+    { named: Set<string>; hasDefault: boolean }
+  >(
+    sources.map(({ path }) => [
+      normalize(path),
+      { named: new Set<string>(), hasDefault: false },
+    ]),
+  );
 
-  for (const { sourceFile } of sources) {
+  for (const { path, sourceFile } of sources) {
     const constructors = new Set<string>();
     const namespaces = new Set<string>();
     const variables = new Set<string>();
+    const moduleNamespaces = new Map<string, string>();
     const fileDeclarations = collectConstDeclarations(sourceFile);
     declarations.set(sourceFile, fileDeclarations);
 
@@ -216,6 +227,25 @@ function analyzeAuthoredConvexSources(): SourceAnalysis {
         !ts.isStringLiteral(statement.moduleSpecifier) ||
         statement.moduleSpecifier.text !== "@convex-dev/aggregate"
       ) {
+        if (
+          ts.isImportDeclaration(statement) &&
+          ts.isStringLiteral(statement.moduleSpecifier) &&
+          statement.moduleSpecifier.text.startsWith(".")
+        ) {
+          const targetPath = resolveLocalSourcePath(
+            path,
+            statement.moduleSpecifier.text,
+            sourcePaths,
+          );
+          const bindings = statement.importClause?.namedBindings;
+          if (
+            targetPath !== undefined &&
+            bindings !== undefined &&
+            ts.isNamespaceImport(bindings)
+          ) {
+            moduleNamespaces.set(bindings.name.text, targetPath);
+          }
+        }
         continue;
       }
       const namedImports = statement.importClause?.namedBindings;
@@ -247,9 +277,6 @@ function analyzeAuthoredConvexSources(): SourceAnalysis {
         )
       ) {
         variables.add(node.name.text);
-        if (hasExportModifier(node.parent.parent)) {
-          exportedAggregateNames.add(node.name.text);
-        }
       }
       ts.forEachChild(node, visit);
     };
@@ -258,30 +285,184 @@ function analyzeAuthoredConvexSources(): SourceAnalysis {
     tableAggregateConstructors.set(sourceFile, constructors);
     tableAggregateNamespaces.set(sourceFile, namespaces);
     aggregateVariables.set(sourceFile, variables);
+    localModuleNamespaces.set(sourceFile, moduleNamespaces);
   }
 
-  // A model may keep its aggregate in a helper module. Propagate named local
-  // imports so method calls through an alias still count as real usage.
-  for (const { sourceFile } of sources) {
-    const variables = aggregateVariables.get(sourceFile)!;
-    for (const statement of sourceFile.statements) {
-      if (
-        !ts.isImportDeclaration(statement) ||
-        !ts.isStringLiteral(statement.moduleSpecifier) ||
-        !statement.moduleSpecifier.text.startsWith(".")
-      ) {
-        continue;
+  const expressionIsAggregate = (
+    sourceFile: ts.SourceFile,
+    expression: ts.Expression,
+  ): boolean => {
+    const resolved = resolveExpression(
+      expression,
+      declarations.get(sourceFile)!,
+    );
+    if (
+      ts.isIdentifier(resolved) &&
+      aggregateVariables.get(sourceFile)!.has(resolved.text)
+    ) {
+      return true;
+    }
+    if (
+      isTableAggregateConstruction(
+        resolved,
+        tableAggregateConstructors.get(sourceFile)!,
+        tableAggregateNamespaces.get(sourceFile)!,
+      )
+    ) {
+      return true;
+    }
+    if (
+      ts.isPropertyAccessExpression(resolved) &&
+      ts.isIdentifier(resolved.expression)
+    ) {
+      const targetPath = localModuleNamespaces
+        .get(sourceFile)!
+        .get(resolved.expression.text);
+      const targetExports =
+        targetPath === undefined ? undefined : aggregateExports.get(targetPath);
+      return (
+        targetExports !== undefined &&
+        (resolved.name.text === "default"
+          ? targetExports.hasDefault
+          : targetExports.named.has(resolved.name.text))
+      );
+    }
+    return false;
+  };
+
+  // Resolve Aggregate bindings through local modules. Iterate so default,
+  // named, namespace, aliased, and re-exported helpers all converge without
+  // confusing an unrelated import in another file for the Aggregate.
+  for (let iteration = 0; iteration < sources.length * 2 + 1; iteration++) {
+    let changed = false;
+
+    for (const { path, sourceFile } of sources) {
+      const variables = aggregateVariables.get(sourceFile)!;
+      for (const statement of sourceFile.statements) {
+        if (
+          !ts.isImportDeclaration(statement) ||
+          !ts.isStringLiteral(statement.moduleSpecifier) ||
+          !statement.moduleSpecifier.text.startsWith(".")
+        ) {
+          continue;
+        }
+        const targetPath = resolveLocalSourcePath(
+          path,
+          statement.moduleSpecifier.text,
+          sourcePaths,
+        );
+        const targetExports =
+          targetPath === undefined
+            ? undefined
+            : aggregateExports.get(targetPath);
+        if (targetExports === undefined) continue;
+
+        const defaultImport = statement.importClause?.name;
+        if (
+          defaultImport !== undefined &&
+          targetExports.hasDefault &&
+          !variables.has(defaultImport.text)
+        ) {
+          variables.add(defaultImport.text);
+          changed = true;
+        }
+        const namedImports = statement.importClause?.namedBindings;
+        if (namedImports !== undefined && ts.isNamedImports(namedImports)) {
+          for (const element of namedImports.elements) {
+            const importedName = (element.propertyName ?? element.name).text;
+            const importedIsAggregate =
+              importedName === "default"
+                ? targetExports.hasDefault
+                : targetExports.named.has(importedName);
+            if (importedIsAggregate && !variables.has(element.name.text)) {
+              variables.add(element.name.text);
+              changed = true;
+            }
+          }
+        }
       }
-      const namedImports = statement.importClause?.namedBindings;
-      if (namedImports !== undefined && ts.isNamedImports(namedImports)) {
-        for (const element of namedImports.elements) {
-          const importedName = (element.propertyName ?? element.name).text;
-          if (exportedAggregateNames.has(importedName)) {
-            variables.add(element.name.text);
+
+      const exports = aggregateExports.get(normalize(path))!;
+      for (const statement of sourceFile.statements) {
+        if (ts.isVariableStatement(statement) && hasExportModifier(statement)) {
+          for (const declaration of statement.declarationList.declarations) {
+            if (
+              ts.isIdentifier(declaration.name) &&
+              expressionIsAggregate(sourceFile, declaration.name) &&
+              !exports.named.has(declaration.name.text)
+            ) {
+              exports.named.add(declaration.name.text);
+              changed = true;
+            }
+          }
+        } else if (
+          ts.isExportAssignment(statement) &&
+          !statement.isExportEquals &&
+          expressionIsAggregate(sourceFile, statement.expression) &&
+          !exports.hasDefault
+        ) {
+          exports.hasDefault = true;
+          changed = true;
+        } else if (
+          ts.isExportDeclaration(statement) &&
+          (statement.exportClause === undefined ||
+            ts.isNamedExports(statement.exportClause))
+        ) {
+          const targetPath =
+            statement.moduleSpecifier !== undefined &&
+            ts.isStringLiteral(statement.moduleSpecifier) &&
+            statement.moduleSpecifier.text.startsWith(".")
+              ? resolveLocalSourcePath(
+                  path,
+                  statement.moduleSpecifier.text,
+                  sourcePaths,
+                )
+              : undefined;
+          const targetExports =
+            targetPath === undefined
+              ? undefined
+              : aggregateExports.get(targetPath);
+
+          if (statement.exportClause === undefined) {
+            if (targetExports !== undefined) {
+              for (const name of targetExports.named) {
+                if (!exports.named.has(name)) {
+                  exports.named.add(name);
+                  changed = true;
+                }
+              }
+            }
+            continue;
+          }
+
+          for (const element of statement.exportClause.elements) {
+            const localName = (element.propertyName ?? element.name).text;
+            const isAggregate =
+              targetExports === undefined
+                ? expressionIsAggregate(
+                    sourceFile,
+                    ts.factory.createIdentifier(localName),
+                  )
+                : localName === "default"
+                  ? targetExports.hasDefault
+                  : targetExports.named.has(localName);
+            if (!isAggregate) continue;
+
+            if (element.name.text === "default") {
+              if (!exports.hasDefault) {
+                exports.hasDefault = true;
+                changed = true;
+              }
+            } else if (!exports.named.has(element.name.text)) {
+              exports.named.add(element.name.text);
+              changed = true;
+            }
           }
         }
       }
     }
+
+    if (!changed) break;
   }
 
   const aggregateMethods = new Set<string>();
@@ -291,19 +472,12 @@ function analyzeAuthoredConvexSources(): SourceAnalysis {
   let hasTriggerSynchronization = false;
 
   for (const { path, sourceFile } of sources) {
-    const constructors = tableAggregateConstructors.get(sourceFile)!;
-    const namespaces = tableAggregateNamespaces.get(sourceFile)!;
     const variables = aggregateVariables.get(sourceFile)!;
     const fileDeclarations = declarations.get(sourceFile)!;
     if (variables.size > 0) hasTableAggregate = true;
 
-    const isAggregateReceiver = (expression: ts.Expression): boolean => {
-      if (ts.isIdentifier(expression) && variables.has(expression.text)) {
-        return true;
-      }
-      const resolved = resolveExpression(expression, fileDeclarations);
-      return isTableAggregateConstruction(resolved, constructors, namespaces);
-    };
+    const isAggregateReceiver = (expression: ts.Expression): boolean =>
+      expressionIsAggregate(sourceFile, expression);
 
     const visit = (node: ts.Node) => {
       if (ts.isForOfStatement(node) && node.awaitModifier !== undefined) {
@@ -440,6 +614,25 @@ function readAuthoredConvexSources(): AuthoredSource[] {
   };
   visit(convexDir);
   return sources;
+}
+
+function resolveLocalSourcePath(
+  importerPath: string,
+  specifier: string,
+  sourcePaths: Set<string>,
+): string | undefined {
+  const base = normalize(join(dirname(importerPath), specifier));
+  const withoutExtension = base.replace(/\.[cm]?[jt]sx?$/, "");
+  const candidates = [
+    base,
+    ...["ts", "tsx", "js", "jsx", "mts", "cts", "mjs", "cjs"].map(
+      (extension) => `${withoutExtension}.${extension}`,
+    ),
+    ...["ts", "tsx", "js", "jsx", "mts", "cts", "mjs", "cjs"].map((extension) =>
+      join(base, `index.${extension}`),
+    ),
+  ];
+  return candidates.find((candidate) => sourcePaths.has(candidate));
 }
 
 function collectConstDeclarations(
