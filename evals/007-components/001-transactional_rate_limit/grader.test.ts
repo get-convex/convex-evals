@@ -76,27 +76,37 @@ test(
     expect(data!.name).toBe("sendMessage");
     expect(data!.retryAfter).toBeTypeOf("number");
 
-    // A different identity with the same subject has an untouched quota.
+    // A different identity with the same subject has an untouched quota
+    // (kills subject-only keys), and so does one with the same issuer but a
+    // different subject (kills issuer-only keys).
     await bob.mutation(anyApi.index.sendMessage, { body: "bob-first" });
     await bob.mutation(anyApi.index.sendMessage, { body: "bob-second" });
+    const carol = withIdentity({
+      subject: "user-2",
+      issuer: "https://issuer-a.example.com",
+    });
+    await carol.mutation(anyApi.index.sendMessage, { body: "carol-first" });
+    await carol.mutation(anyApi.index.sendMessage, { body: "carol-second" });
 
-    // Exactly the four successful messages exist, attributed per identity.
+    // Exactly the six successful messages exist, attributed per identity.
     const messages = (await listTable(
       responseAdminClient,
       "messages",
       100,
     )) as { authorTokenIdentifier: string; body: string }[];
-    expect(messages).toHaveLength(4);
+    expect(messages).toHaveLength(6);
     expect(messages.map((m) => m.body).sort()).toEqual([
       "bob-first",
       "bob-second",
+      "carol-first",
+      "carol-second",
       "first",
       "second",
     ]);
     const authors = new Set(messages.map((m) => m.authorTokenIdentifier));
-    expect(authors.size).toBe(2);
+    expect(authors.size).toBe(3);
     for (const author of authors) {
-      expect(author).toContain("user-1");
+      expect(author).toMatch(/user-[12]/);
     }
   },
 );
@@ -175,7 +185,27 @@ test("generated solution consumes the limit before semantic validation", () => {
           }
         }
       }
-      if (name === "trim" && trimPos === -1) {
+      if (
+        ["trim", "trimStart", "trimEnd", "test", "match"].includes(name) &&
+        trimPos === -1
+      ) {
+        trimPos = node.getStart();
+      }
+    }
+    // Comparisons against an empty string or zero length also mark the
+    // body validation, so regex- or length-based checks anchor the
+    // ordering assertion too.
+    if (ts.isBinaryExpression(node) && trimPos === -1) {
+      const operands = [node.left, node.right];
+      const emptyString = operands.some(
+        (operand) => ts.isStringLiteralLike(operand) && operand.text === "",
+      );
+      const lengthAccess = operands.some(
+        (operand) =>
+          ts.isPropertyAccessExpression(operand) &&
+          operand.name.text === "length",
+      );
+      if (emptyString || lengthAccess) {
         trimPos = node.getStart();
       }
     }
@@ -193,11 +223,14 @@ test("generated solution consumes the limit before semantic validation", () => {
   ).toBe(true);
   // Behavior cannot distinguish consume-then-validate from validate-then-
   // consume (a rolled-back token and an unconsumed one look identical), so
-  // the ordering the task specifies is checked structurally.
-  if (trimPos !== -1) {
-    expect(
-      limitCallPos,
-      "consume the rate limit before validating the message body",
-    ).toBeLessThan(trimPos);
-  }
+  // the ordering the task specifies is checked structurally - and the
+  // validation site must be locatable, or the ordering cannot be verified.
+  expect(
+    trimPos,
+    "validate the body with a recognizable construct (trim/regex/empty comparison)",
+  ).toBeGreaterThan(-1);
+  expect(
+    limitCallPos,
+    "consume the rate limit before validating the message body",
+  ).toBeLessThan(trimPos);
 });
