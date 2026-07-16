@@ -738,6 +738,19 @@ function combinedOutput(result: { stdout: Buffer; stderr: Buffer }): string {
   return [stdout, stderr].filter(Boolean).join("\n");
 }
 
+export function formatDeployFailure(
+  initialCodegen: { exitCode: number; output: string },
+  deployOutput: string,
+): string {
+  return [
+    "Failed to deploy:",
+    `Initial codegen (exit ${initialCodegen.exitCode}):`,
+    initialCodegen.output || "(no output)",
+    "convex dev:",
+    deployOutput || "(no output)",
+  ].join("\n");
+}
+
 async function installDependencies(
   projectDir: string,
 ): Promise<Array<{ cmd: string; stdout: string }>> {
@@ -781,12 +794,23 @@ async function deploy(
   const stdout = deployResult.stdout.toString();
   const deployOutput = combinedOutput(deployResult);
   if (deployResult.exitCode !== 0 && !stdout.includes("Convex functions ready!")) {
-    throw new Error(`Failed to deploy:\n${deployOutput}`);
+    throw new Error(
+      formatDeployFailure(
+        {
+          exitCode: initResult.exitCode,
+          output: combinedOutput(initResult),
+        },
+        deployOutput,
+      ),
+    );
   }
 
   return [
     {
-      cmd: "bunx convex codegen --typecheck disable --init",
+      // Initial codegen fails when no deployment is configured yet (dev
+      // --once regenerates below), but surface the exit code so real
+      // failures - e.g. a broken component config - are visible in run.log.
+      cmd: `bunx convex codegen --typecheck disable --init (exit ${initResult.exitCode})`,
       stdout: combinedOutput(initResult),
     },
     { cmd: `bunx convex dev --once --url ${convexUrl}`, stdout: deployOutput },
