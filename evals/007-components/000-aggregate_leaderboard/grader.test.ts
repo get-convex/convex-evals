@@ -327,35 +327,41 @@ function analyzeAuthoredConvexSources(): SourceAnalysis {
           }
         }
 
-        if (method === "collect") {
-          scanConstructs.push(`${path}: .${method}()`);
+        const queriesScores = chainQueriesScores(node, fileDeclarations);
+        const hasBoundedUserLookup = chainUsesEqualityBoundedIndex(
+          node,
+          "by_userId",
+          "userId",
+          fileDeclarations,
+        );
+
+        // Equality-bounding the declared user index limits the range to the
+        // one-current-score invariant, so collect/filter/paginate stay O(1).
+        // A literal take(1), like first(), is also O(1); behavior tests still
+        // decide whether that lookup found the requested user.
+        if (method === "collect" && queriesScores && !hasBoundedUserLookup) {
+          scanConstructs.push(`${path}: unbounded scores .collect()`);
         }
         if (
           method === "paginate" &&
           (isAggregateReceiver(receiver) ||
-            chainQueriesScores(node, fileDeclarations))
+            (queriesScores && !hasBoundedUserLookup))
         ) {
           scanConstructs.push(`${path}: .paginate()`);
         }
         if (
           method === "take" &&
-          chainQueriesScores(node, fileDeclarations) &&
-          !chainUsesIndex(node, "by_userId", fileDeclarations)
+          queriesScores &&
+          !hasBoundedUserLookup &&
+          !takesAtMostOne(node, fileDeclarations)
         ) {
-          scanConstructs.push(`${path}: scores .take() without by_userId`);
+          scanConstructs.push(`${path}: unbounded scores .take()`);
         }
         if (method === "iter" && isAggregateReceiver(receiver)) {
           scanConstructs.push(`${path}: aggregate .iter()`);
         }
-        if (method === "filter" && chainQueriesScores(node, fileDeclarations)) {
-          scanConstructs.push(`${path}: scores .filter()`);
-        }
-        if (
-          method === "first" &&
-          chainQueriesScores(node, fileDeclarations) &&
-          !chainUsesIndex(node, "by_userId", fileDeclarations)
-        ) {
-          scanConstructs.push(`${path}: scores .first() without by_userId`);
+        if (method === "filter" && queriesScores && !hasBoundedUserLookup) {
+          scanConstructs.push(`${path}: unbounded scores .filter()`);
         }
 
         if (
@@ -521,19 +527,113 @@ function chainQueriesScores(
   });
 }
 
-function chainUsesIndex(
+function chainUsesEqualityBoundedIndex(
   call: ts.CallExpression,
   indexName: string,
+  fieldName: string,
   declarations: Map<string, ts.Expression>,
 ): boolean {
   return callChainSome(call, declarations, (current) => {
-    return (
+    if (
       current.expression.name.text === "withIndex" &&
       current.arguments[0] !== undefined &&
       ts.isStringLiteralLike(current.arguments[0]) &&
-      current.arguments[0].text === indexName
-    );
+      current.arguments[0].text === indexName &&
+      current.arguments[1] !== undefined
+    ) {
+      return rangeCallbackUsesEqualityBound(
+        current.arguments[1],
+        fieldName,
+        declarations,
+      );
+    }
+    return false;
   });
+}
+
+function rangeCallbackUsesEqualityBound(
+  callbackExpression: ts.Expression,
+  fieldName: string,
+  declarations: Map<string, ts.Expression>,
+): boolean {
+  const callback = resolveExpression(callbackExpression, declarations);
+  if (
+    (!ts.isArrowFunction(callback) && !ts.isFunctionExpression(callback)) ||
+    callback.parameters.length === 0 ||
+    !ts.isIdentifier(callback.parameters[0].name)
+  ) {
+    return false;
+  }
+
+  const returnedExpressions: ts.Expression[] = [];
+  if (ts.isBlock(callback.body)) {
+    const visit = (node: ts.Node) => {
+      if (node !== callback.body && ts.isFunctionLike(node)) return;
+      if (ts.isReturnStatement(node) && node.expression !== undefined) {
+        returnedExpressions.push(node.expression);
+        return;
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(callback.body);
+  } else {
+    returnedExpressions.push(callback.body);
+  }
+
+  const rangeParameter = callback.parameters[0].name.text;
+  return (
+    returnedExpressions.length > 0 &&
+    returnedExpressions.every((expression) =>
+      expressionChainUsesEqualityBound(
+        expression,
+        rangeParameter,
+        fieldName,
+        declarations,
+      ),
+    )
+  );
+}
+
+function expressionChainUsesEqualityBound(
+  expression: ts.Expression,
+  rangeParameter: string,
+  fieldName: string,
+  declarations: Map<string, ts.Expression>,
+): boolean {
+  let current = expression;
+  let hasEqualityBound = false;
+  for (let i = 0; i < 20; i++) {
+    current = resolveExpression(current, declarations);
+    if (
+      !ts.isCallExpression(current) ||
+      !ts.isPropertyAccessExpression(current.expression)
+    ) {
+      return (
+        hasEqualityBound &&
+        ts.isIdentifier(current) &&
+        current.text === rangeParameter
+      );
+    }
+    if (
+      current.expression.name.text === "eq" &&
+      current.arguments[0] !== undefined &&
+      ts.isStringLiteralLike(current.arguments[0]) &&
+      current.arguments[0].text === fieldName
+    ) {
+      hasEqualityBound = true;
+    }
+    current = current.expression.expression;
+  }
+  return false;
+}
+
+function takesAtMostOne(
+  call: ts.CallExpression,
+  declarations: Map<string, ts.Expression>,
+): boolean {
+  if (call.arguments[0] === undefined) return false;
+  const amount = resolveExpression(call.arguments[0], declarations);
+  return ts.isNumericLiteral(amount) && Number(amount.text) <= 1;
 }
 
 function callChainSome(
