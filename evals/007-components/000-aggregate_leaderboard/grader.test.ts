@@ -579,7 +579,9 @@ function analyzeAuthoredConvexSources(): SourceAnalysis {
           hasTableAggregate = true;
           aggregateMethods.add(method);
           if (
-            (method === "count" && node.arguments.length >= 2) ||
+            (method === "count" &&
+              node.arguments.length >= 2 &&
+              optionsContainBounds(node.arguments[1], fileDeclarations)) ||
             method === "indexOf" ||
             method === "indexOfDoc"
           ) {
@@ -1077,6 +1079,28 @@ function resolveExpression(
     }
   }
   return current;
+}
+
+/**
+ * A rank read is only bounded when the count options actually carry a
+ * `bounds` restriction - `count(ctx, {})` counts the whole aggregate.
+ */
+function optionsContainBounds(
+  expression: ts.Expression,
+  declarations: Map<string, ts.Expression>,
+): boolean {
+  const resolved = resolveExpression(expression, declarations);
+  if (!ts.isObjectLiteralExpression(resolved)) return false;
+  return resolved.properties.some((property) => {
+    if (ts.isShorthandPropertyAssignment(property)) {
+      return property.name.text === "bounds";
+    }
+    return (
+      ts.isPropertyAssignment(property) &&
+      (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) &&
+      property.name.text === "bounds"
+    );
+  });
 }
 
 function isTableAggregateConstruction(
