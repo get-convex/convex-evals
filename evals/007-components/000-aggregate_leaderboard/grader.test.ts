@@ -9,7 +9,7 @@ import {
   responseClient,
 } from "../../../grader";
 import { anyApi } from "convex/server";
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import { dirname, join, normalize, relative } from "node:path";
 import ts from "typescript";
 
@@ -240,7 +240,7 @@ type SourceAnalysis = {
 };
 
 function analyzeAuthoredConvexSources(): SourceAnalysis {
-  const sources = readAuthoredConvexSources();
+  const { sources, checker } = readAuthoredConvexSources();
   const sourcePaths = new Set(sources.map(({ path }) => normalize(path)));
   const tableAggregateConstructors = new Map<ts.SourceFile, Set<string>>();
   const tableAggregateNamespaces = new Map<ts.SourceFile, Set<string>>();
@@ -553,12 +553,13 @@ function analyzeAuthoredConvexSources(): SourceAnalysis {
           }
         }
 
-        const queriesScores = chainQueriesScores(node, fileDeclarations);
+        const queriesScores = chainQueriesScores(node, declarations, checker);
         const hasBoundedUserLookup = chainUsesEqualityBoundedIndex(
           node,
           "by_userId",
           "userId",
-          fileDeclarations,
+          declarations,
+          checker,
         );
 
         // Equality-bounding the declared user index limits the range to the
@@ -641,9 +642,32 @@ function analyzeAuthoredConvexSources(): SourceAnalysis {
   };
 }
 
-function readAuthoredConvexSources(): AuthoredSource[] {
+function readAuthoredConvexSources(): {
+  sources: AuthoredSource[];
+  checker: ts.TypeChecker;
+} {
   const projectDir = getLatestOutputProjectDir(CATEGORY, EVAL_NAME);
   const convexDir = join(projectDir, "convex");
+  const configPath = join(convexDir, "tsconfig.json");
+  const config = ts.readConfigFile(configPath, ts.sys.readFile);
+  if (config.error !== undefined) {
+    throw new Error(
+      ts.flattenDiagnosticMessageText(config.error.messageText, "\n"),
+    );
+  }
+  const parsed = ts.parseJsonConfigFileContent(
+    config.config,
+    ts.sys,
+    convexDir,
+    undefined,
+    configPath,
+  );
+  const program = ts.createProgram(parsed.fileNames, parsed.options);
+  const programSources = new Map(
+    program
+      .getSourceFiles()
+      .map((sourceFile) => [normalize(sourceFile.fileName), sourceFile]),
+  );
   const sources: AuthoredSource[] = [];
 
   const visit = (dir: string) => {
@@ -655,20 +679,19 @@ function readAuthoredConvexSources(): AuthoredSource[] {
         visit(fullPath);
       } else if (/\.[cm]?[jt]sx?$/.test(entry.name)) {
         const path = relative(projectDir, fullPath);
+        const sourceFile = programSources.get(normalize(fullPath));
+        if (sourceFile === undefined) {
+          throw new Error(`TypeScript program did not include ${path}`);
+        }
         sources.push({
           path,
-          sourceFile: ts.createSourceFile(
-            path,
-            readFileSync(fullPath, "utf8"),
-            ts.ScriptTarget.Latest,
-            true,
-          ),
+          sourceFile,
         });
       }
     }
   };
   visit(convexDir);
-  return sources;
+  return { sources, checker: program.getTypeChecker() };
 }
 
 function resolveLocalSourcePath(
@@ -886,6 +909,67 @@ function resolveLocalStringConstants(
   }
 }
 
+type FunctionImplementation =
+  | ts.FunctionDeclaration
+  | ts.FunctionExpression
+  | ts.ArrowFunction
+  | ts.MethodDeclaration
+  | ts.GetAccessorDeclaration
+  | ts.SetAccessorDeclaration;
+
+function isFunctionImplementation(
+  declaration: ts.Node,
+): declaration is FunctionImplementation {
+  return (
+    ts.isFunctionDeclaration(declaration) ||
+    ts.isFunctionExpression(declaration) ||
+    ts.isArrowFunction(declaration) ||
+    ts.isMethodDeclaration(declaration) ||
+    ts.isGetAccessorDeclaration(declaration) ||
+    ts.isSetAccessorDeclaration(declaration)
+  );
+}
+
+function returnedExpressions(
+  declaration: FunctionImplementation,
+): ts.Expression[] {
+  if (declaration.body === undefined) return [];
+  const expressions: ts.Expression[] = [];
+  const pushExpression = (expression: ts.Expression) => {
+    let resolved = expression;
+    while (
+      ts.isParenthesizedExpression(resolved) ||
+      ts.isAsExpression(resolved) ||
+      ts.isSatisfiesExpression(resolved) ||
+      ts.isTypeAssertionExpression(resolved) ||
+      ts.isNonNullExpression(resolved)
+    ) {
+      resolved = resolved.expression;
+    }
+    if (ts.isConditionalExpression(resolved)) {
+      pushExpression(resolved.whenTrue);
+      pushExpression(resolved.whenFalse);
+    } else {
+      expressions.push(expression);
+    }
+  };
+  if (!ts.isBlock(declaration.body)) {
+    pushExpression(declaration.body);
+    return expressions;
+  }
+
+  const visit = (node: ts.Node) => {
+    if (node !== declaration.body && ts.isFunctionLike(node)) return;
+    if (ts.isReturnStatement(node) && node.expression !== undefined) {
+      pushExpression(node.expression);
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(declaration.body);
+  return expressions;
+}
+
 function collectConstDeclarations(
   sourceFile: ts.SourceFile,
 ): Map<string, ts.Expression> {
@@ -914,6 +998,8 @@ function resolveExpression(
     if (
       ts.isAsExpression(current) ||
       ts.isSatisfiesExpression(current) ||
+      ts.isTypeAssertionExpression(current) ||
+      ts.isNonNullExpression(current) ||
       ts.isParenthesizedExpression(current)
     ) {
       current = current.expression;
@@ -968,38 +1054,60 @@ function hasExportModifier(node: ts.Node): boolean {
 
 function chainQueriesScores(
   call: ts.CallExpression,
-  declarations: Map<string, ts.Expression>,
+  declarations: Map<ts.SourceFile, Map<string, ts.Expression>>,
+  checker: ts.TypeChecker,
 ): boolean {
-  return callChainSome(call, declarations, (current) => {
-    return (
-      current.expression.name.text === "query" &&
-      current.arguments[0] !== undefined &&
-      resolvesToStringLiteral(current.arguments[0], "scores", declarations)
-    );
-  });
+  return callChainMatches(
+    call,
+    declarations,
+    checker,
+    "some",
+    (current, currentDeclarations) => {
+      return (
+        current.expression.name.text === "query" &&
+        current.arguments[0] !== undefined &&
+        resolvesToStringLiteral(
+          current.arguments[0],
+          "scores",
+          currentDeclarations,
+        )
+      );
+    },
+  );
 }
 
 function chainUsesEqualityBoundedIndex(
   call: ts.CallExpression,
   indexName: string,
   fieldName: string,
-  declarations: Map<string, ts.Expression>,
+  declarations: Map<ts.SourceFile, Map<string, ts.Expression>>,
+  checker: ts.TypeChecker,
 ): boolean {
-  return callChainSome(call, declarations, (current) => {
-    if (
-      current.expression.name.text === "withIndex" &&
-      current.arguments[0] !== undefined &&
-      resolvesToStringLiteral(current.arguments[0], indexName, declarations) &&
-      current.arguments[1] !== undefined
-    ) {
-      return rangeCallbackUsesEqualityBound(
-        current.arguments[1],
-        fieldName,
-        declarations,
-      );
-    }
-    return false;
-  });
+  return callChainMatches(
+    call,
+    declarations,
+    checker,
+    "every",
+    (current, currentDeclarations) => {
+      if (
+        current.expression.name.text === "withIndex" &&
+        current.arguments[0] !== undefined &&
+        resolvesToStringLiteral(
+          current.arguments[0],
+          indexName,
+          currentDeclarations,
+        ) &&
+        current.arguments[1] !== undefined
+      ) {
+        return rangeCallbackUsesEqualityBound(
+          current.arguments[1],
+          fieldName,
+          currentDeclarations,
+        );
+      }
+      return false;
+    },
+  );
 }
 
 function rangeCallbackUsesEqualityBound(
@@ -1102,36 +1210,73 @@ function resolveStringLiteralValue(
   return ts.isStringLiteralLike(resolved) ? resolved.text : undefined;
 }
 
-function callChainSome(
+function callChainMatches(
   call: ts.CallExpression,
-  declarations: Map<string, ts.Expression>,
+  declarations: Map<ts.SourceFile, Map<string, ts.Expression>>,
+  checker: ts.TypeChecker,
+  helperBranches: "some" | "every",
   predicate: (
     call: ts.CallExpression & {
       expression: ts.PropertyAccessExpression;
     },
+    declarations: Map<string, ts.Expression>,
   ) => boolean,
 ): boolean {
-  let current: ts.Expression = call;
-  for (let i = 0; i < 20; i++) {
-    current = resolveExpression(current, declarations);
-    if (
-      !ts.isCallExpression(current) ||
-      !ts.isPropertyAccessExpression(current.expression)
-    ) {
-      return false;
+  const activeHelpers = new Set<string>();
+
+  const visit = (initialCall: ts.CallExpression): boolean => {
+    let current: ts.Expression = initialCall;
+    for (let i = 0; i < 20; i++) {
+      const currentDeclarations = declarations.get(current.getSourceFile());
+      if (currentDeclarations === undefined) return false;
+      current = resolveExpression(current, currentDeclarations);
+      if (!ts.isCallExpression(current)) return false;
+
+      if (
+        ts.isPropertyAccessExpression(current.expression) &&
+        predicate(
+          current as ts.CallExpression & {
+            expression: ts.PropertyAccessExpression;
+          },
+          currentDeclarations,
+        )
+      ) {
+        return true;
+      }
+
+      const declaration = checker
+        .getResolvedSignature(current)
+        ?.getDeclaration();
+      if (
+        declaration !== undefined &&
+        isFunctionImplementation(declaration) &&
+        declaration.body !== undefined &&
+        declarations.has(declaration.getSourceFile())
+      ) {
+        const helperKey = `${declaration.getSourceFile().fileName}:${declaration.pos}`;
+        if (activeHelpers.has(helperKey)) return false;
+        activeHelpers.add(helperKey);
+        const results = returnedExpressions(declaration).map((expression) => {
+          const helperDeclarations = declarations.get(
+            expression.getSourceFile(),
+          )!;
+          const resolved = resolveExpression(expression, helperDeclarations);
+          return ts.isCallExpression(resolved) && visit(resolved);
+        });
+        activeHelpers.delete(helperKey);
+        if (results.length === 0) return false;
+        return helperBranches === "every"
+          ? results.every(Boolean)
+          : results.some(Boolean);
+      }
+
+      if (!ts.isPropertyAccessExpression(current.expression)) return false;
+      current = current.expression.expression;
     }
-    if (
-      predicate(
-        current as ts.CallExpression & {
-          expression: ts.PropertyAccessExpression;
-        },
-      )
-    ) {
-      return true;
-    }
-    current = current.expression.expression;
-  }
-  return false;
+    return false;
+  };
+
+  return visit(call);
 }
 
 function containsAggregateTrigger(
