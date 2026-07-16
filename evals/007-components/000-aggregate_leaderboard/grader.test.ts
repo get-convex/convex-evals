@@ -335,6 +335,7 @@ function analyzeAuthoredConvexSources(): SourceAnalysis {
           resolveExpression(node.initializer, fileDeclarations),
           constructors,
           namespaces,
+          fileDeclarations,
         )
       ) {
         variables.add(node.name.text);
@@ -368,6 +369,7 @@ function analyzeAuthoredConvexSources(): SourceAnalysis {
         resolved,
         tableAggregateConstructors.get(sourceFile)!,
         tableAggregateNamespaces.get(sourceFile)!,
+        declarations.get(sourceFile)!,
       )
     ) {
       return true;
@@ -1081,16 +1083,23 @@ function isTableAggregateConstruction(
   expression: ts.Expression,
   constructors: Set<string>,
   namespaces: Set<string>,
+  declarations: Map<string, ts.Expression>,
 ): boolean {
-  return (
-    ts.isNewExpression(expression) &&
-    ((ts.isIdentifier(expression.expression) &&
-      constructors.has(expression.expression.text)) ||
-      (ts.isPropertyAccessExpression(expression.expression) &&
-        expression.expression.name.text === "TableAggregate" &&
-        ts.isIdentifier(expression.expression.expression) &&
-        namespaces.has(expression.expression.expression.text)))
-  );
+  if (!ts.isNewExpression(expression)) return false;
+  // Resolve local aliases of the constructor (const Agg = TableAggregate)
+  // and of a namespace import (const A = AggregateNs) before matching.
+  const target = resolveExpression(expression.expression, declarations);
+  if (ts.isIdentifier(target) && constructors.has(target.text)) {
+    return true;
+  }
+  if (
+    ts.isPropertyAccessExpression(target) &&
+    target.name.text === "TableAggregate"
+  ) {
+    const object = resolveExpression(target.expression, declarations);
+    return ts.isIdentifier(object) && namespaces.has(object.text);
+  }
+  return false;
 }
 
 function hasExportModifier(node: ts.Node): boolean {
