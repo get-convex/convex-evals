@@ -16,4 +16,4 @@ export default defineSchema({
 Create a query `listActive` in `convex/index.ts` that:
 - Returns an array of at most 100 item documents that have not yet expired (their `expiresAt` is strictly in the future), ordered by ascending expiration time (soonest-expiring first)
 
-`expiresAt` values are Unix timestamps in milliseconds. You may give the query whatever arguments it needs; callers will supply appropriate values for the arguments you declare.
+`expiresAt` values are Unix timestamps in milliseconds.
