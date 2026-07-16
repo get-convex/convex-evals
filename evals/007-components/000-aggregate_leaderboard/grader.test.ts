@@ -465,6 +465,13 @@ function analyzeAuthoredConvexSources(): SourceAnalysis {
     if (!changed) break;
   }
 
+  resolveLocalStringConstants(
+    sources,
+    sourcePaths,
+    declarations,
+    localModuleNamespaces,
+  );
+
   const aggregateMethods = new Set<string>();
   const scanConstructs: string[] = [];
   let hasTableAggregate = false;
@@ -491,6 +498,7 @@ function analyzeAuthoredConvexSources(): SourceAnalysis {
         const receiver = node.expression.expression;
 
         if (isAggregateReceiver(receiver)) {
+          hasTableAggregate = true;
           aggregateMethods.add(method);
           if (
             (method === "count" && node.arguments.length >= 2) ||
@@ -638,6 +646,202 @@ function resolveLocalSourcePath(
   return candidates.find((candidate) => sourcePaths.has(candidate));
 }
 
+function resolveLocalStringConstants(
+  sources: AuthoredSource[],
+  sourcePaths: Set<string>,
+  declarations: Map<ts.SourceFile, Map<string, ts.Expression>>,
+  localModuleNamespaces: Map<ts.SourceFile, Map<string, string>>,
+): void {
+  const stringExports = new Map<
+    string,
+    { named: Map<string, string>; defaultValue?: string }
+  >(
+    sources.map(({ path }) => [
+      normalize(path),
+      { named: new Map<string, string>() },
+    ]),
+  );
+
+  const setDeclaration = (
+    fileDeclarations: Map<string, ts.Expression>,
+    name: string,
+    value: string,
+  ): boolean => {
+    const existing = fileDeclarations.get(name);
+    if (
+      existing !== undefined &&
+      resolveStringLiteralValue(existing, fileDeclarations) === value
+    ) {
+      return false;
+    }
+    fileDeclarations.set(name, ts.factory.createStringLiteral(value));
+    return true;
+  };
+
+  const setExport = (
+    exports: { named: Map<string, string>; defaultValue?: string },
+    name: string,
+    value: string,
+  ): boolean => {
+    if (name === "default") {
+      if (exports.defaultValue === value) return false;
+      exports.defaultValue = value;
+      return true;
+    }
+    if (exports.named.get(name) === value) return false;
+    exports.named.set(name, value);
+    return true;
+  };
+
+  for (let iteration = 0; iteration < sources.length * 2 + 1; iteration++) {
+    let changed = false;
+
+    for (const { path, sourceFile } of sources) {
+      const fileDeclarations = declarations.get(sourceFile)!;
+
+      for (const statement of sourceFile.statements) {
+        if (
+          !ts.isImportDeclaration(statement) ||
+          !ts.isStringLiteral(statement.moduleSpecifier) ||
+          !statement.moduleSpecifier.text.startsWith(".")
+        ) {
+          continue;
+        }
+        const targetPath = resolveLocalSourcePath(
+          path,
+          statement.moduleSpecifier.text,
+          sourcePaths,
+        );
+        const targetExports =
+          targetPath === undefined ? undefined : stringExports.get(targetPath);
+        if (targetExports === undefined) continue;
+
+        const defaultImport = statement.importClause?.name;
+        if (
+          defaultImport !== undefined &&
+          targetExports.defaultValue !== undefined
+        ) {
+          changed =
+            setDeclaration(
+              fileDeclarations,
+              defaultImport.text,
+              targetExports.defaultValue,
+            ) || changed;
+        }
+
+        const bindings = statement.importClause?.namedBindings;
+        if (bindings !== undefined && ts.isNamedImports(bindings)) {
+          for (const element of bindings.elements) {
+            const importedName = (element.propertyName ?? element.name).text;
+            const value =
+              importedName === "default"
+                ? targetExports.defaultValue
+                : targetExports.named.get(importedName);
+            if (value !== undefined) {
+              changed =
+                setDeclaration(fileDeclarations, element.name.text, value) ||
+                changed;
+            }
+          }
+        }
+      }
+
+      for (const [namespace, targetPath] of localModuleNamespaces.get(
+        sourceFile,
+      )!) {
+        const targetExports = stringExports.get(targetPath)!;
+        if (targetExports.defaultValue !== undefined) {
+          changed =
+            setDeclaration(
+              fileDeclarations,
+              `${namespace}.default`,
+              targetExports.defaultValue,
+            ) || changed;
+        }
+        for (const [name, value] of targetExports.named) {
+          changed =
+            setDeclaration(fileDeclarations, `${namespace}.${name}`, value) ||
+            changed;
+        }
+      }
+
+      const exports = stringExports.get(normalize(path))!;
+      for (const statement of sourceFile.statements) {
+        if (ts.isVariableStatement(statement) && hasExportModifier(statement)) {
+          for (const declaration of statement.declarationList.declarations) {
+            if (!ts.isIdentifier(declaration.name)) continue;
+            const value = resolveStringLiteralValue(
+              declaration.name,
+              fileDeclarations,
+            );
+            if (value !== undefined) {
+              changed =
+                setExport(exports, declaration.name.text, value) || changed;
+            }
+          }
+        } else if (
+          ts.isExportAssignment(statement) &&
+          !statement.isExportEquals
+        ) {
+          const value = resolveStringLiteralValue(
+            statement.expression,
+            fileDeclarations,
+          );
+          if (value !== undefined) {
+            changed = setExport(exports, "default", value) || changed;
+          }
+        } else if (
+          ts.isExportDeclaration(statement) &&
+          (statement.exportClause === undefined ||
+            ts.isNamedExports(statement.exportClause))
+        ) {
+          const targetPath =
+            statement.moduleSpecifier !== undefined &&
+            ts.isStringLiteral(statement.moduleSpecifier) &&
+            statement.moduleSpecifier.text.startsWith(".")
+              ? resolveLocalSourcePath(
+                  path,
+                  statement.moduleSpecifier.text,
+                  sourcePaths,
+                )
+              : undefined;
+          const targetExports =
+            targetPath === undefined
+              ? undefined
+              : stringExports.get(targetPath);
+
+          if (statement.exportClause === undefined) {
+            if (targetExports !== undefined) {
+              for (const [name, value] of targetExports.named) {
+                changed = setExport(exports, name, value) || changed;
+              }
+            }
+            continue;
+          }
+
+          for (const element of statement.exportClause.elements) {
+            const localName = (element.propertyName ?? element.name).text;
+            const value =
+              targetExports === undefined
+                ? resolveStringLiteralValue(
+                    ts.factory.createIdentifier(localName),
+                    fileDeclarations,
+                  )
+                : localName === "default"
+                  ? targetExports.defaultValue
+                  : targetExports.named.get(localName);
+            if (value !== undefined) {
+              changed = setExport(exports, element.name.text, value) || changed;
+            }
+          }
+        }
+      }
+    }
+
+    if (!changed) break;
+  }
+}
+
 function collectConstDeclarations(
   sourceFile: ts.SourceFile,
 ): Map<string, ts.Expression> {
@@ -676,6 +880,15 @@ function resolveExpression(
     ) {
       seen.add(current.text);
       current = declarations.get(current.text)!;
+    } else if (
+      ts.isPropertyAccessExpression(current) &&
+      ts.isIdentifier(current.expression) &&
+      declarations.has(`${current.expression.text}.${current.name.text}`) &&
+      !seen.has(`${current.expression.text}.${current.name.text}`)
+    ) {
+      const key = `${current.expression.text}.${current.name.text}`;
+      seen.add(key);
+      current = declarations.get(key)!;
     } else {
       break;
     }
@@ -834,8 +1047,15 @@ function resolvesToStringLiteral(
   expected: string,
   declarations: Map<string, ts.Expression>,
 ): boolean {
+  return resolveStringLiteralValue(expression, declarations) === expected;
+}
+
+function resolveStringLiteralValue(
+  expression: ts.Expression,
+  declarations: Map<string, ts.Expression>,
+): string | undefined {
   const resolved = resolveExpression(expression, declarations);
-  return ts.isStringLiteralLike(resolved) && resolved.text === expected;
+  return ts.isStringLiteralLike(resolved) ? resolved.text : undefined;
 }
 
 function callChainSome(
