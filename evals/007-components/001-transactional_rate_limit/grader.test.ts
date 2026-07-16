@@ -125,8 +125,23 @@ test("generated solution consumes the limit before semantic validation", () => {
 
   let limitCallPos = -1;
   let throwsTrue = false;
-  let usesTokenIdentifier = false;
+  let keyedOnTokenIdentifier = false;
   let trimPos = -1;
+
+  // The key must reference the identity's tokenIdentifier: either a
+  // property access ending in .tokenIdentifier or a destructured
+  // `tokenIdentifier` identifier.
+  const referencesTokenIdentifier = (expression: ts.Expression): boolean => {
+    if (
+      ts.isPropertyAccessExpression(expression) &&
+      expression.name.text === "tokenIdentifier"
+    ) {
+      return true;
+    }
+    return (
+      ts.isIdentifier(expression) && expression.text === "tokenIdentifier"
+    );
+  };
 
   const visit = (node: ts.Node) => {
     if (
@@ -140,12 +155,22 @@ test("generated solution consumes the limit before semantic validation", () => {
         if (options !== undefined && ts.isObjectLiteralExpression(options)) {
           for (const property of options.properties) {
             if (
-              ts.isPropertyAssignment(property) &&
-              ts.isIdentifier(property.name) &&
+              !ts.isPropertyAssignment(property) ||
+              !ts.isIdentifier(property.name)
+            ) {
+              continue;
+            }
+            if (
               property.name.text === "throws" &&
               property.initializer.kind === ts.SyntaxKind.TrueKeyword
             ) {
               throwsTrue = true;
+            }
+            if (
+              property.name.text === "key" &&
+              referencesTokenIdentifier(property.initializer)
+            ) {
+              keyedOnTokenIdentifier = true;
             }
           }
         }
@@ -153,12 +178,6 @@ test("generated solution consumes the limit before semantic validation", () => {
       if (name === "trim" && trimPos === -1) {
         trimPos = node.getStart();
       }
-    }
-    if (
-      ts.isPropertyAccessExpression(node) &&
-      node.name.text === "tokenIdentifier"
-    ) {
-      usesTokenIdentifier = true;
     }
     ts.forEachChild(node, visit);
   };
@@ -169,7 +188,7 @@ test("generated solution consumes the limit before semantic validation", () => {
     true,
   );
   expect(
-    usesTokenIdentifier,
+    keyedOnTokenIdentifier,
     "key the limit on the caller's identity tokenIdentifier",
   ).toBe(true);
   // Behavior cannot distinguish consume-then-validate from validate-then-
