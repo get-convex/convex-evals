@@ -618,9 +618,11 @@ function analyzeAuthoredConvexSources(): SourceAnalysis {
           ) &&
           node.arguments[1] !== undefined &&
           containsAggregateTrigger(
-            resolveExpression(node.arguments[1], fileDeclarations),
-            isAggregateReceiver,
-            fileDeclarations,
+            node.arguments[1],
+            (expression) =>
+              expressionIsAggregate(expression.getSourceFile(), expression),
+            declarations,
+            checker,
           )
         ) {
           hasTriggerSynchronization = true;
@@ -1316,22 +1318,83 @@ function callChainMatches(
 function containsAggregateTrigger(
   expression: ts.Expression,
   isAggregateReceiver: (expression: ts.Expression) => boolean,
-  declarations: Map<string, ts.Expression>,
+  declarations: Map<ts.SourceFile, Map<string, ts.Expression>>,
+  checker: ts.TypeChecker,
 ): boolean {
-  const resolved = resolveExpression(expression, declarations);
-  let found = false;
-  const visit = (node: ts.Node) => {
-    if (
-      ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression) &&
-      ["trigger", "idempotentTrigger"].includes(node.expression.name.text) &&
-      isAggregateReceiver(node.expression.expression)
-    ) {
-      found = true;
-      return;
-    }
-    ts.forEachChild(node, visit);
+  const visitedInitializers = new Set<string>();
+
+  const visitExpression = (candidate: ts.Expression): boolean => {
+    const fileDeclarations = declarations.get(candidate.getSourceFile());
+    if (fileDeclarations === undefined) return false;
+    const resolved = resolveExpression(candidate, fileDeclarations);
+    let found = false;
+    const visit = (node: ts.Node) => {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression) &&
+        ["trigger", "idempotentTrigger"].includes(node.expression.name.text) &&
+        isAggregateReceiver(node.expression.expression)
+      ) {
+        found = true;
+        return;
+      }
+
+      for (const initializer of referencedInitializers(
+        node,
+        checker,
+        declarations,
+      )) {
+        const key = `${initializer.getSourceFile().fileName}:${initializer.pos}`;
+        if (visitedInitializers.has(key)) continue;
+        visitedInitializers.add(key);
+        if (visitExpression(initializer)) {
+          found = true;
+          return;
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(resolved);
+    return found;
   };
-  visit(resolved);
-  return found;
+
+  return visitExpression(expression);
+}
+
+function referencedInitializers(
+  node: ts.Node,
+  checker: ts.TypeChecker,
+  declarations: Map<ts.SourceFile, Map<string, ts.Expression>>,
+): ts.Expression[] {
+  const symbolNode = ts.isIdentifier(node)
+    ? node
+    : ts.isPropertyAccessExpression(node)
+      ? node.name
+      : undefined;
+  if (symbolNode === undefined) return [];
+
+  let symbol = checker.getSymbolAtLocation(symbolNode);
+  if (symbol === undefined) return [];
+  if ((symbol.flags & ts.SymbolFlags.Alias) !== 0) {
+    symbol = checker.getAliasedSymbol(symbol);
+  }
+
+  const initializers: ts.Expression[] = [];
+  for (const declaration of symbol.declarations ?? []) {
+    if (!declarations.has(declaration.getSourceFile())) continue;
+    if (
+      (ts.isVariableDeclaration(declaration) ||
+        ts.isPropertyAssignment(declaration) ||
+        ts.isBindingElement(declaration)) &&
+      declaration.initializer !== undefined
+    ) {
+      initializers.push(declaration.initializer);
+    } else if (
+      ts.isExportAssignment(declaration) &&
+      !declaration.isExportEquals
+    ) {
+      initializers.push(declaration.expression);
+    }
+  }
+  return initializers;
 }
