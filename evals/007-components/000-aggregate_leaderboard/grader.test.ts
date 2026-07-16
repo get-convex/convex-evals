@@ -332,27 +332,28 @@ function analyzeAuthoredConvexSources(): SourceAnalysis {
         }
         if (
           method === "paginate" &&
-          (isAggregateReceiver(receiver) || chainQueriesScores(node))
+          (isAggregateReceiver(receiver) ||
+            chainQueriesScores(node, fileDeclarations))
         ) {
           scanConstructs.push(`${path}: .paginate()`);
         }
         if (
           method === "take" &&
-          chainQueriesScores(node) &&
-          !chainUsesIndex(node, "by_userId")
+          chainQueriesScores(node, fileDeclarations) &&
+          !chainUsesIndex(node, "by_userId", fileDeclarations)
         ) {
           scanConstructs.push(`${path}: scores .take() without by_userId`);
         }
         if (method === "iter" && isAggregateReceiver(receiver)) {
           scanConstructs.push(`${path}: aggregate .iter()`);
         }
-        if (method === "filter" && chainQueriesScores(node)) {
+        if (method === "filter" && chainQueriesScores(node, fileDeclarations)) {
           scanConstructs.push(`${path}: scores .filter()`);
         }
         if (
           method === "first" &&
-          chainQueriesScores(node) &&
-          !chainUsesIndex(node, "by_userId")
+          chainQueriesScores(node, fileDeclarations) &&
+          !chainUsesIndex(node, "by_userId", fileDeclarations)
         ) {
           scanConstructs.push(`${path}: scores .first() without by_userId`);
         }
@@ -506,36 +507,59 @@ function hasExportModifier(node: ts.Node): boolean {
   );
 }
 
-function chainQueriesScores(call: ts.CallExpression): boolean {
-  let current: ts.Expression = call;
-  while (
-    ts.isCallExpression(current) &&
-    ts.isPropertyAccessExpression(current.expression)
-  ) {
-    if (
+function chainQueriesScores(
+  call: ts.CallExpression,
+  declarations: Map<string, ts.Expression>,
+): boolean {
+  return callChainSome(call, declarations, (current) => {
+    return (
       current.expression.name.text === "query" &&
       current.arguments[0] !== undefined &&
       ts.isStringLiteralLike(current.arguments[0]) &&
       current.arguments[0].text === "scores"
-    ) {
-      return true;
-    }
-    current = current.expression.expression;
-  }
-  return false;
+    );
+  });
 }
 
-function chainUsesIndex(call: ts.CallExpression, indexName: string): boolean {
-  let current: ts.Expression = call;
-  while (
-    ts.isCallExpression(current) &&
-    ts.isPropertyAccessExpression(current.expression)
-  ) {
-    if (
+function chainUsesIndex(
+  call: ts.CallExpression,
+  indexName: string,
+  declarations: Map<string, ts.Expression>,
+): boolean {
+  return callChainSome(call, declarations, (current) => {
+    return (
       current.expression.name.text === "withIndex" &&
       current.arguments[0] !== undefined &&
       ts.isStringLiteralLike(current.arguments[0]) &&
       current.arguments[0].text === indexName
+    );
+  });
+}
+
+function callChainSome(
+  call: ts.CallExpression,
+  declarations: Map<string, ts.Expression>,
+  predicate: (
+    call: ts.CallExpression & {
+      expression: ts.PropertyAccessExpression;
+    },
+  ) => boolean,
+): boolean {
+  let current: ts.Expression = call;
+  for (let i = 0; i < 20; i++) {
+    current = resolveExpression(current, declarations);
+    if (
+      !ts.isCallExpression(current) ||
+      !ts.isPropertyAccessExpression(current.expression)
+    ) {
+      return false;
+    }
+    if (
+      predicate(
+        current as ts.CallExpression & {
+          expression: ts.PropertyAccessExpression;
+        },
+      )
     ) {
       return true;
     }
