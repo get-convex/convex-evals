@@ -312,70 +312,143 @@ test("generated solution consumes the limit before semantic validation", () => {
     return false;
   };
 
-  // The key must reference the identity's tokenIdentifier: either a
-  // property access ending in .tokenIdentifier or a destructured
-  // `tokenIdentifier` identifier.
+  // The key must reference the identity's tokenIdentifier: a property
+  // access ending in .tokenIdentifier, a destructured `tokenIdentifier`
+  // identifier, or a local alias resolving to either.
   const referencesTokenIdentifier = (expression: ts.Expression): boolean => {
-    if (
-      ts.isPropertyAccessExpression(expression) &&
-      expression.name.text === "tokenIdentifier"
-    ) {
-      return true;
+    for (const candidate of [expression, resolve(expression)]) {
+      if (
+        ts.isPropertyAccessExpression(candidate) &&
+        candidate.name.text === "tokenIdentifier"
+      ) {
+        return true;
+      }
+      if (ts.isIdentifier(candidate) && candidate.text === "tokenIdentifier") {
+        return true;
+      }
     }
-    return (
-      ts.isIdentifier(expression) && expression.text === "tokenIdentifier"
-    );
+    return false;
   };
 
-  const visit = (node: ts.Node) => {
+  // Locate the sendMessage handler and walk it in execution order,
+  // inlining calls to local helper functions - so a dead helper containing
+  // the limit call does not count, and a validation helper hoisted above
+  // the mutation does not wrongly anchor the ordering.
+  const localFunctions = new Map<string, ts.Node>();
+  const collectFunctions = (node: ts.Node) => {
+    if (ts.isFunctionDeclaration(node) && node.name !== undefined && node.body !== undefined) {
+      localFunctions.set(node.name.text, node.body);
+    }
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer !== undefined &&
+      (ts.isArrowFunction(node.initializer) ||
+        ts.isFunctionExpression(node.initializer))
+    ) {
+      localFunctions.set(node.name.text, node.initializer.body ?? node.initializer);
+    }
+    ts.forEachChild(node, collectFunctions);
+  };
+  collectFunctions(sourceFile);
+
+  let handlerBody: ts.Node | undefined;
+  const findHandler = (node: ts.Node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === "sendMessage" &&
+      node.initializer !== undefined &&
+      ts.isCallExpression(node.initializer) &&
+      node.initializer.arguments.length >= 1 &&
+      ts.isObjectLiteralExpression(node.initializer.arguments[0])
+    ) {
+      for (const property of node.initializer.arguments[0].properties) {
+        const isHandlerName =
+          property.name !== undefined &&
+          ts.isIdentifier(property.name) &&
+          property.name.text === "handler";
+        if (ts.isPropertyAssignment(property) && isHandlerName) {
+          handlerBody = property.initializer;
+        }
+        if (ts.isMethodDeclaration(property) && isHandlerName) {
+          handlerBody = property.body;
+        }
+      }
+    }
+    ts.forEachChild(node, findHandler);
+  };
+  findHandler(sourceFile);
+  expect(
+    handlerBody,
+    "register a public mutation sendMessage in convex/index.ts",
+  ).toBeDefined();
+
+  // Execution-order counter: increments only when a limit call or a
+  // validation construct is encountered, following helper calls in place.
+  let step = 0;
+  const inspectLimitCall = (node: ts.CallExpression) => {
+    step++;
+    if (limitCallPos === -1) {
+      limitCallPos = step;
+      const rawOptions = node.arguments[2] ?? node.arguments[1];
+      const options =
+        rawOptions === undefined ? undefined : resolve(rawOptions);
+      if (options !== undefined && ts.isObjectLiteralExpression(options)) {
+        for (const property of options.properties) {
+          if (
+            !ts.isPropertyAssignment(property) ||
+            !ts.isIdentifier(property.name)
+          ) {
+            continue;
+          }
+          if (
+            property.name.text === "throws" &&
+            property.initializer.kind === ts.SyntaxKind.TrueKeyword
+          ) {
+            throwsTrue = true;
+          }
+          if (
+            property.name.text === "key" &&
+            referencesTokenIdentifier(property.initializer)
+          ) {
+            keyedOnTokenIdentifier = true;
+          }
+        }
+      }
+    }
+  };
+  const walked = new Set<ts.Node>();
+  const walk = (node: ts.Node, depth: number) => {
     if (
       ts.isCallExpression(node) &&
       ts.isPropertyAccessExpression(node.expression)
     ) {
       const name = node.expression.name.text;
-      if (
-        name === "limit" &&
-        limitCallPos === -1 &&
-        isLimiterReceiver(node.expression.expression)
-      ) {
-        limitCallPos = node.getStart();
-        const rawOptions = node.arguments[2] ?? node.arguments[1];
-        const options =
-          rawOptions === undefined ? undefined : resolve(rawOptions);
-        if (options !== undefined && ts.isObjectLiteralExpression(options)) {
-          for (const property of options.properties) {
-            if (
-              !ts.isPropertyAssignment(property) ||
-              !ts.isIdentifier(property.name)
-            ) {
-              continue;
-            }
-            if (
-              property.name.text === "throws" &&
-              property.initializer.kind === ts.SyntaxKind.TrueKeyword
-            ) {
-              throwsTrue = true;
-            }
-            if (
-              property.name.text === "key" &&
-              referencesTokenIdentifier(property.initializer)
-            ) {
-              keyedOnTokenIdentifier = true;
-            }
-          }
-        }
+      if (name === "limit" && isLimiterReceiver(node.expression.expression)) {
+        inspectLimitCall(node);
       }
-      if (
-        ["trim", "trimStart", "trimEnd", "test", "match"].includes(name) &&
-        trimPos === -1
-      ) {
-        trimPos = node.getStart();
+      if (["trim", "trimStart", "trimEnd", "test", "match"].includes(name)) {
+        step++;
+        if (trimPos === -1) trimPos = step;
       }
     }
-    // Comparisons against an empty string or zero length also mark the
-    // body validation, so regex- or length-based checks anchor the
-    // ordering assertion too.
-    if (ts.isBinaryExpression(node) && trimPos === -1) {
+    // Inline local helper calls so limit/validation inside them count at
+    // the position of the call site.
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      localFunctions.has(node.expression.text) &&
+      depth < 4
+    ) {
+      const body = localFunctions.get(node.expression.text)!;
+      if (!walked.has(body)) {
+        walked.add(body);
+        walk(body, depth + 1);
+        walked.delete(body);
+      }
+    }
+    if (ts.isBinaryExpression(node)) {
       const operands = [node.left, node.right];
       const emptyString = operands.some(
         (operand) => ts.isStringLiteralLike(operand) && operand.text === "",
@@ -386,12 +459,15 @@ test("generated solution consumes the limit before semantic validation", () => {
           operand.name.text === "length",
       );
       if (emptyString || lengthAccess) {
-        trimPos = node.getStart();
+        step++;
+        if (trimPos === -1) trimPos = step;
       }
     }
-    ts.forEachChild(node, visit);
+    ts.forEachChild(node, (child) => walk(child, depth));
   };
-  visit(sourceFile);
+  if (handlerBody !== undefined) {
+    walk(handlerBody, 0);
+  }
 
   expect(
     limitCallPos,
