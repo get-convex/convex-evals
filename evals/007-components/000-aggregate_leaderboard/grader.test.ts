@@ -145,6 +145,7 @@ function hasAggregateMount(sourceText: string): boolean {
     ts.ScriptKind.TS,
   );
   const aggregateImports = new Set<string>();
+  const aggregateNamespaces = new Set<string>();
   const declarations = collectConstDeclarations(sourceFile);
 
   for (const statement of sourceFile.statements) {
@@ -159,6 +160,16 @@ function hasAggregateMount(sourceText: string): boolean {
     }
     const defaultImport = statement.importClause?.name;
     if (defaultImport !== undefined) aggregateImports.add(defaultImport.text);
+    const bindings = statement.importClause?.namedBindings;
+    if (bindings !== undefined && ts.isNamedImports(bindings)) {
+      for (const element of bindings.elements) {
+        if ((element.propertyName ?? element.name).text === "default") {
+          aggregateImports.add(element.name.text);
+        }
+      }
+    } else if (bindings !== undefined && ts.isNamespaceImport(bindings)) {
+      aggregateNamespaces.add(bindings.name.text);
+    }
   }
 
   let mounted = false;
@@ -170,7 +181,13 @@ function hasAggregateMount(sourceText: string): boolean {
       node.arguments[0] !== undefined
     ) {
       const component = resolveExpression(node.arguments[0], declarations);
-      if (ts.isIdentifier(component) && aggregateImports.has(component.text)) {
+      if (
+        (ts.isIdentifier(component) && aggregateImports.has(component.text)) ||
+        (ts.isPropertyAccessExpression(component) &&
+          component.name.text === "default" &&
+          ts.isIdentifier(component.expression) &&
+          aggregateNamespaces.has(component.expression.text))
+      ) {
         mounted = true;
         return;
       }
