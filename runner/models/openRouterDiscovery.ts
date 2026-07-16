@@ -52,6 +52,9 @@ interface OpenRouterCatalogData {
 }
 
 const OPENROUTER_PREFLIGHT_TIMEOUT_MS = 15_000;
+const OPENROUTER_PREFLIGHT_MAX_RETRIES = 5;
+const OPENROUTER_PREFLIGHT_RETRY_BASE_MS = 1_000;
+const OPENROUTER_PREFLIGHT_MAX_RETRY_DELAY_MS = 30_000;
 const OPENROUTER_MODELS_URL = `${OPENROUTER_BASE_URL}/models`;
 let openRouterCatalogPromise: Promise<OpenRouterCatalogData | null> | null = null;
 
@@ -344,6 +347,40 @@ function formatOpenRouterError(
   return `${status} ${statusText}: ${trimmed.slice(0, 300)}`;
 }
 
+function getPreflightRetryDelayMs(
+  response: Response,
+  body: string,
+  attempt: number,
+): number {
+  const retryAfterHeader = response.headers.get("retry-after");
+  if (retryAfterHeader !== null) {
+    const retryAfterSeconds = Number(retryAfterHeader);
+    if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0) {
+      return Math.min(
+        retryAfterSeconds * 1_000,
+        OPENROUTER_PREFLIGHT_MAX_RETRY_DELAY_MS,
+      );
+    }
+  }
+
+  try {
+    const parsed = JSON.parse(body) as {
+      error?: { metadata?: { retry_after_seconds?: number } };
+    };
+    const metadataSeconds = parsed.error?.metadata?.retry_after_seconds;
+    if (typeof metadataSeconds === "number" && metadataSeconds >= 0) {
+      return Math.min(
+        metadataSeconds * 1_000,
+        OPENROUTER_PREFLIGHT_MAX_RETRY_DELAY_MS,
+      );
+    }
+  } catch {
+    // Fall back to bounded exponential backoff for non-JSON responses.
+  }
+
+  return OPENROUTER_PREFLIGHT_RETRY_BASE_MS * Math.pow(2, attempt);
+}
+
 export async function preflightOpenRouterEndpoint(
   model: ResolvedModel,
   apiKey: string,
@@ -367,26 +404,41 @@ export async function preflightOpenRouterEndpoint(
           max_tokens: 16,
         };
 
-  const abortController = new AbortController();
-  const timeout = setTimeout(
-    () => abortController.abort(),
-    OPENROUTER_PREFLIGHT_TIMEOUT_MS,
-  );
+  for (let attempt = 0; attempt <= OPENROUTER_PREFLIGHT_MAX_RETRIES; attempt++) {
+    const abortController = new AbortController();
+    const timeout = setTimeout(
+      () => abortController.abort(),
+      OPENROUTER_PREFLIGHT_TIMEOUT_MS,
+    );
 
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify(body),
-      signal: abortController.signal,
-    });
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: abortController.signal,
+      });
 
-    if (!response.ok) {
+      if (response.ok) return;
+
       const responseBody = await response.text();
+      if (
+        response.status === 429 &&
+        attempt < OPENROUTER_PREFLIGHT_MAX_RETRIES
+      ) {
+        await new Promise((resolve) =>
+          setTimeout(
+            resolve,
+            getPreflightRetryDelayMs(response, responseBody, attempt),
+          ),
+        );
+        continue;
+      }
+
       throw new Error(
         `OpenRouter preflight failed for "${model.name}" using "${model.runnableName}" at ${url}: ${formatOpenRouterError(
           response.status,
@@ -394,15 +446,15 @@ export async function preflightOpenRouterEndpoint(
           responseBody,
         )}`,
       );
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new Error(
+          `OpenRouter preflight timed out for "${model.name}" using "${model.runnableName}" after ${OPENROUTER_PREFLIGHT_TIMEOUT_MS}ms`,
+        );
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
     }
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(
-        `OpenRouter preflight timed out for "${model.name}" using "${model.runnableName}" after ${OPENROUTER_PREFLIGHT_TIMEOUT_MS}ms`,
-      );
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
   }
 }
