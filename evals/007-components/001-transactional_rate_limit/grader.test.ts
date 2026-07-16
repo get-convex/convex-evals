@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import {
   compareFunctionSpec,
   compareSchema,
+  getLatestOutputProjectDir,
   listTable,
   readOutputFile,
   responseAdminClient,
@@ -9,6 +10,8 @@ import {
   withIdentity,
 } from "../../../grader";
 import { anyApi } from "convex/server";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import ts from "typescript";
 
 const CATEGORY = "007-components";
@@ -138,6 +141,14 @@ test("generated solution installs and mounts the rate-limiter component", () => 
   const config = readOutputFile(CATEGORY, EVAL_NAME, "convex/convex.config.ts");
   expect(config).toMatch(/@convex-dev\/rate-limiter\/convex\.config/);
   expect(config).toMatch(/\.use\(/);
+
+  // The task says auth is already configured: a generated auth.config.ts
+  // would overwrite the deployment's intended auth setup.
+  const projectDir = getLatestOutputProjectDir(CATEGORY, EVAL_NAME);
+  expect(
+    existsSync(join(projectDir, "convex", "auth.config.ts")),
+    "do not create convex/auth.config.ts - authentication is already configured",
+  ).toBe(false);
 });
 
 test("generated solution consumes the limit before semantic validation", () => {
@@ -154,6 +165,7 @@ test("generated solution consumes the limit before semantic validation", () => {
   let throwsTrue = false;
   let keyedOnTokenIdentifier = false;
   let trimPos = -1;
+  let insertPos = -1;
 
   // Resolve identifiers (hoisted options objects) through const
   // declarations anywhere in the file.
@@ -432,6 +444,16 @@ test("generated solution consumes the limit before semantic validation", () => {
         step++;
         if (trimPos === -1) trimPos = step;
       }
+      if (
+        name === "insert" &&
+        ((ts.isPropertyAccessExpression(node.expression.expression) &&
+          node.expression.expression.name.text === "db") ||
+          (ts.isIdentifier(node.expression.expression) &&
+            node.expression.expression.text === "db"))
+      ) {
+        step++;
+        if (insertPos === -1) insertPos = step;
+      }
     }
     // Inline local helper calls so limit/validation inside them count at
     // the position of the call site.
@@ -496,4 +518,13 @@ test("generated solution consumes the limit before semantic validation", () => {
     limitCallPos,
     "consume the rate limit before validating the message body",
   ).toBeLessThan(trimPos);
+  // Rollback also hides insert-before-validation behaviorally.
+  expect(
+    insertPos,
+    "insert the message with ctx.db.insert in the sendMessage path",
+  ).toBeGreaterThan(-1);
+  expect(
+    trimPos,
+    "insert the message only after validation succeeds",
+  ).toBeLessThan(insertPos);
 });
