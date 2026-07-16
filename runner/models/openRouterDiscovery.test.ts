@@ -79,5 +79,6 @@ describe("preflightOpenRouterEndpoint", () => {
     );
 
     expect(requestBody).toMatchObject({ max_tokens: 16 });
+    expect(requestBody).not.toHaveProperty("temperature");
   });
 });
