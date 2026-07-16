@@ -81,4 +81,34 @@ describe("preflightOpenRouterEndpoint", () => {
     expect(requestBody).toMatchObject({ max_tokens: 16 });
     expect(requestBody).not.toHaveProperty("temperature");
   });
+
+  it("retries transient rate limits", async () => {
+    let requestCount = 0;
+    globalThis.fetch = (async (
+      _input: RequestInfo | URL,
+      _init?: RequestInit,
+    ) => {
+      requestCount++;
+      if (requestCount === 1) {
+        return Response.json(
+          { error: { message: "Provider returned error" } },
+          { status: 429, headers: { "Retry-After": "0" } },
+        );
+      }
+      return new Response(null, { status: 200 });
+    }) as typeof fetch;
+
+    await preflightOpenRouterEndpoint(
+      {
+        name: "moonshotai/kimi-k3",
+        runnableName: "moonshotai/kimi-k3",
+        formattedName: "MoonshotAI: Kimi K3",
+        baseURL: "https://openrouter.ai/api/v1",
+        apiKind: "chat",
+      },
+      "test-api-key",
+    );
+
+    expect(requestCount).toBe(2);
+  });
 });
