@@ -3,7 +3,9 @@ import {
   compareFunctionSpec,
   compareSchema,
   getLatestOutputProjectDir,
+  listTable,
   readOutputFile,
+  responseAdminClient,
   responseClient,
 } from "../../../grader";
 import { anyApi } from "convex/server";
@@ -97,6 +99,31 @@ test(
     expect(await rankOf("erin")).toBe(5);
     expect(await rankOf("dave")).toBe(6);
     expect(await rankOf("bob")).toBe(7);
+
+    // Aggregate cardinality alone cannot prove that updates replaced the
+    // app-owned document. A solution could move the aggregate key while
+    // leaving stale rows in `scores`, making the supposedly O(1) user lookup
+    // return multiple candidates. Verify the root table has exactly one
+    // current document for every user after repeated updates.
+    const storedScores = await listTable(responseAdminClient, "scores", 100);
+    const expectedUsers = [
+      "alice",
+      "bob",
+      "carol",
+      "dave",
+      "erin",
+      "frank",
+      "grace",
+    ];
+    expect(storedScores).toHaveLength(expectedUsers.length);
+    for (const userId of expectedUsers) {
+      expect(
+        storedScores.filter(
+          (score: { userId?: unknown }) => score.userId === userId,
+        ),
+        `${userId} must have exactly one current scores document`,
+      ).toHaveLength(1);
+    }
   },
 );
 
