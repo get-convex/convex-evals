@@ -1,0 +1,42 @@
+Build a leaderboard backend where every user has one current score, using the `@convex-dev/aggregate` component for efficient counting and ranking.
+
+Create a `package.json` with exactly these dependencies:
+```json
+{
+  "dependencies": {
+    "convex": "1.41.0",
+    "@convex-dev/aggregate": "0.2.2"
+  }
+}
+```
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  scores: defineTable({
+    userId: v.string(),
+    score: v.number(),
+  }).index("by_userId", ["userId"]),
+});
+```
+
+Create these functions in `convex/index.ts`:
+
+- A mutation `submitScore` that:
+  - Takes arguments `{ userId: string, score: number }`
+  - Inserts a score for a new user, or replaces the existing score for a returning user (one current score per user)
+  - Returns the ID of the user's score document (`Id<"scores">`)
+
+- A query `getRank` that:
+  - Takes arguments `{ userId: string }`
+  - Returns `null` for an unknown user
+  - Otherwise returns the user's 1-based rank, ranking descending by score. Users with equal scores share the same rank: scores `100, 100, 50` have ranks `1, 1, 3`.
+
+- A query `getCount` that:
+  - Takes no arguments
+  - Returns the total number of users on the leaderboard as a number
+
+The scores table may grow to millions of users. `getRank` and `getCount` are called on every page load and must remain efficient at that scale; updating a user's score must keep them accurate.

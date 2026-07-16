@@ -786,7 +786,10 @@ async function deploy(
 
   return [
     {
-      cmd: "bunx convex codegen --typecheck disable --init",
+      // Initial codegen fails when no deployment is configured yet (dev
+      // --once regenerates below), but surface the exit code so real
+      // failures - e.g. a broken component config - are visible in run.log.
+      cmd: `bunx convex codegen --typecheck disable --init (exit ${initResult.exitCode})`,
       stdout: combinedOutput(initResult),
     },
     { cmd: `bunx convex dev --once --url ${convexUrl}`, stdout: deployOutput },

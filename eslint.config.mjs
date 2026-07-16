@@ -5,6 +5,8 @@ export default tseslint.config(
   {
     ignores: [
       "**/convex/_generated/",
+      // Local components keep their own generated code, e.g. convex/<component>/_generated/
+      "**/_generated/",
       "evals/**/grader.test.ts",
       "scripts/**",
       "guidelines/**",

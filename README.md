@@ -2,7 +2,7 @@
 
 Convex is an open-source, reactive database that's the best platform for full-stack AI coding.
 
-We ensure that Convex performs well with a large set of models by continuously running evals. Each eval has a set prompts for coding a Convex backend, a set of human-curated solutions, and a script for evaluating the LLM's output. These evals are split up into seven different categories:
+We ensure that Convex performs well with a large set of models by continuously running evals. Each eval has a set prompts for coding a Convex backend, a set of human-curated solutions, and a script for evaluating the LLM's output. These evals are split up into eight different categories:
 
 - Fundamentals
 - Data Modeling
@@ -11,6 +11,7 @@ We ensure that Convex performs well with a large set of models by continuously r
 - Actions
 - Idioms
 - Clients
+- Components
 
 The most up to date eval runs can be found on our [website](https://convex.dev/llm-leaderboard).
 
