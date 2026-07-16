@@ -189,6 +189,129 @@ test("generated solution consumes the limit before semantic validation", () => {
     return current;
   };
 
+  // Locate the RateLimiter and HOUR local names imported from
+  // @convex-dev/rate-limiter (handling renamed imports).
+  const rateLimiterCtors = new Set<string>();
+  const hourNames = new Set<string>();
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier) ||
+      statement.moduleSpecifier.text !== "@convex-dev/rate-limiter"
+    ) {
+      continue;
+    }
+    const bindings = statement.importClause?.namedBindings;
+    if (bindings !== undefined && ts.isNamedImports(bindings)) {
+      for (const element of bindings.elements) {
+        const importedName = (element.propertyName ?? element.name).text;
+        if (importedName === "RateLimiter") {
+          rateLimiterCtors.add(element.name.text);
+        }
+        if (importedName === "HOUR") {
+          hourNames.add(element.name.text);
+        }
+      }
+    }
+  }
+
+  const isRateLimiterConstruction = (
+    expression: ts.Expression,
+  ): expression is ts.NewExpression => {
+    if (!ts.isNewExpression(expression)) return false;
+    const target = resolve(expression.expression);
+    return ts.isIdentifier(target) && rateLimiterCtors.has(target.text);
+  };
+
+  // Variables holding a RateLimiter instance, and whether any instance is
+  // configured with the required fixed-window 2/hour sendMessage limit.
+  const limiterVariables = new Set<string>();
+  let hasFixedWindowTwoPerHour = false;
+
+  const resolvesToHour = (expression: ts.Expression): boolean => {
+    const value = resolve(expression);
+    if (ts.isIdentifier(value) && hourNames.has(value.text)) return true;
+    return (
+      ts.isNumericLiteral(value) &&
+      Number(value.text.replaceAll("_", "")) === 3_600_000
+    );
+  };
+
+  const checkLimiterConfig = (construction: ts.NewExpression) => {
+    const configArg = construction.arguments?.[1];
+    if (configArg === undefined) return;
+    const config = resolve(configArg);
+    if (!ts.isObjectLiteralExpression(config)) return;
+    for (const property of config.properties) {
+      if (
+        !ts.isPropertyAssignment(property) ||
+        !(ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) ||
+        property.name.text !== "sendMessage"
+      ) {
+        continue;
+      }
+      const definition = resolve(property.initializer);
+      if (!ts.isObjectLiteralExpression(definition)) continue;
+      let kindOk = false;
+      let rateOk = false;
+      let periodOk = false;
+      for (const field of definition.properties) {
+        if (!ts.isPropertyAssignment(field) || !ts.isIdentifier(field.name)) {
+          continue;
+        }
+        const value = resolve(field.initializer);
+        if (
+          field.name.text === "kind" &&
+          ts.isStringLiteralLike(value) &&
+          value.text === "fixed window"
+        ) {
+          kindOk = true;
+        }
+        if (
+          field.name.text === "rate" &&
+          ts.isNumericLiteral(value) &&
+          Number(value.text) === 2
+        ) {
+          rateOk = true;
+        }
+        if (field.name.text === "period" && resolvesToHour(field.initializer)) {
+          periodOk = true;
+        }
+      }
+      if (kindOk && rateOk && periodOk) {
+        hasFixedWindowTwoPerHour = true;
+      }
+    }
+  };
+
+  const collectLimiters = (node: ts.Node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer !== undefined
+    ) {
+      const initializer = resolve(node.initializer);
+      if (isRateLimiterConstruction(initializer)) {
+        limiterVariables.add(node.name.text);
+        checkLimiterConfig(initializer);
+      }
+    }
+    ts.forEachChild(node, collectLimiters);
+  };
+  collectLimiters(sourceFile);
+
+  const isLimiterReceiver = (expression: ts.Expression): boolean => {
+    const receiver = resolve(expression);
+    if (ts.isIdentifier(receiver) && limiterVariables.has(receiver.text)) {
+      return true;
+    }
+    if (isRateLimiterConstruction(receiver)) {
+      checkLimiterConfig(receiver);
+      return true;
+    }
+    return false;
+  };
+
   // The key must reference the identity's tokenIdentifier: either a
   // property access ending in .tokenIdentifier or a destructured
   // `tokenIdentifier` identifier.
@@ -210,7 +333,11 @@ test("generated solution consumes the limit before semantic validation", () => {
       ts.isPropertyAccessExpression(node.expression)
     ) {
       const name = node.expression.name.text;
-      if (name === "limit" && limitCallPos === -1) {
+      if (
+        name === "limit" &&
+        limitCallPos === -1 &&
+        isLimiterReceiver(node.expression.expression)
+      ) {
         limitCallPos = node.getStart();
         const rawOptions = node.arguments[2] ?? node.arguments[1];
         const options =
@@ -266,7 +393,14 @@ test("generated solution consumes the limit before semantic validation", () => {
   };
   visit(sourceFile);
 
-  expect(limitCallPos, "call the rate limiter's limit()").toBeGreaterThan(-1);
+  expect(
+    limitCallPos,
+    "call limit() on a RateLimiter constructed from @convex-dev/rate-limiter",
+  ).toBeGreaterThan(-1);
+  expect(
+    hasFixedWindowTwoPerHour,
+    'configure sendMessage as { kind: "fixed window", rate: 2, period: HOUR }',
+  ).toBe(true);
   expect(throwsTrue, "use throws: true so clients get the structured error").toBe(
     true,
   );
