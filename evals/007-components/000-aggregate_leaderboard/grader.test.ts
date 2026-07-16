@@ -9,7 +9,7 @@ import {
   responseClient,
 } from "../../../grader";
 import { anyApi } from "convex/server";
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { dirname, join, normalize, relative } from "node:path";
 import ts from "typescript";
 
@@ -648,7 +648,11 @@ function readAuthoredConvexSources(): {
 } {
   const projectDir = getLatestOutputProjectDir(CATEGORY, EVAL_NAME);
   const convexDir = join(projectDir, "convex");
-  const configPath = join(convexDir, "tsconfig.json");
+  const convexConfigPath = join(convexDir, "tsconfig.json");
+  const rootConfigPath = join(projectDir, "tsconfig.json");
+  const configPath = existsSync(convexConfigPath)
+    ? convexConfigPath
+    : rootConfigPath;
   const config = ts.readConfigFile(configPath, ts.sys.readFile);
   if (config.error !== undefined) {
     throw new Error(
@@ -658,18 +662,11 @@ function readAuthoredConvexSources(): {
   const parsed = ts.parseJsonConfigFileContent(
     config.config,
     ts.sys,
-    convexDir,
+    dirname(configPath),
     undefined,
     configPath,
   );
-  const program = ts.createProgram(parsed.fileNames, parsed.options);
-  const programSources = new Map(
-    program
-      .getSourceFiles()
-      .map((sourceFile) => [normalize(sourceFile.fileName), sourceFile]),
-  );
-  const sources: AuthoredSource[] = [];
-
+  const authoredFiles: Array<{ path: string; fullPath: string }> = [];
   const visit = (dir: string) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       if (entry.name === "_generated" || entry.name === "node_modules")
@@ -678,19 +675,39 @@ function readAuthoredConvexSources(): {
       if (entry.isDirectory()) {
         visit(fullPath);
       } else if (/\.[cm]?[jt]sx?$/.test(entry.name)) {
-        const path = relative(projectDir, fullPath);
-        const sourceFile = programSources.get(normalize(fullPath));
-        if (sourceFile === undefined) {
-          throw new Error(`TypeScript program did not include ${path}`);
-        }
-        sources.push({
-          path,
-          sourceFile,
+        authoredFiles.push({
+          path: relative(projectDir, fullPath),
+          fullPath,
         });
       }
     }
   };
   visit(convexDir);
+
+  // A root config is allowed to omit Convex files from `include`; add every
+  // authored backend source explicitly so semantic helper resolution still
+  // analyzes the same files the deploy step consumes.
+  const program = ts.createProgram(
+    [
+      ...new Set([
+        ...parsed.fileNames,
+        ...authoredFiles.map((f) => f.fullPath),
+      ]),
+    ],
+    parsed.options,
+  );
+  const programSources = new Map(
+    program
+      .getSourceFiles()
+      .map((sourceFile) => [normalize(sourceFile.fileName), sourceFile]),
+  );
+  const sources = authoredFiles.map(({ path, fullPath }) => {
+    const sourceFile = programSources.get(normalize(fullPath));
+    if (sourceFile === undefined) {
+      throw new Error(`TypeScript program did not include ${path}`);
+    }
+    return { path, sourceFile };
+  });
   return { sources, checker: program.getTypeChecker() };
 }
 
