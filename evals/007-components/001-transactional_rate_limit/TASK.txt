@@ -1,0 +1,37 @@
+Build a rate-limited messaging backend using the `@convex-dev/rate-limiter` component.
+
+Create a `package.json` that pins these dependencies to exactly these versions (you may add other dependencies):
+```json
+{
+  "dependencies": {
+    "convex": "1.41.0",
+    "@convex-dev/rate-limiter": "0.3.2"
+  }
+}
+```
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  messages: defineTable({
+    authorTokenIdentifier: v.string(),
+    body: v.string(),
+  }),
+});
+```
+
+Authentication is already configured for this deployment; do NOT create a `convex/auth.config.ts`.
+
+Create a public mutation `sendMessage` in `convex/index.ts` that:
+- Takes arguments `{ body: string }`
+- Returns the ID of the inserted message (`Id<"messages">`)
+
+Behavior:
+- Unauthenticated callers must be rejected.
+- Each user may send at most 2 messages per hour, enforced with a fixed-window rate limit named `sendMessage`, keyed on the caller's identity `tokenIdentifier`. Never accept a user identifier from the client.
+- Rate-limit rejections must throw the component's structured error (use `throws: true`) so clients can distinguish them and read `retryAfter`.
+- After consuming the rate limit, reject a message whose trimmed `body` is empty. A message rejected this way must not use up any of the user's quota.
+- Only after validation succeeds, insert the message with the caller's `tokenIdentifier` as `authorTokenIdentifier` and return its ID.
