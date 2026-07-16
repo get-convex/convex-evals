@@ -1,4 +1,4 @@
-Build a leaderboard backend where every user has one current score, using the `@convex-dev/aggregate` component for efficient counting and ranking.
+Build a leaderboard backend where every user has one current score, using the `@convex-dev/aggregate` component's `TableAggregate` client for efficient counting and ranking.
 
 Create a `package.json` that pins these dependencies to exactly these versions (you may add other dependencies):
 ```json
