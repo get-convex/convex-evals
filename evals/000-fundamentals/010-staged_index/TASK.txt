@@ -1,0 +1,21 @@
+An existing production deployment has this schema in `convex/schema.ts`, and the `documents` table already contains hundreds of millions of rows:
+
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  documents: defineTable({
+    workspaceId: v.string(),
+    status: v.string(),
+    title: v.string(),
+  }).index("by_workspaceId", ["workspaceId"]),
+});
+```
+
+Update the schema to add an index named `by_workspaceId_and_status` over `["workspaceId", "status"]`.
+
+Requirements:
+- Deploying the updated schema must NOT block waiting for the new index to backfill - deploys of this app must remain fast.
+- Preserve every existing table, field, and index unchanged.
+- Create only `package.json`, `tsconfig.json`, and `convex/schema.ts`.
