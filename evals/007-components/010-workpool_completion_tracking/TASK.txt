@@ -1,0 +1,73 @@
+Build a background job backend that squares numbers using the `@convex-dev/workpool` component, recording every job's completion in a receipts table.
+
+Create a `package.json` that pins these dependencies to exactly these versions (you may add other dependencies; `convex-helpers` is a runtime peer dependency of the workpool component):
+```json
+{
+  "dependencies": {
+    "convex": "1.41.0",
+    "@convex-dev/workpool": "0.4.8",
+    "convex-helpers": "0.1.111"
+  }
+}
+```
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  receipts: defineTable({
+    jobKey: v.string(),
+    kind: v.union(v.literal("success"), v.literal("failed")),
+    value: v.union(v.number(), v.null()),
+  }),
+});
+```
+
+Create a public mutation `submitJobs` in `convex/index.ts` that:
+- Takes arguments `{ inputs: number[] }`
+- Enqueues one background job per input into a workpool configured with `maxParallelism: 2`, then returns null without waiting for any job
+
+Each background job is an internal mutation (name and module are your choice) that:
+- Takes the job's input number
+- Returns `input * input`
+- Must throw an error when the input is exactly `-1`
+
+The workpool's `onComplete` callback - and ONLY it - records outcomes by inserting exactly one `receipts` row per job:
+- `jobKey`: the string form of the job's input (`String(input)`), passed from `submitJobs` to the callback via the enqueue `context` option
+- `kind`: `"success"` if the job succeeded, `"failed"` if it threw
+- `value`: the job's return value on success, `null` on failure
+
+Never write to `receipts` anywhere else (not in `submitJobs`, not in the job itself - a job that throws cannot record its own failure), and do not configure retries: a poisoned input must produce exactly one `"failed"` receipt.
+
+Reference - `@convex-dev/workpool` client API (from its docs):
+```ts
+// convex/convex.config.ts
+import { defineApp } from "convex/server";
+import workpool from "@convex-dev/workpool/convex.config";
+const app = defineApp();
+app.use(workpool, { name: "myPool" }); // generates components.myPool
+export default app;
+
+// In your functions:
+import { Workpool, vOnCompleteArgs } from "@convex-dev/workpool";
+const pool = new Workpool(components.myPool, { maxParallelism: 2 });
+
+// Enqueue from a mutation; the job and the onComplete handler are both
+// internal mutations referenced through `internal.*`:
+await pool.enqueueMutation(ctx, internal.index.myJob, { x: 1 }, {
+  onComplete: internal.index.myOnComplete,
+  context: "any value, delivered back to the onComplete handler",
+});
+
+// The onComplete handler receives { workId, context, result }:
+export const myOnComplete = internalMutation({
+  args: vOnCompleteArgs(v.string()), // validates `context` as a string
+  handler: async (ctx, args) => {
+    // args.result.kind is "success" | "failed" | "canceled"
+    // args.result.returnValue is the job's return value when kind is "success"
+    // args.result.error is the error message when kind is "failed"
+  },
+});
+```

@@ -1,0 +1,33 @@
+Build a backend that syncs order exports to an external accounting service.
+
+Create a `package.json` that pins `convex` to exactly `1.41.0` (you may add other dependencies).
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  orderExports: defineTable({
+    exportKey: v.string(),
+    status: v.string(),
+  }),
+});
+```
+
+Create these functions:
+
+- A public mutation `createOrderExport` in `convex/index.ts` that:
+  - Takes arguments `{ exportKey: string }`
+  - Inserts an `orderExports` row with `status: "pending"`, kicks off the sync work for that row, and returns the ID of the inserted row (`Id<"orderExports">`)
+
+- An internal action `syncExport` that:
+  - Takes arguments `{ exportId: Id<"orderExports">, exportKey: string }`
+  - POSTs `{ exportKey }` as JSON to `https://accounting.example.com/api/exports` (a placeholder URL - it is never called in grading)
+  - Throws if the response is not OK; otherwise records the row's `status` as `"synced"`
+
+Behavior:
+- Every new export must be synced by running `syncExport` as background work kicked off from `createOrderExport`, which must return immediately without waiting for the sync.
+- The accounting service is fragile: never run more than 3 sync calls concurrently across the whole deployment, no matter how many exports are created at once or how many are already waiting.
+- A sync call that fails must be retried automatically with exponential backoff. The accounting API is idempotent: replaying a request with the same `exportKey` is safe.
+- Exports must not be lost: every queued sync eventually runs even if thousands are created in one burst.

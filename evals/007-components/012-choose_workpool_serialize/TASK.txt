@@ -1,0 +1,36 @@
+Build an event ingestion backend that maintains a live statistics document.
+
+Create a `package.json` that pins `convex` to exactly `1.41.0` (you may add other dependencies).
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  events: defineTable({
+    kind: v.string(),
+    value: v.number(),
+  }),
+  statistics: defineTable({
+    key: v.string(),
+    eventCount: v.number(),
+    valueSum: v.number(),
+  }).index("by_key", ["key"]),
+});
+```
+
+Create these functions:
+
+- A public mutation `recordEvent` in `convex/index.ts` that:
+  - Takes arguments `{ kind: string, value: number }`
+  - Inserts the event row, hands off the derived-statistics update for that event as background work, and returns the ID of the inserted event (`Id<"events">`)
+
+- An internal mutation `updateStatistics` that:
+  - Takes arguments `{ value: number }`
+  - Updates the single statistics document with `key: "global"`: increments `eventCount` by 1 and `valueSum` by `value`, inserting `{ key: "global", eventCount: 1, valueSum: value }` if it does not exist yet
+
+Behavior:
+- Many clients call `recordEvent` concurrently. It must stay fast and conflict-free, so it must NOT write the `statistics` document itself - it hands the update off to run in the background.
+- Every derived update targets the ONE hot `"global"` statistics document. Queued `updateStatistics` runs must be strictly serialized - executed one at a time, never two in flight - so this workload can never conflict with itself no matter how many events arrive at once. (Assume all writes to `statistics` go through `updateStatistics` scheduled this way.)
+- No update may be lost or double-applied: each recorded event contributes to the statistics exactly once.

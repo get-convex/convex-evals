@@ -1,0 +1,35 @@
+Build an upload-processing backend with an audit trail of processing outcomes.
+
+Create a `package.json` that pins `convex` to exactly `1.41.0` (you may add other dependencies).
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  uploads: defineTable({
+    filename: v.string(),
+    status: v.string(),
+  }),
+  auditLog: defineTable({
+    uploadId: v.id("uploads"),
+    outcome: v.string(),
+  }),
+});
+```
+
+Create these functions:
+
+- A public mutation `startProcessing` in `convex/index.ts` that:
+  - Takes arguments `{ filename: string }`
+  - Inserts an `uploads` row with `status: "queued"`, kicks off one background processing job for that upload, and returns the ID of the inserted row (`Id<"uploads">`)
+
+- An internal mutation `processUpload` that:
+  - Takes arguments `{ uploadId: Id<"uploads"> }`
+  - Throws an error if the upload row no longer exists; otherwise sets the row's `status` to `"processed"`
+
+Behavior:
+- Processing runs in the background: `startProcessing` returns immediately without waiting for the job.
+- Whenever a processing job finishes - whether it succeeded OR failed - exactly one `auditLog` row must be written for it: `{ uploadId, outcome: "success" }` if the job succeeded, `{ uploadId, outcome: "failure" }` if it threw. Compliance requires the audit row for every job, so it must be written by completion bookkeeping that runs even when the job fails - a job that throws cannot write its own audit row, and `startProcessing` cannot know the outcome in advance.
+- Do not retry failed jobs: a job that fails produces exactly one `"failure"` audit row and is not run again.
