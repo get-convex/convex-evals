@@ -1,0 +1,40 @@
+Create a backend that paginates a workspace's failed audit log entries.
+
+Write this schema to `convex/schema.ts`:
+
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  auditEntries: defineTable({
+    workspaceId: v.string(),
+    sequence: v.number(),
+    status: v.union(v.literal("ok"), v.literal("failed")),
+    payload: v.string(),
+  }).index("by_workspaceId_and_sequence", ["workspaceId", "sequence"]),
+});
+```
+
+Create a public query function `listFailedAuditEntries` in `convex/index.ts` that:
+
+- Takes arguments `{ workspaceId: string, paginationOpts: PaginationOptions }`,
+  where `paginationOpts` is validated with `paginationOptsValidator` from
+  "convex/server". Callers may supply any combination of the native pagination
+  options: `numItems`, `cursor`, `endCursor`, `maximumRowsRead`, and
+  `maximumBytesRead`.
+- Returns the entries of the given workspace whose `status` is "failed",
+  ordered by ascending `sequence`, as the native pagination result
+  (`page`, `isDone`, `continueCursor`, plus `splitCursor` and `pageStatus`
+  when applicable).
+- Every field the caller supplies through `paginationOpts` must retain its
+  native Convex behavior: `maximumRowsRead` and `maximumBytesRead` bound how
+  much the query reads (returning a short page with the appropriate
+  `pageStatus` and `splitCursor` instead of reading past the budget), and
+  `endCursor` bounds the page to a fixed range of the results.
+
+A workspace's audit log may contain long stretches of non-failed entries
+between failed ones.
+
+Only create the `listFailedAuditEntries` query; do not create any other
+functions. Also generate the `package.json` and `convex/schema.ts` files.
