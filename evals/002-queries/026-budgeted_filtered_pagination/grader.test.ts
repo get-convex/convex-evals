@@ -53,6 +53,26 @@ function failedSequences(count: number, failedEvery: number): number[] {
   return result;
 }
 
+/**
+ * Deterministic Fisher-Yates shuffle. Fixtures are inserted in shuffled
+ * order so that table/creation order matches neither the required
+ * ascending-sequence order nor the workspace grouping: only a query scoped
+ * and ordered by the index sees the asserted pages.
+ */
+function shuffled<T>(items: T[], seed: number): T[] {
+  const result = [...items];
+  let state = seed;
+  const nextRandom = () => {
+    state = (state * 1664525 + 1013904223) % 4294967296;
+    return state / 4294967296;
+  };
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(nextRandom() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
 /** Every page item must be a failed entry of the workspace, ascending. */
 function expectFailedAscending(page: Entry[], workspaceId: string) {
   for (const entry of page) {
@@ -66,18 +86,31 @@ function expectFailedAscending(page: Entry[], workspaceId: string) {
 // ws_basic: 30 entries, failed at 3,6,...,30. ws_decoy: failed at every
 // sequence, so any cross-workspace leak changes page contents.
 async function seedBasicAndDecoy() {
-  await addDocuments(responseAdminClient, "auditEntries", [
-    ...seedEntries("ws_basic", 30, 3),
-    ...seedEntries("ws_decoy", 30, 1),
-  ]);
+  await addDocuments(
+    responseAdminClient,
+    "auditEntries",
+    shuffled(
+      [...seedEntries("ws_basic", 30, 3), ...seedEntries("ws_decoy", 30, 1)],
+      1,
+    ),
+  );
 }
 
 // ws_sparse: 120 entries with long ok-stretches, failed at 20,40,...,120.
+// ws_noise: 120 all-failed entries interleaved in creation order, so read
+// budgets only produce the asserted pages for a query that stays inside the
+// workspace's index range.
 async function seedSparse() {
   await addDocuments(
     responseAdminClient,
     "auditEntries",
-    seedEntries("ws_sparse", 120, 20),
+    shuffled(
+      [
+        ...seedEntries("ws_sparse", 120, 20),
+        ...seedEntries("ws_noise", 120, 1),
+      ],
+      2,
+    ),
   );
 }
 
@@ -275,11 +308,18 @@ test(
   "maximumBytesRead bounds reads under large payloads",
   { timeout: 30_000 },
   async () => {
-    // 30 entries with ~8KB payloads, failed at 2,4,...,30.
+    // ws_bytes: 30 entries with ~8KB payloads, failed at 2,4,...,30,
+    // interleaved with 30 all-failed decoy entries in creation order.
     await addDocuments(
       responseAdminClient,
       "auditEntries",
-      seedEntries("ws_bytes", 30, 2, () => "x".repeat(8192)),
+      shuffled(
+        [
+          ...seedEntries("ws_bytes", 30, 2, () => "x".repeat(8192)),
+          ...seedEntries("ws_noise", 30, 1),
+        ],
+        3,
+      ),
     );
     const expected = failedSequences(30, 2);
 
