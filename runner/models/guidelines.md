@@ -313,6 +313,7 @@ export default app;
 - Component reads and writes participate in the calling mutation's transaction. When a component mirrors state from one of your tables (like an aggregate over a table), update the component in the SAME mutation as every insert, patch, replace, or delete of that table - never from a separate function - so the two can never drift.
 - To author a LOCAL component: a directory under `convex/` with its own `convex.config.ts` (`export default defineComponent("myName");` - the argument is the name string), its own `schema.ts`, and functions built from that directory's own `_generated/server`. Mount it from the root config (`app.use(myName)` - no options), and reference its functions through the generated `components` object INCLUDING the module segment: a function in `convex/myName/index.ts` is `components.myName.index.myFunction`, never `components.myName.myFunction`.
 - Calling a component mutation is a subtransaction: if it throws and the caller catches the error, the component's writes roll back while the calling mutation continues and can still commit its own writes.
+- To pass a function across a component boundary, mint a handle in the app: `const handle = await createFunctionHandle(internal.index.myCallback);` (from `convex/server`; async, takes only the function reference - `getFunctionHandle` and `getFunctionName` are not this API). Send it as a string; the receiver casts it back and invokes it: `await ctx.runMutation(args.handle as FunctionHandle<"mutation">, callbackArgs);`.
 
 ## Query guidelines
 

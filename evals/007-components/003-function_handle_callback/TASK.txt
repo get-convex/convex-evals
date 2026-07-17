@@ -1,0 +1,33 @@
+Build a job-dispatch backend where a local Convex component notifies the app of completed work by calling back into it - components cannot import the app's generated API, so the callback must cross the component boundary as a function handle.
+
+Create a `package.json` that pins this dependency to exactly this version (you may add other dependencies):
+```json
+{
+  "dependencies": {
+    "convex": "1.41.0"
+  }
+}
+```
+
+Write this root schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  completions: defineTable({
+    jobKey: v.string(),
+  }).index("by_jobKey", ["jobKey"]),
+});
+```
+
+Author a local component named `jobRunner` (it has no schema) exposing one mutation `run` that:
+- Takes `{ handle: string, jobKey: string }`
+- Calls the function referenced by `handle` exactly once, passing `{ jobKey }`
+
+Create these app functions in `convex/index.ts`:
+- An internal mutation `recordCompletion` that takes `{ jobKey: string }` and inserts one row into `completions`
+- A public mutation `runJob` that takes `{ jobKey: string }`, obtains a function handle for `recordCompletion`, and invokes the component's `run` with that handle and the job key. `runJob` must not write to `completions` itself - only the callback does.
+- A public query `getCompletionCount` that takes `{ jobKey: string }` and returns the number of completions recorded for that job key as a number
+
+Only `runJob` and `getCompletionCount` may be visible to clients.
