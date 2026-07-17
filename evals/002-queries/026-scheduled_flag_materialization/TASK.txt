@@ -1,0 +1,23 @@
+Build the backend for a subscription service that lists active subscriptions.
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  subscriptions: defineTable({
+    plan: v.string(),
+    expiresAt: v.number(),
+    isExpired: v.boolean(),
+  }).index("by_isExpired", ["isExpired", "expiresAt"]),
+});
+```
+
+`expiresAt` values are Unix timestamps in milliseconds. Subscription documents are created with `isExpired: false`, and their `expiresAt` is never edited afterwards.
+
+The backend must keep `isExpired` up to date on its own: after a subscription's `expiresAt` passes, its `isExpired` must flip to `true` within one minute, without any client involvement.
+
+Create a public query `listActive` in `convex/index.ts` that:
+- Takes no arguments
+- Returns the subscriptions whose `isExpired` is `false`, ordered by ascending `expiresAt` (soonest-expiring first)
