@@ -706,6 +706,7 @@ interface Analysis {
   enqueuesWithOnComplete: boolean;
   auditWriteInsideOnComplete: boolean;
   auditWriteOnStartProcessingPath: boolean;
+  auditWriteReachableOutsideCompletion: boolean;
 }
 
 function analyze(): Analysis {
@@ -791,7 +792,10 @@ function analyze(): Analysis {
   let enqueuesWithOnComplete = false;
   let auditWriteInsideOnComplete = false;
   let auditWriteOnStartProcessingPath = false;
-  const onCompleteTargets: { module: ModuleInfo; exportName: string }[] = [];
+  const onCompleteTargets = new Map<
+    string,
+    { module: ModuleInfo; exportName: string }
+  >();
 
   const entry = findHandler(modules, "startProcessing");
   if (entry !== undefined) {
@@ -828,13 +832,18 @@ function analyze(): Analysis {
         onComplete.module,
         onComplete.expression,
       );
-      if (target !== undefined) onCompleteTargets.push(target);
+      if (target !== undefined) {
+        onCompleteTargets.set(
+          `${target.module.path}:${target.exportName}`,
+          target,
+        );
+      }
     });
   }
 
   // The audit row must be written inside a completion handler's own call
   // path (its declaration, or local helpers it calls).
-  for (const target of onCompleteTargets) {
+  for (const target of onCompleteTargets.values()) {
     const declaration = findExportedDeclaration(
       target.module,
       target.exportName,
@@ -847,6 +856,49 @@ function analyze(): Analysis {
     if (writes) auditWriteInsideOnComplete = true;
   }
 
+  // The task rules out jobs recording their own outcome ("a failed job
+  // cannot write its own audit row"): sweep every Convex function handler
+  // other than the resolved completion handlers - through local and
+  // cross-module helpers - and flag any reachable auditLog write. This
+  // kills the shared-helper pattern where processUpload writes success
+  // rows and the callback only failures.
+  let auditWriteReachableOutsideCompletion = false;
+  for (const module of modules.values()) {
+    for (const statement of module.sourceFile.statements) {
+      if (!ts.isVariableStatement(statement)) continue;
+      for (const declaration of statement.declarationList.declarations) {
+        if (
+          !ts.isIdentifier(declaration.name) ||
+          declaration.initializer === undefined ||
+          onCompleteTargets.has(`${module.path}:${declaration.name.text}`)
+        ) {
+          continue;
+        }
+        const initializer = unwrap(declaration.initializer);
+        if (
+          !ts.isCallExpression(initializer) ||
+          initializer.arguments[0] === undefined
+        ) {
+          continue;
+        }
+        const config = unwrap(initializer.arguments[0]);
+        if (!ts.isObjectLiteralExpression(config)) continue;
+        const hasHandler = config.properties.some(
+          (property) =>
+            property.name !== undefined &&
+            ts.isIdentifier(property.name) &&
+            property.name.text === "handler",
+        );
+        if (!hasHandler) continue;
+        walkCalls(modules, module, declaration, (call, callModule) => {
+          if (isTableWrite(modules, callModule, call, "auditLog")) {
+            auditWriteReachableOutsideCompletion = true;
+          }
+        });
+      }
+    }
+  }
+
   return {
     dependsOnWorkpool: project.dependsOnWorkpool,
     mountsWorkpool,
@@ -854,6 +906,7 @@ function analyze(): Analysis {
     enqueuesWithOnComplete,
     auditWriteInsideOnComplete,
     auditWriteOnStartProcessingPath,
+    auditWriteReachableOutsideCompletion,
   };
 }
 
@@ -875,7 +928,11 @@ test("startProcessing enqueues the job with an onComplete callback", () => {
   expect(analysis.enqueuesWithOnComplete).toBe(true);
 });
 
-test("the completion callback writes the audit row, not startProcessing", () => {
+test("only the completion callback writes audit rows", () => {
   expect(analysis.auditWriteInsideOnComplete).toBe(true);
   expect(analysis.auditWriteOnStartProcessingPath).toBe(false);
+  expect(
+    analysis.auditWriteReachableOutsideCompletion,
+    "no other Convex function may reach an auditLog write - a job recording its own successes defeats completion bookkeeping",
+  ).toBe(false);
 });
