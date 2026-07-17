@@ -104,6 +104,21 @@ describe("normalizeModelTsconfigResolution", () => {
     expect(parsed.compilerOptions.lib).toEqual(["ES2021", "dom"]);
   });
 
+  test("does not append dom alongside WebWorker", () => {
+    const dir = mkdtempSync(pjoin(tmpdir(), "tsconfig-norm-"));
+    wf(
+      pjoin(dir, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: {
+          module: "ESNext",
+          moduleResolution: "Bundler",
+          lib: ["ES2021", "WebWorker"],
+        },
+      }),
+    );
+    expect(normalizeModelTsconfigResolution(dir)).toHaveLength(0);
+  });
+
   test("leaves lib untouched when dom is present or lib is absent", () => {
     const dir = mkdtempSync(pjoin(tmpdir(), "tsconfig-norm-"));
     wf(

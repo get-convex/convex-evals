@@ -230,8 +230,11 @@ test("invalid JSON and invalid shapes get 400 without effects", async () => {
     { eventId: 7, subscriptionId: "s", sequence: 1, state: "active" },
   ];
   for (const body of badBodies) {
-    const { status } = await post(body);
+    const { status, contentType } = await post(body);
     expect(status, `body ${JSON.stringify(body)} must be rejected`).toBe(400);
+    expect(contentType, "rejections must also be JSON responses").toContain(
+      "application/json",
+    );
   }
   expect(await getSubscriptions()).toHaveLength(0);
   expect(await getReceipts()).toHaveLength(0);
@@ -368,18 +371,26 @@ test("the HTTP path commits through a single internal mutation", () => {
     ),
   );
 
-  // Aliases for internal.* references, so `const fn = internal.x.y;
-  // ctx.runMutation(fn, ...)` still counts as targeting an internal function.
+  // Aliases for internal.* references, so `const fn = internal.x.y;` and
+  // `const { fn } = internal.x;` still count as targeting internal functions.
   const internalRefs = new Set<string>();
   for (const source of sources) {
     const collectAliases = (node: ts.Node) => {
       if (
         ts.isVariableDeclaration(node) &&
-        ts.isIdentifier(node.name) &&
         node.initializer !== undefined &&
-        node.initializer.getText().startsWith("internal.")
+        (node.initializer.getText() === "internal" ||
+          node.initializer.getText().startsWith("internal."))
       ) {
-        internalRefs.add(node.name.text);
+        if (ts.isIdentifier(node.name)) {
+          internalRefs.add(node.name.text);
+        } else if (ts.isObjectBindingPattern(node.name)) {
+          for (const element of node.name.elements) {
+            if (ts.isIdentifier(element.name)) {
+              internalRefs.add(element.name.text);
+            }
+          }
+        }
       }
       ts.forEachChild(node, collectAliases);
     };

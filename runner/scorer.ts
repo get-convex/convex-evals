@@ -233,13 +233,19 @@ export function normalizeModelTsconfigResolution(projectDir: string): string[] {
       compilerOptions.module = "ESNext";
       changed = true;
     }
-    // An explicit lib without "dom" hides web-standard globals (Response,
-    // Request, fetch) that Convex HTTP actions rely on; tsc's default lib
-    // (lib absent) includes DOM, so only an explicit narrow list needs fixing.
+    // An explicit lib without web-standard globals (Response, Request, fetch)
+    // breaks Convex HTTP actions; tsc's default lib (lib absent) includes DOM,
+    // and WebWorker declares the same globals, so only an explicit list with
+    // neither needs fixing - appending dom alongside WebWorker would create
+    // duplicate global declarations instead.
     const lib = compilerOptions.lib;
     if (
       Array.isArray(lib) &&
-      !lib.some((l) => typeof l === "string" && l.toLowerCase() === "dom")
+      !lib.some(
+        (l) =>
+          typeof l === "string" &&
+          ["dom", "webworker"].includes(l.toLowerCase()),
+      )
     ) {
       adjusted.push(`${tsconfigPath}: lib ${JSON.stringify(lib)} -> +dom`);
       lib.push("dom");
