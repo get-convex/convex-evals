@@ -111,21 +111,39 @@ function analyze(): Analysis {
       }
     }
 
-    // Client instance variable names in this file.
+    // Client instance variable names in this file. Unwrap parens and
+    // as-casts (e.g. `new Aggregate(...) as unknown as X`).
+    const unwrap = (expression: ts.Expression): ts.Expression => {
+      let current = expression;
+      while (
+        ts.isParenthesizedExpression(current) ||
+        ts.isAsExpression(current)
+      ) {
+        current = current.expression;
+      }
+      return current;
+    };
     const clientVars = new Set<string>();
     const collectVars = (node: ts.Node) => {
       if (
         ts.isVariableDeclaration(node) &&
         ts.isIdentifier(node.name) &&
-        node.initializer !== undefined &&
-        ts.isNewExpression(node.initializer) &&
-        ts.isIdentifier(node.initializer.expression) &&
-        clientCtors.has(node.initializer.expression.text)
+        node.initializer !== undefined
       ) {
-        const firstArg = node.initializer.arguments?.[0];
-        if (firstArg !== undefined && firstArg.getText().startsWith("components.")) {
-          constructsClient = true;
-          clientVars.add(node.name.text);
+        const initializer = unwrap(node.initializer);
+        if (
+          ts.isNewExpression(initializer) &&
+          ts.isIdentifier(initializer.expression) &&
+          clientCtors.has(initializer.expression.text)
+        ) {
+          const firstArg = initializer.arguments?.[0];
+          if (
+            firstArg !== undefined &&
+            firstArg.getText().startsWith("components.")
+          ) {
+            constructsClient = true;
+            clientVars.add(node.name.text);
+          }
         }
       }
       ts.forEachChild(node, collectVars);
@@ -174,6 +192,17 @@ function analyze(): Analysis {
           if (writeMethods.has(name)) synchronizesWrites = true;
           if (readMethods.has(name)) readsFromAggregate = true;
         }
+        // Direct component calls also count as wiring: invocation STYLE is
+        // an API detail the docs-equipped usage eval grades, not this one.
+        if (
+          (name === "runMutation" || name === "runQuery") &&
+          node.arguments.length >= 1 &&
+          node.arguments[0].getText().startsWith("components.aggregate.")
+        ) {
+          if (name === "runMutation") synchronizesWrites = true;
+          if (name === "runQuery") readsFromAggregate = true;
+          constructsClient = constructsClient || true;
+        }
         if (scanMethods.has(name) && chainQueriesScores(node)) {
           scanConstructs.push(`${sourceFile.fileName}: unbounded scores .${name}()`);
         }
@@ -211,7 +240,7 @@ test("mounts the component in the app config", () => {
   expect(analysis.mountsAggregate).toBe(true);
 });
 
-test("constructs an aggregate client over the component", () => {
+test("wires the component (client class or direct calls)", () => {
   expect(analysis.constructsClient).toBe(true);
 });
 
