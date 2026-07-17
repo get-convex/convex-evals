@@ -662,8 +662,11 @@ function walkCallPath(
       callbacks.onWallClock !== undefined &&
       ts.isNewExpression(node) &&
       ts.isIdentifier(node.expression) &&
-      node.expression.text === "Date"
+      node.expression.text === "Date" &&
+      (node.arguments === undefined || node.arguments.length === 0)
     ) {
+      // Only a ZERO-argument new Date() reads the wall clock;
+      // new Date(storedMs) is a deterministic conversion and stays legal.
       callbacks.onWallClock("new Date()", module.path);
     }
     if (ts.isCallExpression(node)) {
