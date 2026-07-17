@@ -50,7 +50,10 @@ describe("normalizeModelTsconfigResolution", () => {
 
   test("normalizes configs that omit resolution fields entirely", () => {
     const dir = mkdtempSync(pjoin(tmpdir(), "tsconfig-norm-"));
-    wf(pjoin(dir, "tsconfig.json"), JSON.stringify({ compilerOptions: { strict: true } }));
+    wf(
+      pjoin(dir, "tsconfig.json"),
+      JSON.stringify({ compilerOptions: { strict: true } }),
+    );
     const changes = normalizeModelTsconfigResolution(dir);
     expect(changes).toHaveLength(2);
     const parsed = JSON.parse(rf(pjoin(dir, "tsconfig.json"), "utf-8")) as {
@@ -72,6 +75,63 @@ describe("normalizeModelTsconfigResolution", () => {
 
   test("leaves modern configs untouched", () => {
     const dir = mkdtempSync(pjoin(tmpdir(), "tsconfig-norm-"));
+    wf(
+      pjoin(dir, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: { module: "ESNext", moduleResolution: "Bundler" },
+      }),
+    );
+    expect(normalizeModelTsconfigResolution(dir)).toHaveLength(0);
+  });
+
+  test("appends dom to an explicit lib that omits it", () => {
+    const dir = mkdtempSync(pjoin(tmpdir(), "tsconfig-norm-"));
+    wf(
+      pjoin(dir, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: {
+          module: "ESNext",
+          moduleResolution: "Bundler",
+          lib: ["ES2021"],
+        },
+      }),
+    );
+    const changes = normalizeModelTsconfigResolution(dir);
+    expect(changes).toHaveLength(1);
+    const parsed = JSON.parse(rf(pjoin(dir, "tsconfig.json"), "utf-8")) as {
+      compilerOptions: { lib: string[] };
+    };
+    expect(parsed.compilerOptions.lib).toEqual(["ES2021", "dom"]);
+  });
+
+  test("does not append dom alongside WebWorker", () => {
+    const dir = mkdtempSync(pjoin(tmpdir(), "tsconfig-norm-"));
+    wf(
+      pjoin(dir, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: {
+          module: "ESNext",
+          moduleResolution: "Bundler",
+          lib: ["ES2021", "WebWorker"],
+        },
+      }),
+    );
+    expect(normalizeModelTsconfigResolution(dir)).toHaveLength(0);
+  });
+
+  test("leaves lib untouched when dom is present or lib is absent", () => {
+    const dir = mkdtempSync(pjoin(tmpdir(), "tsconfig-norm-"));
+    wf(
+      pjoin(dir, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: {
+          module: "ESNext",
+          moduleResolution: "Bundler",
+          lib: ["ES2021", "DOM"],
+        },
+      }),
+    );
+    expect(normalizeModelTsconfigResolution(dir)).toHaveLength(0);
     wf(
       pjoin(dir, "tsconfig.json"),
       JSON.stringify({
