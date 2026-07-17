@@ -1,0 +1,24 @@
+Build a backend for browsing a large catalog of entries in scored order.
+
+Create a `package.json` that pins `convex` to exactly `1.41.0` (you may add other dependencies).
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  entries: defineTable({
+    title: v.string(),
+    points: v.number(),
+  }),
+});
+```
+
+Create these functions in `convex/index.ts`:
+
+- A mutation `addEntry` that takes `{ title: string, points: number }`, inserts the entry, and returns its ID (`Id<"entries">`)
+- A query `entryAt` that takes `{ offset: number }` and returns the title of the entry at that 0-based position when all entries are ordered by `points` descending (you may assume the offset is valid)
+- A query `getCount` that takes no arguments and returns the total number of entries as a number
+
+The entries table may grow to millions of rows. `entryAt` and `getCount` power a "jump to any position" browser and are called constantly; they must remain efficient at that scale, and adding entries must keep them accurate.
