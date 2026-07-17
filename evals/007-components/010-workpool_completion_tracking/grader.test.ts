@@ -831,6 +831,7 @@ interface Analysis {
   enqueuesWithOnCompleteOnPath: boolean;
   receiptsWriteCount: number;
   receiptsWritesOutsideOnComplete: string[];
+  receiptsWritesReachableOutsideCompletion: string[];
   receiptsWriteOnSubmitJobsPath: boolean;
 }
 
@@ -1079,6 +1080,54 @@ function analyze(): Analysis {
     visit(module.sourceFile);
   }
 
+  // Span-allowlisting alone is not enough: a shared helper reachable from
+  // the completion handler is inside an allowed span, yet the JOB could
+  // call the same helper to record its own successes - behavioral counts
+  // still come out exactly one per job, but receipts would no longer be
+  // written only by completion bookkeeping. Sweep every other Convex
+  // function's handler and flag any reachable receipts write.
+  const completionKeys = new Set(onCompleteTargets.keys());
+  const receiptsWritesReachableOutsideCompletion: string[] = [];
+  for (const module of modules.values()) {
+    for (const statement of module.sourceFile.statements) {
+      if (!ts.isVariableStatement(statement)) continue;
+      for (const declaration of statement.declarationList.declarations) {
+        if (
+          !ts.isIdentifier(declaration.name) ||
+          declaration.initializer === undefined ||
+          completionKeys.has(`${module.path}:${declaration.name.text}`)
+        ) {
+          continue;
+        }
+        const initializer = unwrap(declaration.initializer);
+        if (
+          !ts.isCallExpression(initializer) ||
+          initializer.arguments[0] === undefined
+        ) {
+          continue;
+        }
+        const config = unwrap(initializer.arguments[0]);
+        if (!ts.isObjectLiteralExpression(config)) continue;
+        const hasHandler = config.properties.some(
+          (property) =>
+            property.name !== undefined &&
+            ts.isIdentifier(property.name) &&
+            property.name.text === "handler",
+        );
+        if (!hasHandler) continue;
+        walkCalls(modules, module, declaration, (call, callModule) => {
+          if (isTableWrite(modules, callModule, call, "receipts")) {
+            receiptsWritesReachableOutsideCompletion.push(
+              `${module.path}.ts: ${declaration.name.getText()} reaches ${call
+                .getText()
+                .slice(0, 60)}`,
+            );
+          }
+        });
+      }
+    }
+  }
+
   return {
     dependencies: project.dependencies,
     mountNames,
@@ -1087,6 +1136,7 @@ function analyze(): Analysis {
     enqueuesWithOnCompleteOnPath,
     receiptsWriteCount,
     receiptsWritesOutsideOnComplete,
+    receiptsWritesReachableOutsideCompletion,
     receiptsWriteOnSubmitJobsPath,
   };
 }
@@ -1225,6 +1275,10 @@ test("only the onComplete callback writes receipts", () => {
   expect(
     analysis.receiptsWritesOutsideOnComplete,
     "receipts writes outside the completion handler defeat completion tracking",
+  ).toEqual([]);
+  expect(
+    analysis.receiptsWritesReachableOutsideCompletion,
+    "no other Convex function may reach a receipts write - a job recording its own successes defeats completion tracking",
   ).toEqual([]);
   expect(
     analysis.receiptsWriteOnSubmitJobsPath,

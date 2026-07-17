@@ -781,30 +781,13 @@ function analyze(): Analysis {
     visit(module.sourceFile);
   }
 
-  // Bounded parallelism: any component-bound Workpool construction carrying
-  // a maxParallelism option (the task's cap is 3, but the SELECTION signal
-  // is that concurrency is bounded by the pool at all - the exact-value
-  // discrimination lives in eval 012).
+  // Call-path analysis from createOrderExport. Bounded parallelism is tied
+  // to the pool the sync work is actually enqueued on - an unused decoy
+  // pool with maxParallelism must not count. The value is deliberately not
+  // pinned (per the issue spec): the SELECTION signal is that concurrency
+  // is bounded by the enqueued pool at all; the exact-value discrimination
+  // lives in eval 012.
   let boundsParallelism = false;
-  for (const module of modules.values()) {
-    const visit = (node: ts.Node) => {
-      if (ts.isNewExpression(node)) {
-        const info = poolConstructionInfo(module, node);
-        if (
-          info !== undefined &&
-          node.arguments?.[0] !== undefined &&
-          isComponentReference(modules, module, node.arguments[0]) &&
-          optionsProperties(modules, info).has("maxParallelism")
-        ) {
-          boundsParallelism = true;
-        }
-      }
-      ts.forEachChild(node, visit);
-    };
-    visit(module.sourceFile);
-  }
-
-  // Call-path analysis from createOrderExport.
   let enqueuesSyncAsAction = false;
   let retriesConfigured = false;
   let schedulerFanOutOnPath = false;
@@ -865,6 +848,9 @@ function analyze(): Analysis {
           call.expression.expression,
         );
         if (pool === undefined) return;
+        if (optionsProperties(modules, pool).has("maxParallelism")) {
+          boundsParallelism = true;
+        }
         const isActionMethod =
           method === "enqueueAction" || method === "enqueueActionBatch";
         if (
@@ -907,6 +893,26 @@ function analyze(): Analysis {
       ) {
         const options = collectOptionProperties(modules, module, call, 1);
         const fnType = options.get("fnType");
+        const config = options.get("config");
+        if (config !== undefined) {
+          const resolved = resolveExpression(
+            modules,
+            config.module,
+            config.expression,
+          );
+          if (
+            ts.isObjectLiteralExpression(resolved.expression) &&
+            resolved.expression.properties.some(
+              (property) =>
+                ts.isPropertyAssignment(property) &&
+                (ts.isIdentifier(property.name) ||
+                  ts.isStringLiteral(property.name)) &&
+                property.name.text === "maxParallelism",
+            )
+          ) {
+            boundsParallelism = true;
+          }
+        }
         if (
           fnType !== undefined &&
           resolveStringLiteral(modules, fnType.module, fnType.expression) ===
@@ -939,7 +945,7 @@ test("mounts the component in the app config", () => {
   expect(analysis.mountsWorkpool).toBe(true);
 });
 
-test("constructs a Workpool with bounded parallelism", () => {
+test("the sync work runs on a parallelism-bounded pool", () => {
   expect(analysis.boundsParallelism).toBe(true);
 });
 
