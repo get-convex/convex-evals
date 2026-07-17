@@ -60,6 +60,16 @@ describe("normalizeModelTsconfigResolution", () => {
     expect(parsed.compilerOptions.module).toBe("ESNext");
   });
 
+  test("normalizes tsconfigs with no compilerOptions at all", () => {
+    const dir = mkdtempSync(pjoin(tmpdir(), "tsconfig-norm-"));
+    wf(pjoin(dir, "tsconfig.json"), JSON.stringify({}));
+    expect(normalizeModelTsconfigResolution(dir)).toHaveLength(2);
+    const parsed = JSON.parse(rf(pjoin(dir, "tsconfig.json"), "utf-8")) as {
+      compilerOptions: { moduleResolution: string; module: string };
+    };
+    expect(parsed.compilerOptions.moduleResolution).toBe("Bundler");
+  });
+
   test("leaves modern configs untouched", () => {
     const dir = mkdtempSync(pjoin(tmpdir(), "tsconfig-norm-"));
     wf(

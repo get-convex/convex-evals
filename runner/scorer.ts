@@ -196,10 +196,10 @@ export function normalizeModelTsconfigResolution(projectDir: string): string[] {
     } catch {
       continue; // Non-strict JSON - leave untouched.
     }
-    const compilerOptions = parsed.compilerOptions as
-      | Record<string, unknown>
-      | undefined;
-    if (compilerOptions === undefined) continue;
+    if (parsed.compilerOptions === undefined) {
+      (parsed as Record<string, unknown>).compilerOptions = {};
+    }
+    const compilerOptions = parsed.compilerOptions as Record<string, unknown>;
 
     let changed = false;
     const moduleResolution = compilerOptions.moduleResolution;
