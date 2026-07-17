@@ -114,7 +114,9 @@ export function isInfrastructureStepFailure(
     return isEnvironmentFailure(lower);
   }
   if (stepName === "deploy") {
-    return isEnvironmentFailure(lower) || lower.includes("convex dev timed out");
+    return (
+      isEnvironmentFailure(lower) || lower.includes("convex dev timed out")
+    );
   }
   if (stepName === "tsc") {
     return isEnvironmentFailure(lower);
@@ -205,7 +207,9 @@ export function normalizeModelTsconfigResolution(projectDir: string): string[] {
     const moduleResolution = compilerOptions.moduleResolution;
     const resolutionIsModern =
       typeof moduleResolution === "string" &&
-      ["bundler", "node16", "nodenext"].includes(moduleResolution.toLowerCase());
+      ["bundler", "node16", "nodenext"].includes(
+        moduleResolution.toLowerCase(),
+      );
     if (!resolutionIsModern) {
       // Absent counts too: tsc then defaults to legacy node resolution.
       adjusted.push(
@@ -219,16 +223,35 @@ export function normalizeModelTsconfigResolution(projectDir: string): string[] {
       typeof moduleKind === "string" &&
       (moduleKind.toLowerCase() === "preserve" ||
         moduleKind.toLowerCase().startsWith("es"));
-    if (compilerOptions.moduleResolution === "Bundler" && !moduleSupportsBundler) {
+    if (
+      compilerOptions.moduleResolution === "Bundler" &&
+      !moduleSupportsBundler
+    ) {
       adjusted.push(
         `${tsconfigPath}: module ${typeof moduleKind === "string" ? moduleKind : "(absent)"} -> ESNext`,
       );
       compilerOptions.module = "ESNext";
       changed = true;
     }
+    // An explicit lib without "dom" hides web-standard globals (Response,
+    // Request, fetch) that Convex HTTP actions rely on; tsc's default lib
+    // (lib absent) includes DOM, so only an explicit narrow list needs fixing.
+    const lib = compilerOptions.lib;
+    if (
+      Array.isArray(lib) &&
+      !lib.some((l) => typeof l === "string" && l.toLowerCase() === "dom")
+    ) {
+      adjusted.push(`${tsconfigPath}: lib ${JSON.stringify(lib)} -> +dom`);
+      lib.push("dom");
+      changed = true;
+    }
     if (changed) {
-      writeFileSync(tsconfigPath, `${JSON.stringify(parsed, null, 2)}
-`, "utf-8");
+      writeFileSync(
+        tsconfigPath,
+        `${JSON.stringify(parsed, null, 2)}
+`,
+        "utf-8",
+      );
     }
   }
 
@@ -271,7 +294,11 @@ export function sanitizeModelTsconfigTypes(projectDir: string): string[] {
     } else {
       compilerOptions.types = kept;
     }
-    writeFileSync(tsconfigPath, `${JSON.stringify(parsed, null, 2)}\n`, "utf-8");
+    writeFileSync(
+      tsconfigPath,
+      `${JSON.stringify(parsed, null, 2)}\n`,
+      "utf-8",
+    );
   }
 
   return removed;
@@ -406,8 +433,8 @@ class ScoringContext {
     if (allPassed) {
       await completeEval(
         this.evalId,
-        { 
-          kind: "passed", 
+        {
+          kind: "passed",
           durationMs: evalDuration,
           generationDurationMs: this.generationDurationMs,
           usage: this.usage,
@@ -420,9 +447,7 @@ class ScoringContext {
         if (!passed) failureReasons.push(`${step} fail`);
       }
       if (testsRatio !== 1) {
-        failureReasons.push(
-          `tests fail (${(testsRatio * 100).toFixed(0)}%)`,
-        );
+        failureReasons.push(`tests fail (${(testsRatio * 100).toFixed(0)}%)`);
       }
       await completeEval(
         this.evalId,
@@ -460,7 +485,7 @@ class ScoringContext {
       scoreName,
       result.passed,
       stepStart,
-      result.passed ? undefined : result.error ?? `${stepName} failed`,
+      result.passed ? undefined : (result.error ?? `${stepName} failed`),
     );
     return result;
   }
@@ -503,7 +528,12 @@ export async function convexScorer(
   const fsStart = Date.now();
   try {
     writeFilesystem(outputProjectDir, output);
-    ctx.recordStepResult("filesystem", "Valid filesystem output", true, fsStart);
+    ctx.recordStepResult(
+      "filesystem",
+      "Valid filesystem output",
+      true,
+      fsStart,
+    );
     if (evalId) {
       void uploadEvalOutput(evalId, outputProjectDir);
     }
@@ -581,7 +611,8 @@ export async function convexScorer(
         `[setup] dropped unresolvable tsconfig types: ${removedTypes.join(", ")}`,
       );
     }
-    const resolutionChanges = normalizeModelTsconfigResolution(outputProjectDir);
+    const resolutionChanges =
+      normalizeModelTsconfigResolution(outputProjectDir);
     if (resolutionChanges.length > 0) {
       appendLog(
         ctx.runLogPath,
@@ -599,9 +630,7 @@ export async function convexScorer(
       isInfrastructureStepFailure("tsc", tscResult.error)
     ) {
       await ctx.reportEarlyExit("tsc fail");
-      throw new InfrastructureError(
-        `[tsc] ${tscResult.error ?? "tsc failed"}`,
-      );
+      throw new InfrastructureError(`[tsc] ${tscResult.error ?? "tsc failed"}`);
     }
 
     // Lint
@@ -791,7 +820,9 @@ async function runTestsStep(
         }
       } else {
         const pct = (testsRatio * 100).toFixed(0);
-        logInfo(`[${ctx.evalPrefix}] tests: FAIL (${pct}% passed, ${elapsed}s)`);
+        logInfo(
+          `[${ctx.evalPrefix}] tests: FAIL (${pct}% passed, ${elapsed}s)`,
+        );
         if (ctx.evalId) {
           void recordStep(ctx.evalId, "tests", {
             kind: "failed",
@@ -937,7 +968,9 @@ async function installDependencies(
     "bun install",
   );
   if (result.exitCode !== 0) {
-    throw new Error(`Failed to install dependencies:\n${combinedOutput(result)}`);
+    throw new Error(
+      `Failed to install dependencies:\n${combinedOutput(result)}`,
+    );
   }
   return [{ cmd: "bun install", stdout: combinedOutput(result) }];
 }
@@ -970,7 +1003,10 @@ async function deploy(
 
   const stdout = deployResult.stdout.toString();
   const deployOutput = combinedOutput(deployResult);
-  if (deployResult.exitCode !== 0 && !stdout.includes("Convex functions ready!")) {
+  if (
+    deployResult.exitCode !== 0 &&
+    !stdout.includes("Convex functions ready!")
+  ) {
     throw new Error(
       formatDeployFailure(
         {
@@ -1002,7 +1038,10 @@ async function typecheckCode(
 
   for (const typecheckTarget of typecheckTargets) {
     const result = await withTimeout(
-      $`bunx tsc -noEmit -p ${typecheckTarget}`.cwd(projectDir).nothrow().quiet(),
+      $`bunx tsc -noEmit -p ${typecheckTarget}`
+        .cwd(projectDir)
+        .nothrow()
+        .quiet(),
       TIMEOUTS.tsc,
       `tsc (${typecheckTarget})`,
     );
@@ -1027,10 +1066,7 @@ async function lintCode(
   const eslintBin = resolve("node_modules/.bin/eslint");
 
   const eslintConvex = await withTimeout(
-    $`${eslintBin} -c ${eslintConfig} convex`
-      .cwd(projectDir)
-      .nothrow()
-      .quiet(),
+    $`${eslintBin} -c ${eslintConfig} convex`.cwd(projectDir).nothrow().quiet(),
     TIMEOUTS.eslint,
     "eslint (convex)",
   );
@@ -1115,7 +1151,6 @@ async function executeVitest(
   env: Record<string, string>,
   testFile: string,
 ): Promise<{ ratio: number; stdout: string; cmd: string }> {
-
   const tmpJsonPath = join(
     tmpdir(),
     `vitest-${Date.now()}-${Math.random().toString(36).slice(2)}.json`,

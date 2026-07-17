@@ -1,0 +1,38 @@
+Implement a billing webhook endpoint with exactly-once, order-safe event processing.
+
+Expose an HTTP endpoint POST /webhooks/billing that accepts a JSON body:
+
+{
+  eventId: string;
+  subscriptionId: string;
+  sequence: number;
+  state: "active" | "past_due" | "canceled";
+}
+
+Create `convex/schema.ts` with these tables and fields:
+- `subscriptions`: { subscriptionId: string, state: "active" | "past_due" | "canceled", sequence: number }
+- `receipts`: { eventId: string, outcome: "applied" | "ignored" }
+
+Processing rules, in order of precedence:
+
+1. If an event with this `eventId` has been processed before, respond with
+   { status: "duplicate" } and change nothing: no new receipt, no subscription
+   change - even if the replayed request carries a different payload or a
+   different sequence. Duplicate detection always takes precedence.
+2. Otherwise insert exactly one receipt for the event:
+   - If no subscription with this `subscriptionId` exists, or the event's
+     `sequence` is greater than the stored one, create or update that
+     subscription's `state` and `sequence` and respond with
+     { status: "applied" } (receipt outcome "applied").
+   - Otherwise (the sequence is less than or equal to the stored one) leave the
+     subscription untouched and respond with { status: "ignored" }
+     (receipt outcome "ignored").
+
+Webhook providers retry deliveries and deliver out of order, including
+concurrently. All database effects for one event must take effect atomically:
+under any interleaving of deliveries, an event must never be applied twice and
+a subscription's stored sequence must never move backwards.
+
+Valid events get a 200 response with the JSON body { status } described above.
+Invalid JSON, or a body that does not match the shape above, gets a 400
+response. Respond with Content-Type: application/json in all cases.

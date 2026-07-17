@@ -22,6 +22,7 @@ http.route({
 });
 ```
 
+- `await req.json()` is untyped: treat the result as `unknown` and narrow each field with `typeof` checks before use (never member-access it as `any` - lint forbids it), returning a 400 response for bodies that fail validation.
 - HTTP endpoints are always registered at the exact path you specify in the `path` field. For example, if you specify `/api/someRoute`, the endpoint will be registered at `/api/someRoute`.
 
 ### Validators
@@ -82,7 +83,7 @@ export default defineSchema({
 ### Function registration
 
 - Use `internalQuery`, `internalMutation`, and `internalAction` to register internal functions. These functions are private and aren't part of an app's API. They can only be called by other Convex functions. These functions are always imported from `./_generated/server`.
-- Use `query`, `mutation`, and `action` to register public functions. These functions are part of the public API and are exposed to the public Internet. Do NOT use `query`, `mutation`, or `action` to register sensitive internal functions that should be kept private.
+- Use `query`, `mutation`, and `action` to register public functions. These functions are part of the public API and are exposed to the public Internet. Do NOT use `query`, `mutation`, or `action` to register sensitive internal functions that should be kept private. A function invoked only by your own code - e.g. the mutation an HTTP action calls to commit its effects - is internal, not public.
 - You CANNOT register a function through the `api` or `internal` objects.
 - ALWAYS include argument validators for all Convex functions. This includes all of `query`, `internalQuery`, `mutation`, `internalMutation`, `action`, and `internalAction`.
 
