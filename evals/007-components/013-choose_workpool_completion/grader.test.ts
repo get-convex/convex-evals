@@ -134,6 +134,9 @@ function loadProject(): Project {
   load("");
 
   for (const module of modules.values()) analyzeModule(module, modules);
+  for (const module of modules.values()) {
+    collectPoolConstructions(module, modules);
+  }
   propagatePoolBindings(modules);
   return { modules, dependsOnWorkpool };
 }
@@ -256,15 +259,24 @@ function analyzeModule(
     ts.forEachChild(node, visit);
   };
   visit(module.sourceFile);
+}
 
-  // Pool constructions declared in this file.
+/**
+ * Pool constructions declared in a file (component-bound only). Runs as a
+ * second pass after every module's imports/aliases are known, so component
+ * references resolved across modules are visible.
+ */
+function collectPoolConstructions(
+  module: ModuleInfo,
+  modules: Map<string, ModuleInfo>,
+): void {
   const collectPools = (node: ts.Node) => {
     if (
       ts.isVariableDeclaration(node) &&
       ts.isIdentifier(node.name) &&
       node.initializer !== undefined
     ) {
-      const info = poolConstructionInfo(module, node.initializer);
+      const info = poolConstructionInfo(module, node.initializer, modules);
       if (info !== undefined) module.poolVars.set(node.name.text, info);
     }
     ts.forEachChild(node, collectPools);
@@ -278,7 +290,8 @@ function unwrap(expression: ts.Expression): ts.Expression {
     ts.isParenthesizedExpression(current) ||
     ts.isAsExpression(current) ||
     ts.isSatisfiesExpression(current) ||
-    ts.isNonNullExpression(current)
+    ts.isNonNullExpression(current) ||
+    ts.isAwaitExpression(current)
   ) {
     current = current.expression;
   }
@@ -377,9 +390,19 @@ function isComponentReference(
 function poolConstructionInfo(
   module: ModuleInfo,
   expression: ts.Expression,
+  modules?: Map<string, ModuleInfo>,
 ): PoolInfo | undefined {
   const initializer = unwrap(expression);
   if (!ts.isNewExpression(initializer)) return undefined;
+  // The pool only counts when constructed over the mounted component:
+  // `new Workpool({} as any, ...)` queues nothing that can run.
+  if (
+    modules !== undefined &&
+    (initializer.arguments?.[0] === undefined ||
+      !isComponentReference(modules, module, initializer.arguments[0]))
+  ) {
+    return undefined;
+  }
   const target = unwrap(initializer.expression);
   const isWorkpoolClass =
     (ts.isIdentifier(target) && module.workpoolClassNames.has(target.text)) ||
@@ -433,7 +456,7 @@ function poolInfoForReceiver(
       targetPath === undefined ? undefined : modules.get(targetPath);
     return target?.poolVars.get(resolved.name.text);
   }
-  const direct = poolConstructionInfo(m, resolved);
+  const direct = poolConstructionInfo(m, resolved, modules);
   return direct;
 }
 
@@ -492,31 +515,35 @@ function optionsProperties(
 ): Map<string, Resolved> {
   const properties = new Map<string, Resolved>();
   if (pool.optionsExpression === undefined) return properties;
-  const resolved = resolveExpression(
-    modules,
-    pool.module,
-    pool.optionsExpression,
-  );
-  if (!ts.isObjectLiteralExpression(resolved.expression)) return properties;
-  for (const property of resolved.expression.properties) {
-    if (
-      property.name === undefined ||
-      !(ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))
-    ) {
-      continue;
+  const addFrom = (m: ModuleInfo, expr: ts.Expression, depth: number) => {
+    if (depth > 3) return;
+    const resolved = resolveExpression(modules, m, expr);
+    if (!ts.isObjectLiteralExpression(resolved.expression)) return;
+    for (const property of resolved.expression.properties) {
+      if (ts.isSpreadAssignment(property)) {
+        addFrom(resolved.module, property.expression, depth + 1);
+        continue;
+      }
+      if (
+        property.name === undefined ||
+        !(ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))
+      ) {
+        continue;
+      }
+      if (ts.isPropertyAssignment(property)) {
+        properties.set(property.name.text, {
+          module: resolved.module,
+          expression: property.initializer,
+        });
+      } else if (ts.isShorthandPropertyAssignment(property)) {
+        properties.set(property.name.text, {
+          module: resolved.module,
+          expression: property.name,
+        });
+      }
     }
-    if (ts.isPropertyAssignment(property)) {
-      properties.set(property.name.text, {
-        module: resolved.module,
-        expression: property.initializer,
-      });
-    } else if (ts.isShorthandPropertyAssignment(property)) {
-      properties.set(property.name.text, {
-        module: resolved.module,
-        expression: property.name,
-      });
-    }
-  }
+  };
+  addFrom(pool.module, pool.optionsExpression, 0);
   return properties;
 }
 
