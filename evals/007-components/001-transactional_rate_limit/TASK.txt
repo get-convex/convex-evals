@@ -35,3 +35,12 @@ Behavior:
 - Rate-limit rejections must throw the component's structured error (use `throws: true`) so clients can distinguish them and read `retryAfter`.
 - After consuming the rate limit, reject a message whose trimmed `body` is empty. A message rejected this way must not use up any of the user's quota.
 - Only after validation succeeds, insert the message with the caller's `tokenIdentifier` as `authorTokenIdentifier` and return its ID.
+
+Reference - `@convex-dev/rate-limiter` client API (from its docs):
+```ts
+const rateLimiter = new RateLimiter(components.rateLimiter, {
+  myLimit: { kind: "fixed window", rate: 2, period: HOUR },
+});
+// In a mutation - limits are defined in the constructor; the call names one:
+await rateLimiter.limit(ctx, "myLimit", { key, throws: true });
+```
