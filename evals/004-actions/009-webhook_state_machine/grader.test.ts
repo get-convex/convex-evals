@@ -371,6 +371,48 @@ test("the HTTP path commits through a single internal mutation", () => {
     ),
   );
 
+  // Names that refer to the generated `internal` object: the plain import,
+  // renamed imports (`import { internal as convexInternal }`), and namespace
+  // imports (`import * as generated` gives `generated.internal.*`).
+  const internalRoots = new Set<string>(["internal"]);
+  const namespaceRoots = new Set<string>();
+  for (const source of sources) {
+    const collectImports = (node: ts.Node) => {
+      if (
+        ts.isImportDeclaration(node) &&
+        node.importClause?.namedBindings !== undefined
+      ) {
+        const bindings = node.importClause.namedBindings;
+        if (ts.isNamedImports(bindings)) {
+          for (const element of bindings.elements) {
+            const imported = element.propertyName?.text ?? element.name.text;
+            if (imported === "internal") internalRoots.add(element.name.text);
+          }
+        } else if (
+          ts.isNamespaceImport(bindings) &&
+          node.moduleSpecifier.getText().includes("_generated/api")
+        ) {
+          namespaceRoots.add(bindings.name.text);
+        }
+      }
+      ts.forEachChild(node, collectImports);
+    };
+    collectImports(source);
+  }
+
+  // An expression rooted at the internal object, under any import style.
+  const isInternalRooted = (text: string): boolean => {
+    for (const root of internalRoots) {
+      if (text === root || text.startsWith(`${root}.`)) return true;
+    }
+    for (const ns of namespaceRoots) {
+      if (text === `${ns}.internal` || text.startsWith(`${ns}.internal.`)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   // Aliases for internal.* references, so `const fn = internal.x.y;` and
   // `const { fn } = internal.x;` still count as targeting internal functions.
   const internalRefs = new Set<string>();
@@ -379,8 +421,7 @@ test("the HTTP path commits through a single internal mutation", () => {
       if (
         ts.isVariableDeclaration(node) &&
         node.initializer !== undefined &&
-        (node.initializer.getText() === "internal" ||
-          node.initializer.getText().startsWith("internal."))
+        isInternalRooted(node.initializer.getText())
       ) {
         if (ts.isIdentifier(node.name)) {
           internalRefs.add(node.name.text);
@@ -415,7 +456,7 @@ test("the HTTP path commits through a single internal mutation", () => {
           const target = node.arguments[0];
           if (
             target !== undefined &&
-            (target.getText().startsWith("internal.") ||
+            (isInternalRooted(target.getText()) ||
               (ts.isIdentifier(target) && internalRefs.has(target.text)))
           ) {
             internalMutationTargets++;
