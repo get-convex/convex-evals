@@ -1,0 +1,54 @@
+Build a budget-aware bulk deletion backend for archived records.
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  records: defineTable({
+    workspaceId: v.string(),
+    archived: v.boolean(),
+    payload: v.string(),
+  }).index("by_workspaceId_archived", ["workspaceId", "archived"]),
+});
+```
+
+A workspace can hold far more archived data than one mutation transaction is
+allowed to read or write. Individual `payload` strings are at most 400 KiB
+(409,600 bytes).
+
+API reference:
+```ts
+// Resolves with the transaction's consumption of each transaction limit so far.
+const metrics = await ctx.meta.getTransactionMetrics();
+// metrics: {
+//   bytesRead: { used: number; remaining: number };
+//   bytesWritten: { used: number; remaining: number };
+//   documentsRead: { used: number; remaining: number };
+//   documentsWritten: { used: number; remaining: number };
+//   ...
+// }
+```
+
+Create a public mutation `deleteArchivedRecords` in `convex/index.ts` that:
+- Takes arguments `{ workspaceId: string }`
+- Deletes every archived record for that workspace, however many there are,
+  without ever exceeding the transaction limits
+- Iterates the matching records with `for await (const record of ...)` async
+  iteration, deleting them one at a time
+- After every deletion, awaits `ctx.meta.getTransactionMetrics()` and checks
+  these reserves:
+  - `bytesRead.remaining <= 15 * 1024 * 1024`
+  - `bytesWritten.remaining <= 15 * 1024 * 1024`
+  - `documentsRead.remaining <= 31_990`
+  - `documentsWritten.remaining <= 15_990`
+- If any reserve has been reached, schedules exactly one internal continuation
+  mutation with the same workspace ID to finish the remaining work, then
+  returns immediately
+- Does not use `.collect()`, `.take()`, `.paginate()`, or a fixed
+  records-per-batch count: batch boundaries must come only from the metrics
+  checks
+
+Records that are not archived, and records of other workspaces, must be left
+untouched.
