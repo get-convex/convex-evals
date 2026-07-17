@@ -376,51 +376,70 @@ function metricsWithRemainingAccess(sources: ts.SourceFile[]): Set<string> {
   return satisfied;
 }
 
-/** A `.remaining` read hanging off one of the four metrics (any style). */
-function isMetricRemainingAccess(
+/**
+ * Which of the four metrics a `.remaining` read belongs to. A computed
+ * element access (`metrics[key].remaining`, the data-driven style) counts
+ * for all four; the separate access check still requires the four names to
+ * appear as literals.
+ */
+function metricRemainingAccessMetrics(
   node: ts.Node,
   aliasToMetric: Map<string, string>,
-): boolean {
+): string[] {
   if (!ts.isPropertyAccessExpression(node) || node.name.text !== "remaining") {
-    return false;
+    return [];
   }
   const receiver = node.expression;
   if (
     ts.isPropertyAccessExpression(receiver) &&
     METRIC_NAMES.includes(receiver.name.text)
   ) {
-    return true;
+    return [receiver.name.text];
   }
-  if (ts.isIdentifier(receiver) && aliasToMetric.has(receiver.text)) {
-    return true;
+  if (ts.isIdentifier(receiver)) {
+    const metric = aliasToMetric.get(receiver.text);
+    return metric === undefined ? [] : [metric];
   }
-  return ts.isElementAccessExpression(receiver);
+  if (ts.isElementAccessExpression(receiver)) {
+    const arg = receiver.argumentExpression;
+    if (ts.isStringLiteral(arg)) {
+      return METRIC_NAMES.includes(arg.text) ? [arg.text] : [];
+    }
+    return [...METRIC_NAMES];
+  }
+  return [];
 }
 
 /**
- * Identifier names whose values derive from a metric `.remaining` read:
- * named conditions (`const reservesReached = m.bytesRead.remaining <= R`),
- * destructured `remaining` bindings, helper predicates whose body reads the
- * metrics, and flags assigned under a metric-derived condition. Computed to
- * a fixpoint so chains of aliases resolve.
+ * Identifier names whose values derive from a metric `.remaining` read,
+ * mapped to WHICH metrics they derive from: named conditions
+ * (`const reservesReached = m.bytesRead.remaining <= R`), destructured
+ * `remaining` bindings, helper predicates whose body reads the metrics, and
+ * flags assigned under a metric-derived condition. Computed to a fixpoint so
+ * chains of aliases resolve and unions accumulate.
  */
 function collectMetricDerivedNames(
   sources: ts.SourceFile[],
   aliasToMetric: Map<string, string>,
-): Set<string> {
-  const derived = new Set<string>();
+): Map<string, Set<string>> {
+  const derived = new Map<string, Set<string>>();
+  const attribute = (name: string, metrics: Iterable<string>) => {
+    const existing = derived.get(name) ?? new Set<string>();
+    for (const metric of metrics) existing.add(metric);
+    if (existing.size > 0) derived.set(name, existing);
+  };
 
-  const subtreeDerives = (root: ts.Node): boolean => {
-    let found = false;
+  const subtreeMetrics = (root: ts.Node): Set<string> => {
+    const found = new Set<string>();
     const walk = (n: ts.Node) => {
-      if (found) return;
-      if (isMetricRemainingAccess(n, aliasToMetric)) {
-        found = true;
-        return;
+      for (const metric of metricRemainingAccessMetrics(n, aliasToMetric)) {
+        found.add(metric);
       }
-      if (ts.isIdentifier(n) && derived.has(n.text)) {
-        found = true;
-        return;
+      if (ts.isIdentifier(n)) {
+        const viaName = derived.get(n.text);
+        if (viaName !== undefined) {
+          for (const metric of viaName) found.add(metric);
+        }
       }
       ts.forEachChild(n, walk);
     };
@@ -431,45 +450,52 @@ function collectMetricDerivedNames(
   // Seed: destructuring that binds a metric's `remaining` to a name, e.g.
   // `const { remaining } = metrics.bytesRead` or
   // `const { bytesRead: { remaining: r } } = await ctx.meta.getTransactionMetrics()`.
-  const mentionsMetricSource = (root: ts.Node): boolean => {
-    let found = false;
+  const initializerMetricMentions = (root: ts.Node): Set<string> => {
+    const found = new Set<string>();
+    let sawMetricsSource = false;
     const walk = (n: ts.Node) => {
-      if (found) return;
       if (
         ts.isPropertyAccessExpression(n) &&
         METRIC_NAMES.includes(n.name.text)
       ) {
-        found = true;
-        return;
+        found.add(n.name.text);
       }
       if (
         ts.isCallExpression(n) &&
         ts.isPropertyAccessExpression(n.expression) &&
         n.expression.name.text === "getTransactionMetrics"
       ) {
-        found = true;
-        return;
+        sawMetricsSource = true;
       }
       if (ts.isIdentifier(n) && aliasToMetric.has(n.text)) {
-        found = true;
-        return;
+        found.add(aliasToMetric.get(n.text) as string);
       }
       ts.forEachChild(n, walk);
     };
     walk(root);
+    if (found.size === 0 && sawMetricsSource) {
+      for (const metric of METRIC_NAMES) found.add(metric);
+    }
     return found;
   };
-  const collectRemainingBindings = (pattern: ts.ObjectBindingPattern) => {
+  const collectRemainingBindings = (
+    pattern: ts.ObjectBindingPattern,
+    context: Set<string>,
+  ) => {
     for (const element of pattern.elements) {
       const propNode = element.propertyName ?? element.name;
+      const propMetric =
+        ts.isIdentifier(propNode) && METRIC_NAMES.includes(propNode.text)
+          ? new Set([propNode.text])
+          : context;
       if (
         ts.isIdentifier(propNode) &&
         propNode.text === "remaining" &&
         ts.isIdentifier(element.name)
       ) {
-        derived.add(element.name.text);
+        attribute(element.name.text, context);
       } else if (ts.isObjectBindingPattern(element.name)) {
-        collectRemainingBindings(element.name);
+        collectRemainingBindings(element.name, propMetric);
       }
     }
   };
@@ -477,64 +503,53 @@ function collectMetricDerivedNames(
     if (
       ts.isVariableDeclaration(node) &&
       node.initializer !== undefined &&
-      ts.isObjectBindingPattern(node.name) &&
-      mentionsMetricSource(node.initializer)
+      ts.isObjectBindingPattern(node.name)
     ) {
-      collectRemainingBindings(node.name);
+      const mentions = initializerMetricMentions(node.initializer);
+      if (mentions.size > 0) {
+        collectRemainingBindings(node.name, mentions);
+      }
     }
   });
 
   // Fixpoint: named values, helper predicates, and flag assignments.
-  for (let pass = 0; pass < 5; pass++) {
-    const before = derived.size;
+  for (let pass = 0; pass < 6; pass++) {
+    const before = [...derived.values()].reduce((n, s) => n + s.size, 0);
     visitAll(sources, (node) => {
       if (
         ts.isVariableDeclaration(node) &&
         ts.isIdentifier(node.name) &&
-        node.initializer !== undefined &&
-        subtreeDerives(node.initializer)
+        node.initializer !== undefined
       ) {
-        derived.add(node.name.text);
+        attribute(node.name.text, subtreeMetrics(node.initializer));
       }
       if (
         ts.isFunctionDeclaration(node) &&
         node.name !== undefined &&
-        node.body !== undefined &&
-        subtreeDerives(node.body)
+        node.body !== undefined
       ) {
-        derived.add(node.name.text);
+        attribute(node.name.text, subtreeMetrics(node.body));
       }
       if (
         ts.isBinaryExpression(node) &&
         node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
         ts.isIdentifier(node.left)
       ) {
-        if (subtreeDerives(node.right)) {
-          derived.add(node.left.text);
-        } else {
-          // Flag style: `if (metric condition) { flag = true; break; }`.
-          let current: ts.Node | undefined = node.parent;
-          while (current !== undefined && !ts.isFunctionLike(current)) {
-            if (
-              ts.isIfStatement(current) &&
-              subtreeDerives(current.expression)
-            ) {
-              derived.add(node.left.text);
-              break;
-            }
-            if (
-              ts.isConditionalExpression(current) &&
-              subtreeDerives(current.condition)
-            ) {
-              derived.add(node.left.text);
-              break;
-            }
-            current = current.parent;
+        attribute(node.left.text, subtreeMetrics(node.right));
+        // Flag style: `if (metric condition) { flag = true; break; }`.
+        let current: ts.Node | undefined = node.parent;
+        while (current !== undefined && !ts.isFunctionLike(current)) {
+          if (ts.isIfStatement(current)) {
+            attribute(node.left.text, subtreeMetrics(current.expression));
+          } else if (ts.isConditionalExpression(current)) {
+            attribute(node.left.text, subtreeMetrics(current.condition));
           }
+          current = current.parent;
         }
       }
     });
-    if (derived.size === before) break;
+    const after = [...derived.values()].reduce((n, s) => n + s.size, 0);
+    if (after === before) break;
   }
   return derived;
 }
@@ -544,7 +559,7 @@ interface SchedulerCall {
   file: string;
   targetsInternal: boolean;
   exitsImmediately: boolean;
-  metricGuarded: boolean;
+  guardMetrics: Set<string>;
 }
 
 /**
@@ -665,62 +680,53 @@ function enclosingFunction(node: ts.Node): ts.Node | undefined {
 }
 
 /**
- * True when the given node sits under a condition (if/ternary/loop guard or
- * short-circuit) whose test derives from a metric `.remaining` read.
+ * Metrics that drive conditions the given node sits under: if/ternary/loop
+ * guards and short-circuits between the node and its enclosing function.
  */
-function underMetricCondition(
+function metricsFromAncestorConditions(
   node: ts.Node,
-  subtreeDerives: (n: ts.Node) => boolean,
-): boolean {
+  subtreeMetrics: (n: ts.Node) => Set<string>,
+): Set<string> {
+  const found = new Set<string>();
+  const absorb = (condition: ts.Node) => {
+    for (const metric of subtreeMetrics(condition)) found.add(metric);
+  };
   let previous: ts.Node = node;
   let current: ts.Node | undefined = node.parent;
   while (current !== undefined) {
     if (ts.isIfStatement(current)) {
-      if (
-        current.expression !== previous &&
-        subtreeDerives(current.expression)
-      ) {
-        return true;
-      }
+      if (current.expression !== previous) absorb(current.expression);
     } else if (ts.isConditionalExpression(current)) {
-      if (current.condition !== previous && subtreeDerives(current.condition)) {
-        return true;
-      }
+      if (current.condition !== previous) absorb(current.condition);
     } else if (ts.isWhileStatement(current) || ts.isDoStatement(current)) {
-      if (
-        current.expression !== previous &&
-        subtreeDerives(current.expression)
-      ) {
-        return true;
-      }
+      if (current.expression !== previous) absorb(current.expression);
     } else if (
       ts.isBinaryExpression(current) &&
       (current.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
         current.operatorToken.kind === ts.SyntaxKind.BarBarToken) &&
-      current.right === previous &&
-      subtreeDerives(current.left)
+      current.right === previous
     ) {
-      return true;
+      absorb(current.left);
     } else if (ts.isFunctionLike(current)) {
-      return false;
+      return found;
     }
     previous = current;
     current = current.parent;
   }
-  return false;
+  return found;
 }
 
 /**
- * True when the function contains a branch decision that both derives from a
- * metric `.remaining` read and jumps (return/break/continue) - i.e. the
- * metrics actually decide where a batch ends. Covers guard-clause and
- * flag+break styles that `underMetricCondition` alone would miss.
+ * Metrics that drive a jump decision (return/break/continue branch, or a
+ * loop guard) somewhere in the function - i.e. metrics that actually decide
+ * where a batch ends. Covers guard-clause and flag+break styles that
+ * `metricsFromAncestorConditions` alone would miss.
  */
-function hasMetricGuardedJump(
+function metricsFromGuardedJumps(
   fn: ts.Node,
-  subtreeDerives: (n: ts.Node) => boolean,
-): boolean {
-  let found = false;
+  subtreeMetrics: (n: ts.Node) => Set<string>,
+): Set<string> {
+  const found = new Set<string>();
   const containsJump = (root: ts.Node | undefined): boolean => {
     if (root === undefined) return false;
     let jump = false;
@@ -741,20 +747,15 @@ function hasMetricGuardedJump(
     return jump;
   };
   const walk = (n: ts.Node) => {
-    if (found) return;
     if (ts.isFunctionLike(n) && n !== fn) return;
-    if (ts.isIfStatement(n) && subtreeDerives(n.expression)) {
-      if (containsJump(n.thenStatement) || containsJump(n.elseStatement)) {
-        found = true;
-        return;
-      }
-    }
     if (
-      (ts.isWhileStatement(n) || ts.isDoStatement(n)) &&
-      subtreeDerives(n.expression)
+      ts.isIfStatement(n) &&
+      (containsJump(n.thenStatement) || containsJump(n.elseStatement))
     ) {
-      found = true;
-      return;
+      for (const metric of subtreeMetrics(n.expression)) found.add(metric);
+    }
+    if (ts.isWhileStatement(n) || ts.isDoStatement(n)) {
+      for (const metric of subtreeMetrics(n.expression)) found.add(metric);
     }
     ts.forEachChild(n, walk);
   };
@@ -783,21 +784,68 @@ function functionName(fn: ts.Node | undefined): string | undefined {
   return undefined;
 }
 
+interface CalleeDeclaration {
+  parameters: readonly ts.ParameterDeclaration[];
+  body: ts.Node;
+}
+
+/**
+ * Resolve a call expression's callee name to function declarations in the
+ * authored sources (function declarations and const arrow/function values).
+ */
+function resolveCalleeDeclarations(
+  sources: ts.SourceFile[],
+  call: ts.CallExpression,
+): CalleeDeclaration[] {
+  const callee = call.expression;
+  const name = ts.isIdentifier(callee)
+    ? callee.text
+    : ts.isPropertyAccessExpression(callee)
+      ? callee.name.text
+      : undefined;
+  if (name === undefined) return [];
+  const declarations: CalleeDeclaration[] = [];
+  visitAll(sources, (node) => {
+    if (
+      ts.isFunctionDeclaration(node) &&
+      node.name !== undefined &&
+      node.name.text === name &&
+      node.body !== undefined
+    ) {
+      declarations.push({ parameters: node.parameters, body: node.body });
+    } else if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === name &&
+      node.initializer !== undefined &&
+      (ts.isArrowFunction(node.initializer) ||
+        ts.isFunctionExpression(node.initializer)) &&
+      node.initializer.body !== undefined
+    ) {
+      declarations.push({
+        parameters: node.initializer.parameters,
+        body: node.initializer.body,
+      });
+    }
+  });
+  return declarations;
+}
+
 function collectSchedulerCalls(sources: ts.SourceFile[]): SchedulerCall[] {
   const { isInternalRooted, internalAliases } = collectInternalRoots(sources);
   const aliasToMetric = buildMetricAliasMap(sources);
   const derivedNames = collectMetricDerivedNames(sources, aliasToMetric);
-  const subtreeDerives = (root: ts.Node): boolean => {
-    let found = false;
+  const subtreeMetrics = (root: ts.Node): Set<string> => {
+    const found = new Set<string>();
     const walk = (n: ts.Node) => {
-      if (found) return;
-      if (isMetricRemainingAccess(n, aliasToMetric)) {
-        found = true;
-        return;
+      for (const metric of metricRemainingAccessMetrics(n, aliasToMetric)) {
+        found.add(metric);
       }
-      if (ts.isIdentifier(n) && derivedNames.has(n.text)) {
-        found = true;
-        return;
+      if (ts.isIdentifier(n)) {
+        const viaName = derivedNames.get(n.text);
+        if (viaName !== undefined) {
+          for (const metric of viaName) found.add(metric);
+        }
       }
       ts.forEachChild(n, walk);
     };
@@ -806,41 +854,100 @@ function collectSchedulerCalls(sources: ts.SourceFile[]): SchedulerCall[] {
   };
 
   // The batch boundary must be decided by the metrics: the scheduler call
-  // itself sits under a metric-derived condition, or its enclosing function
-  // makes a metric-derived jump decision, or - for a schedule-only helper -
-  // some call site of that helper does.
-  const isMetricGuarded = (call: ts.CallExpression): boolean => {
-    if (underMetricCondition(call, subtreeDerives)) return true;
+  // itself sits under metric-derived conditions, or its enclosing function
+  // makes metric-derived jump decisions, or - for a schedule-only helper -
+  // its call sites do. The union of metrics driving those decisions is what
+  // the call is graded on.
+  const guardMetricsFor = (call: ts.CallExpression): Set<string> => {
+    const metrics = new Set<string>();
+    const absorb = (more: Iterable<string>) => {
+      for (const metric of more) metrics.add(metric);
+    };
+    absorb(metricsFromAncestorConditions(call, subtreeMetrics));
     const fn = enclosingFunction(call);
-    if (fn !== undefined && hasMetricGuardedJump(fn, subtreeDerives)) {
-      return true;
+    if (fn !== undefined) {
+      absorb(metricsFromGuardedJumps(fn, subtreeMetrics));
     }
     const name = functionName(fn);
-    if (name === undefined) return false;
-    let guardedCallSite = false;
-    visitAll(sources, (node) => {
-      if (guardedCallSite || !ts.isCallExpression(node)) return;
-      const callee = node.expression;
-      const calleeName = ts.isIdentifier(callee)
-        ? callee.text
-        : ts.isPropertyAccessExpression(callee)
-          ? callee.name.text
-          : "";
-      if (calleeName !== name) return;
-      if (underMetricCondition(node, subtreeDerives)) {
-        guardedCallSite = true;
-        return;
+    if (name !== undefined) {
+      visitAll(sources, (node) => {
+        if (!ts.isCallExpression(node) || node === call) return;
+        const callee = node.expression;
+        const calleeName = ts.isIdentifier(callee)
+          ? callee.text
+          : ts.isPropertyAccessExpression(callee)
+            ? callee.name.text
+            : "";
+        if (calleeName !== name) return;
+        absorb(metricsFromAncestorConditions(node, subtreeMetrics));
+        const callerFn = enclosingFunction(node);
+        if (callerFn !== undefined) {
+          absorb(metricsFromGuardedJumps(callerFn, subtreeMetrics));
+        }
+      });
+    }
+    // Callback style: the scheduler call lives in an anonymous function
+    // passed as an argument (`helper(ctx, ws, async () => { ...runAfter... })`).
+    // Resolve the receiving parameter and grade the parameter's invocation
+    // sites inside the callee instead.
+    if (
+      fn !== undefined &&
+      fn.parent !== undefined &&
+      ts.isCallExpression(fn.parent)
+    ) {
+      const outerCall = fn.parent;
+      const argIndex = outerCall.arguments.findIndex(
+        (argument) => argument === fn,
+      );
+      if (argIndex >= 0) {
+        for (const declaration of resolveCalleeDeclarations(
+          sources,
+          outerCall,
+        )) {
+          const parameter = declaration.parameters[argIndex];
+          if (parameter === undefined || !ts.isIdentifier(parameter.name)) {
+            continue;
+          }
+          const parameterName = parameter.name.text;
+          const walkBody = (n: ts.Node) => {
+            if (
+              ts.isCallExpression(n) &&
+              ts.isIdentifier(n.expression) &&
+              n.expression.text === parameterName
+            ) {
+              absorb(metricsFromAncestorConditions(n, subtreeMetrics));
+              const invokerFn = enclosingFunction(n);
+              if (invokerFn !== undefined) {
+                absorb(metricsFromGuardedJumps(invokerFn, subtreeMetrics));
+              }
+            }
+            ts.forEachChild(n, walkBody);
+          };
+          walkBody(declaration.body);
+        }
       }
-      const callerFn = enclosingFunction(node);
-      if (
-        callerFn !== undefined &&
-        hasMetricGuardedJump(callerFn, subtreeDerives)
-      ) {
-        guardedCallSite = true;
+    }
+    return metrics;
+  };
+
+  // Internal references handed to helpers as parameters:
+  // `helper(ctx, ws, internal.index.foo)` makes the receiving parameter an
+  // internal alias inside the helper body.
+  visitAll(sources, (node) => {
+    if (!ts.isCallExpression(node)) return;
+    node.arguments.forEach((argument, index) => {
+      const isInternalArg =
+        isInternalRooted(argument.getText()) ||
+        (ts.isIdentifier(argument) && internalAliases.has(argument.text));
+      if (!isInternalArg) return;
+      for (const declaration of resolveCalleeDeclarations(sources, node)) {
+        const parameter = declaration.parameters[index];
+        if (parameter !== undefined && ts.isIdentifier(parameter.name)) {
+          internalAliases.add(parameter.name.text);
+        }
       }
     });
-    return guardedCallSite;
-  };
+  });
 
   // Aliases of the scheduler itself: `const s = ctx.scheduler;`.
   const schedulerAliases = new Set<string>(["scheduler"]);
@@ -885,7 +992,7 @@ function collectSchedulerCalls(sources: ts.SourceFile[]): SchedulerCall[] {
       file: node.getSourceFile().fileName,
       targetsInternal: targetIsInternal(node.arguments[1]),
       exitsImmediately: exitsImmediatelyAfter(node),
-      metricGuarded: isMetricGuarded(node),
+      guardMetrics: guardMetricsFor(node),
     });
   });
   return calls;
@@ -939,9 +1046,15 @@ test("budget checks drive the continuation control flow", () => {
       `the mutation in ${schedulerCall.file} must return immediately after scheduling the continuation`,
     ).toBe(true);
     expect(
-      schedulerCall.metricGuarded,
+      schedulerCall.guardMetrics.size,
       `the continuation in ${schedulerCall.file} must be scheduled because a .remaining reserve was hit - a batch boundary not decided by the transaction metrics does not count`,
-    ).toBe(true);
+    ).toBeGreaterThan(0);
+    for (const metric of METRIC_NAMES) {
+      expect(
+        schedulerCall.guardMetrics.has(metric),
+        `the ${metric}.remaining reserve must participate in the decision that schedules the continuation in ${schedulerCall.file} - reading it without letting it drive the batch boundary does not count`,
+      ).toBe(true);
+    }
   }
 
   // One continuation per batch: no handler (or helper) schedules twice.
