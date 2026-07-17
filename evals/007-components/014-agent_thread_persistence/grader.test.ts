@@ -101,20 +101,31 @@ test(
     // Cursor pagination walks backward from the most recent messages while
     // each page stays oldest-first. numItems: 2 over five messages must
     // yield [m4, m5], then [m2, m3], then [m1].
-    const pages: Exchange[][] = [];
-    let cursor: string | null = null;
-    for (let i = 0; i < 10; i++) {
-      const result = await getPage(threadA, 2, cursor);
-      expect(Array.isArray(result.page)).toBe(true);
-      pages.push(result.page);
-      if (result.isDone) break;
-      expect(result.continueCursor).toBeTypeOf("string");
-      cursor = result.continueCursor;
-    }
-    expect(
-      pages[pages.length - 1],
-      "pagination must terminate with isDone: true",
-    ).toBeDefined();
+    const paginate = async (threadId: string, numItems: number) => {
+      const pages: Exchange[][] = [];
+      let cursor: string | null = null;
+      let sawDone = false;
+      for (let i = 0; i < 10; i++) {
+        const result = await getPage(threadId, numItems, cursor);
+        expect(Array.isArray(result.page)).toBe(true);
+        pages.push(result.page);
+        if (result.isDone) {
+          sawDone = true;
+          break;
+        }
+        expect(result.continueCursor).toBeTypeOf("string");
+        cursor = result.continueCursor;
+      }
+      // An implementation that never reports isDone: true (e.g. serving
+      // empty pages forever) must fail here, not exhaust the loop.
+      expect(
+        sawDone,
+        "following continueCursor must terminate with isDone: true",
+      ).toBe(true);
+      return pages;
+    };
+
+    const pages = await paginate(threadA, 2);
     expect(
       pages[0],
       "the first page (cursor: null) must hold the two MOST RECENT messages, oldest-first",
@@ -129,6 +140,16 @@ test(
     const fullB = await getPage(threadB, 20, null);
     expect(fullB.isDone).toBe(true);
     expect(fullB.page).toEqual([
+      { role: "user", content: "other-1" },
+      { role: "assistant", content: "other-2" },
+    ]);
+
+    // Exact-multiple boundary: two messages paginated two at a time. The
+    // component reports the end however it chooses (a done marker on the
+    // full page, or a trailing empty page); the passed-through cursors
+    // must still terminate and reassemble the exact history.
+    const boundaryPages = await paginate(threadB, 2);
+    expect(boundaryPages.slice().reverse().flat()).toEqual([
       { role: "user", content: "other-1" },
       { role: "assistant", content: "other-2" },
     ]);

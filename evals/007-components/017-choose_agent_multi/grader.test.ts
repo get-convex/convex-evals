@@ -31,11 +31,12 @@ const GENERATION_METHODS = new Set([
   "streamObject",
 ]);
 
-/** One `new Agent(components.*, {...})` construction site. */
+/** One `new Agent(components.*, {...})` construction (or a factory-derived
+ * instance of one), keyed by source position. */
 interface AgentCtor {
-  /** stable identity: file + position */
   key: string;
-  /** resolved `name` constructor option, when statically visible */
+  /** resolved `name` option (for factory instances, possibly derived from
+   * the factory call's first string-literal argument) */
   name: string | undefined;
   options: ts.ObjectLiteralExpression | undefined;
 }
@@ -44,20 +45,20 @@ interface PathFacts {
   threadCreate: boolean;
   componentSave: boolean;
   componentList: boolean;
-  /** ctor key -> resolved name, for generation with a { threadId } scope */
+  /** ctor key -> name, for generation calls that are actually
+   * thread-scoped: a `{ threadId }` scope argument on an agent instance,
+   * or a generate/stream on the thread returned by
+   * `continueThread({ threadId })` (variable-bound or inline-chained). */
   scopedGenerationInstances: Map<string, string | undefined>;
-  /** ctor key -> resolved name, for continueThread({ threadId }) */
-  continueThreadInstances: Map<string, string | undefined>;
-  /** any generation-family method call (e.g. thread.generateText) */
-  hasGenerationMethodCall: boolean;
-  /** a generation-family call on this path overrides `tools` with a defined tool */
+  /** a thread-scoped generation call on this path also overrides `tools`
+   * with a defined tool */
   toolsOverrideAtGeneration: boolean;
 }
 
 interface Analysis {
   dependsOnAgent: boolean;
   mountsAgent: boolean;
-  /** resolved `name` options across every Agent construction site */
+  /** resolved `name` options across every Agent construction/instance */
   agentNames: (string | undefined)[];
   /** ctor keys whose constructor wires a defined tool into `tools` */
   instancesWithTools: Set<string>;
@@ -72,32 +73,18 @@ function emptyFacts(): PathFacts {
     componentSave: false,
     componentList: false,
     scopedGenerationInstances: new Map(),
-    continueThreadInstances: new Map(),
-    hasGenerationMethodCall: false,
     toolsOverrideAtGeneration: false,
   };
 }
 
-/** Thread-scoped generation: a scoped generate/stream call, or a
- * continueThread({ threadId }) whose thread is then generated against. */
 function isThreadScopedGeneration(facts: PathFacts): boolean {
-  return (
-    facts.scopedGenerationInstances.size > 0 ||
-    (facts.continueThreadInstances.size > 0 && facts.hasGenerationMethodCall)
-  );
+  return facts.scopedGenerationInstances.size > 0;
 }
 
-/** The agent constructions a path generates against (either scoped form). */
 function generatingInstances(
   facts: PathFacts,
 ): Map<string, string | undefined> {
-  const instances = new Map(facts.scopedGenerationInstances);
-  if (facts.hasGenerationMethodCall) {
-    for (const [key, name] of facts.continueThreadInstances) {
-      instances.set(key, name);
-    }
-  }
-  return instances;
+  return new Map(facts.scopedGenerationInstances);
 }
 
 function analyze(): Analysis {
@@ -152,10 +139,10 @@ function analyze(): Analysis {
   };
   load("");
 
-  let mountsAgent = false;
-
   // Global collections: models legitimately factor agents, tools, and
-  // helpers into separate modules, so symbols are tracked across files.
+  // helpers into separate modules, so symbols are tracked across files;
+  // same-named bindings are disambiguated by nearest preceding
+  // declaration in the same file when resolving receivers.
   const agentImports = new Map<string, string>();
   const agentNamespaces = new Set<string>();
   const aiToolCtors = new Set<string>();
@@ -163,8 +150,13 @@ function analyze(): Analysis {
   const consts = new Map<string, ts.Expression>();
   const localFunctions = new Map<string, ts.Node>();
   const relativeImportAliases: Array<{ local: string; original: string }> = [];
+  /** import-local-name -> imported the agent's convex.config default */
+  const agentConfigImports = new Map<ts.SourceFile, Set<string>>();
+  const agentConfigNamespaces = new Map<ts.SourceFile, Set<string>>();
 
   for (const sourceFile of sources) {
+    agentConfigImports.set(sourceFile, new Set());
+    agentConfigNamespaces.set(sourceFile, new Set());
     for (const statement of sourceFile.statements) {
       if (
         !ts.isImportDeclaration(statement) ||
@@ -175,7 +167,19 @@ function analyze(): Analysis {
       const spec = statement.moduleSpecifier.text;
       const bindings = statement.importClause?.namedBindings;
       if (/^@convex-dev\/agent\/convex\.config(?:\.js)?$/.test(spec)) {
-        mountsAgent = mountsAgent || /\.use\(/.test(sourceFile.getFullText());
+        const defaultImport = statement.importClause?.name;
+        if (defaultImport !== undefined) {
+          agentConfigImports.get(sourceFile)!.add(defaultImport.text);
+        }
+        if (bindings !== undefined && ts.isNamedImports(bindings)) {
+          for (const element of bindings.elements) {
+            if ((element.propertyName ?? element.name).text === "default") {
+              agentConfigImports.get(sourceFile)!.add(element.name.text);
+            }
+          }
+        } else if (bindings !== undefined && ts.isNamespaceImport(bindings)) {
+          agentConfigNamespaces.get(sourceFile)!.add(bindings.name.text);
+        }
       }
       if (spec === "@convex-dev/agent") {
         if (bindings !== undefined && ts.isNamedImports(bindings)) {
@@ -285,38 +289,41 @@ function analyze(): Analysis {
     return ts.isObjectLiteralExpression(resolved) ? resolved : undefined;
   }
 
-  function objectHasProp(
+  /** Property value from an object literal, following shorthand
+   * (`{ tools }`), string-literal names, and spreads of resolvable
+   * objects. */
+  function findOptionValue(
     expression: ts.Expression,
     propName: string,
     depth = 0,
-  ): boolean {
+  ): ts.Expression | undefined {
     const objectLiteral = objectLiteralOf(expression);
-    if (objectLiteral === undefined) return false;
+    if (objectLiteral === undefined) return undefined;
+    let found: ts.Expression | undefined;
     for (const property of objectLiteral.properties) {
       if (
         ts.isShorthandPropertyAssignment(property) &&
         property.name.text === propName
       ) {
-        return true;
+        found = property.name;
       }
       if (
-        (ts.isPropertyAssignment(property) ||
-          ts.isMethodDeclaration(property)) &&
-        property.name !== undefined &&
+        ts.isPropertyAssignment(property) &&
         (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) &&
         property.name.text === propName
       ) {
-        return true;
+        found = property.initializer;
       }
-      if (
-        ts.isSpreadAssignment(property) &&
-        depth < 2 &&
-        objectHasProp(property.expression, propName, depth + 1)
-      ) {
-        return true;
+      if (ts.isSpreadAssignment(property) && depth < 2) {
+        const inner = findOptionValue(property.expression, propName, depth + 1);
+        if (inner !== undefined) found = inner;
       }
     }
-    return false;
+    return found;
+  }
+
+  function objectHasProp(expression: ts.Expression, propName: string): boolean {
+    return findOptionValue(expression, propName) !== undefined;
   }
 
   function stringLiteralOf(expression: ts.Expression): string | undefined {
@@ -344,6 +351,45 @@ function analyze(): Analysis {
     if (!ts.isPropertyAccessExpression(resolved)) return false;
     const root = rootIdentifier(resolved);
     return root !== undefined && componentsAliases.has(root);
+  }
+
+  // Mount: `.use(X)` where X resolves to the agent convex.config import.
+  let mountsAgent = false;
+  for (const sourceFile of sources) {
+    const configImports = agentConfigImports.get(sourceFile)!;
+    const configNamespaces = agentConfigNamespaces.get(sourceFile)!;
+    if (configImports.size === 0 && configNamespaces.size === 0) continue;
+    const visit = (node: ts.Node) => {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression) &&
+        node.expression.name.text === "use" &&
+        node.arguments[0] !== undefined
+      ) {
+        const matchesConfig = (candidate: ts.Expression): boolean =>
+          (ts.isIdentifier(candidate) && configImports.has(candidate.text)) ||
+          (ts.isPropertyAccessExpression(candidate) &&
+            candidate.name.text === "default" &&
+            ts.isIdentifier(candidate.expression) &&
+            configNamespaces.has(candidate.expression.text));
+        // Match the raw argument first: import bindings are not consts, and
+        // resolving the identifier through the global const table could
+        // cross-wire with a same-named variable in another module (e.g. a
+        // `const agent = new Agent(...)` instance). Only fall back to a
+        // resolved alias when it was declared in this same config file.
+        const direct = unwrapNode(node.arguments[0]);
+        const resolved = resolveExpr(node.arguments[0]);
+        if (
+          matchesConfig(direct) ||
+          (resolved.getSourceFile() === sourceFile && matchesConfig(resolved))
+        ) {
+          mountsAgent = true;
+          return;
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
   }
 
   function asAgentConstruction(
@@ -403,12 +449,15 @@ function analyze(): Analysis {
     return false;
   }
 
-  // ── agent construction sites, bindings, factories, tools ────────────
+  // ── construction sites, bindings, factories, thread vars, tools ─────
 
-  /** every Agent construction site, keyed by file:pos */
   const constructionsByKey = new Map<string, AgentCtor>();
-  /** variable name -> construction sites bound to it (declaration order) */
+  /** variable name -> bindings (instances OR continueThread thread vars) */
   const instanceBindings = new Map<
+    string,
+    Array<{ file: string; pos: number; ctor: AgentCtor }>
+  >();
+  const threadBindings = new Map<
     string,
     Array<{ file: string; pos: number; ctor: AgentCtor }>
   >();
@@ -428,54 +477,73 @@ function analyze(): Analysis {
       optionsArg === undefined ? undefined : objectLiteralOf(optionsArg);
     let name: string | undefined;
     if (options !== undefined) {
-      for (const property of options.properties) {
-        if (
-          ts.isPropertyAssignment(property) &&
-          (ts.isIdentifier(property.name) ||
-            ts.isStringLiteral(property.name)) &&
-          property.name.text === "name"
-        ) {
-          name = stringLiteralOf(property.initializer);
-        }
-      }
+      const nameValue = findOptionValue(options, "name");
+      if (nameValue !== undefined) name = stringLiteralOf(nameValue);
     }
     const ctor: AgentCtor = { key, name, options };
     constructionsByKey.set(key, ctor);
     return ctor;
   }
 
-  function bindInstance(
+  /** A factory call produces an instance; when the factory's own `name` is
+   * dynamic, derive it from the call's first string-literal argument
+   * (`makeAgent("TRIAGE")`). */
+  function factoryInstance(
+    call: ts.CallExpression,
+    factoryCtor: AgentCtor,
+    sourceFile: ts.SourceFile,
+  ): AgentCtor {
+    const key = `${sourceFile.fileName}:${call.pos}`;
+    const existing = constructionsByKey.get(key);
+    if (existing !== undefined) return existing;
+    let name = factoryCtor.name;
+    if (name === undefined) {
+      for (const argument of call.arguments) {
+        const literal = stringLiteralOf(argument);
+        if (literal !== undefined) {
+          name = literal;
+          break;
+        }
+      }
+    }
+    const ctor: AgentCtor = { key, name, options: factoryCtor.options };
+    constructionsByKey.set(key, ctor);
+    return ctor;
+  }
+
+  function bindTo(
+    bindings: Map<
+      string,
+      Array<{ file: string; pos: number; ctor: AgentCtor }>
+    >,
     varName: string,
     file: string,
     pos: number,
     ctor: AgentCtor,
   ): void {
-    const bindings = instanceBindings.get(varName) ?? [];
-    if (
-      !bindings.some((binding) => binding.file === file && binding.pos === pos)
-    ) {
-      bindings.push({ file, pos, ctor });
+    const entries = bindings.get(varName) ?? [];
+    if (!entries.some((entry) => entry.file === file && entry.pos === pos)) {
+      entries.push({ file, pos, ctor });
     }
-    instanceBindings.set(varName, bindings);
+    bindings.set(varName, entries);
   }
 
-  /** A function body that returns `new Agent(components.*, ...)`. */
+  /** The construction a function body returns, ignoring nested functions. */
   function constructionReturnedBy(
     body: ts.Node,
     sourceFile: ts.SourceFile,
   ): AgentCtor | undefined {
-    if (!ts.isBlock(body) && "kind" in body) {
-      const asExpression = body as ts.Node as ts.Expression;
-      if (ts.isExpression(asExpression)) {
-        const construction = asAgentConstruction(asExpression);
-        if (construction !== undefined) {
-          return registerConstruction(construction, sourceFile);
-        }
+    if (!ts.isBlock(body)) {
+      const construction = asAgentConstruction(body as ts.Expression);
+      if (construction !== undefined) {
+        return registerConstruction(construction, sourceFile);
       }
+      return undefined;
     }
     let found: AgentCtor | undefined;
     const visit = (node: ts.Node) => {
       if (found !== undefined) return;
+      if (node !== body && ts.isFunctionLike(node)) return;
       if (ts.isReturnStatement(node) && node.expression !== undefined) {
         const construction = asAgentConstruction(node.expression);
         if (construction !== undefined) {
@@ -487,6 +555,25 @@ function analyze(): Analysis {
     };
     visit(body);
     return found;
+  }
+
+  /** Is this call `<instance>.continueThread(..., { threadId })`? */
+  function continueThreadTarget(
+    call: ts.CallExpression,
+    sourceFile: ts.SourceFile,
+  ): AgentCtor | undefined {
+    if (
+      !ts.isPropertyAccessExpression(call.expression) ||
+      call.expression.name.text !== "continueThread"
+    ) {
+      return undefined;
+    }
+    if (
+      !call.arguments.some((argument) => objectHasProp(argument, "threadId"))
+    ) {
+      return undefined;
+    }
+    return resolveInstance(call.expression.expression, sourceFile, call.pos);
   }
 
   // Pass A: construction sites, factories, tool definitions.
@@ -502,7 +589,13 @@ function analyze(): Analysis {
           const construction = asAgentConstruction(initializer);
           if (construction !== undefined) {
             const ctor = registerConstruction(construction, sourceFile);
-            bindInstance(node.name.text, sourceFile.fileName, node.pos, ctor);
+            bindTo(
+              instanceBindings,
+              node.name.text,
+              sourceFile.fileName,
+              node.pos,
+              ctor,
+            );
           }
         }
         if (
@@ -529,22 +622,74 @@ function analyze(): Analysis {
     collect(sourceFile);
   }
 
-  // Pass B: variables holding factory results are instances too.
+  // Pass B: factory-result variables and continueThread thread bindings.
   for (const sourceFile of sources) {
     const collect = (node: ts.Node) => {
-      if (
-        ts.isVariableDeclaration(node) &&
-        ts.isIdentifier(node.name) &&
-        node.initializer !== undefined
-      ) {
+      if (ts.isVariableDeclaration(node) && node.initializer !== undefined) {
         const initializer = unwrapNode(node.initializer);
+
+        if (ts.isIdentifier(node.name)) {
+          if (
+            ts.isCallExpression(initializer) &&
+            ts.isIdentifier(initializer.expression)
+          ) {
+            const factory = factories.get(initializer.expression.text);
+            if (factory !== undefined) {
+              bindTo(
+                instanceBindings,
+                node.name.text,
+                sourceFile.fileName,
+                node.pos,
+                factoryInstance(initializer, factory, sourceFile),
+              );
+            }
+          }
+          // const t = (await agent.continueThread(ctx, { threadId })).thread
+          if (
+            ts.isPropertyAccessExpression(initializer) &&
+            initializer.name.text === "thread"
+          ) {
+            const inner = unwrapNode(initializer.expression);
+            if (ts.isCallExpression(inner)) {
+              const target = continueThreadTarget(inner, sourceFile);
+              if (target !== undefined) {
+                bindTo(
+                  threadBindings,
+                  node.name.text,
+                  sourceFile.fileName,
+                  node.pos,
+                  target,
+                );
+              }
+            }
+          }
+        }
+
+        // const { thread } = await agent.continueThread(ctx, { threadId })
         if (
-          ts.isCallExpression(initializer) &&
-          ts.isIdentifier(initializer.expression)
+          ts.isObjectBindingPattern(node.name) &&
+          ts.isCallExpression(initializer)
         ) {
-          const ctor = factories.get(initializer.expression.text);
-          if (ctor !== undefined) {
-            bindInstance(node.name.text, sourceFile.fileName, node.pos, ctor);
+          const target = continueThreadTarget(initializer, sourceFile);
+          if (target !== undefined) {
+            for (const element of node.name.elements) {
+              const propertyName =
+                element.propertyName !== undefined &&
+                ts.isIdentifier(element.propertyName)
+                  ? element.propertyName.text
+                  : ts.isIdentifier(element.name)
+                    ? element.name.text
+                    : undefined;
+              if (propertyName === "thread" && ts.isIdentifier(element.name)) {
+                bindTo(
+                  threadBindings,
+                  element.name.text,
+                  sourceFile.fileName,
+                  node.pos,
+                  target,
+                );
+              }
+            }
           }
         }
       }
@@ -553,7 +698,7 @@ function analyze(): Analysis {
     collect(sourceFile);
   }
 
-  // Propagate instances/tools through renamed relative imports (3 hops).
+  // Propagate instances/factories/tools through renamed relative imports.
   for (let hop = 0; hop < 3; hop++) {
     for (const { local, original } of relativeImportAliases) {
       const originalBindings = instanceBindings.get(original);
@@ -567,10 +712,9 @@ function analyze(): Analysis {
     }
   }
 
-  /** Resolve a method receiver to the Agent construction it holds.
-   * Same-named variables (e.g. `const agent = ...` in two handlers) are
-   * disambiguated by picking the nearest preceding declaration in the
-   * same file. */
+  /** Resolve a receiver to an Agent construction. Same-named variables
+   * (e.g. `const agent = ...` in two handlers) resolve to the nearest
+   * preceding declaration in the same file. */
   function resolveInstance(
     expression: ts.Expression,
     sourceFile: ts.SourceFile,
@@ -585,21 +729,39 @@ function analyze(): Analysis {
     }
     if (ts.isCallExpression(receiver) && ts.isIdentifier(receiver.expression)) {
       const factory = factories.get(receiver.expression.text);
-      if (factory !== undefined) return factory;
+      if (factory !== undefined) {
+        return factoryInstance(receiver, factory, sourceFile);
+      }
     }
     if (ts.isIdentifier(receiver)) {
-      const bindings = instanceBindings.get(receiver.text);
-      if (bindings === undefined || bindings.length === 0) return undefined;
-      const preceding = bindings
-        .filter(
-          (binding) =>
-            binding.file === sourceFile.fileName && binding.pos <= callPos,
-        )
-        .sort((a, b) => b.pos - a.pos);
-      if (preceding.length > 0) return preceding[0].ctor;
-      return bindings[0].ctor;
+      return nearestBinding(
+        instanceBindings,
+        receiver.text,
+        sourceFile,
+        callPos,
+      );
     }
     return undefined;
+  }
+
+  function nearestBinding(
+    bindings: Map<
+      string,
+      Array<{ file: string; pos: number; ctor: AgentCtor }>
+    >,
+    varName: string,
+    sourceFile: ts.SourceFile,
+    callPos: number,
+  ): AgentCtor | undefined {
+    const entries = bindings.get(varName);
+    if (entries === undefined || entries.length === 0) return undefined;
+    const preceding = entries
+      .filter(
+        (entry) => entry.file === sourceFile.fileName && entry.pos <= callPos,
+      )
+      .sort((a, b) => b.pos - a.pos);
+    if (preceding.length > 0) return preceding[0].ctor;
+    return entries[0].ctor;
   }
 
   function toolsConfigReferencesTool(
@@ -672,6 +834,34 @@ function analyze(): Analysis {
 
   // ── endpoint handlers and call-path walking ──────────────────────────
 
+  function isExportedDeclaration(
+    declaration: ts.VariableDeclaration,
+    sourceFile: ts.SourceFile,
+  ): boolean {
+    const statement = declaration.parent?.parent;
+    if (
+      statement !== undefined &&
+      ts.isVariableStatement(statement) &&
+      ts
+        .getModifiers(statement)
+        ?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) ===
+        true
+    ) {
+      return true;
+    }
+    if (!ts.isIdentifier(declaration.name)) return false;
+    const name = declaration.name.text;
+    return sourceFile.statements.some(
+      (candidate) =>
+        ts.isExportDeclaration(candidate) &&
+        candidate.exportClause !== undefined &&
+        ts.isNamedExports(candidate.exportClause) &&
+        candidate.exportClause.elements.some(
+          (element) => (element.propertyName ?? element.name).text === name,
+        ),
+    );
+  }
+
   function findEndpointHandler(
     endpointName: string,
   ):
@@ -689,7 +879,8 @@ function analyze(): Analysis {
           ts.isVariableDeclaration(node) &&
           ts.isIdentifier(node.name) &&
           node.name.text === endpointName &&
-          node.initializer !== undefined
+          node.initializer !== undefined &&
+          isExportedDeclaration(node, sourceFile)
         ) {
           const initializer = unwrapNode(node.initializer);
           if (ts.isCallExpression(initializer)) {
@@ -740,9 +931,30 @@ function analyze(): Analysis {
     return undefined;
   }
 
+  /** Does this generation call carry a tools override referencing a
+   * defined tool (in any of its argument objects)? */
+  function callOverridesTools(call: ts.CallExpression): boolean {
+    for (const argument of call.arguments) {
+      const objectLiteral = objectLiteralOf(argument);
+      if (objectLiteral === undefined) continue;
+      const toolsValue = findOptionValue(objectLiteral, "tools");
+      if (toolsValue !== undefined && toolsConfigReferencesTool(toolsValue)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   function walkPath(start: ts.Node, startFile: ts.SourceFile): PathFacts {
     const facts = emptyFacts();
     const walked = new Set<ts.Node>();
+
+    const recordScoped = (ctor: AgentCtor, call: ts.CallExpression) => {
+      facts.scopedGenerationInstances.set(ctor.key, ctor.name);
+      if (callOverridesTools(call)) {
+        facts.toolsOverrideAtGeneration = true;
+      }
+    };
 
     const visit = (node: ts.Node, file: ts.SourceFile, depth: number) => {
       if (ts.isCallExpression(node)) {
@@ -794,43 +1006,45 @@ function analyze(): Analysis {
             if (method === "listMessages" || method === "listUIMessages") {
               facts.componentList = true;
             }
-            if (
-              method === "continueThread" &&
-              node.arguments.some((argument) =>
-                objectHasProp(argument, "threadId"),
-              )
-            ) {
-              facts.continueThreadInstances.set(instance.key, instance.name);
-            }
           }
 
           if (GENERATION_METHODS.has(method)) {
-            facts.hasGenerationMethodCall = true;
-            for (const argument of node.arguments) {
-              const objectLiteral = objectLiteralOf(argument);
-              if (objectLiteral === undefined) continue;
-              for (const property of objectLiteral.properties) {
-                if (
-                  ts.isPropertyAssignment(property) &&
-                  (ts.isIdentifier(property.name) ||
-                    ts.isStringLiteral(property.name)) &&
-                  property.name.text === "tools" &&
-                  toolsConfigReferencesTool(property.initializer)
-                ) {
-                  facts.toolsOverrideAtGeneration = true;
-                }
-              }
-            }
+            // Direct scoped form: agent.generateText(ctx, { threadId }, ...)
             if (instance !== undefined) {
               const scopeArg = node.arguments[1];
               if (
                 scopeArg !== undefined &&
                 objectHasProp(scopeArg, "threadId")
               ) {
-                facts.scopedGenerationInstances.set(
-                  instance.key,
-                  instance.name,
+                recordScoped(instance, node);
+              }
+            } else {
+              const receiver = unwrapNode(callee.expression);
+              // Thread var bound from continueThread({ threadId }).
+              if (ts.isIdentifier(receiver)) {
+                const threadTarget = nearestBinding(
+                  threadBindings,
+                  receiver.text,
+                  file,
+                  node.pos,
                 );
+                if (threadTarget !== undefined) {
+                  recordScoped(threadTarget, node);
+                }
+              }
+              // Inline chain:
+              // (await agent.continueThread(ctx, { threadId })).thread.generateText(...)
+              if (
+                ts.isPropertyAccessExpression(receiver) &&
+                receiver.name.text === "thread"
+              ) {
+                const inner = unwrapNode(receiver.expression);
+                if (ts.isCallExpression(inner)) {
+                  const target = continueThreadTarget(inner, file);
+                  if (target !== undefined) {
+                    recordScoped(target, node);
+                  }
+                }
               }
             }
           }
@@ -840,17 +1054,30 @@ function analyze(): Analysis {
             node.arguments[0] !== undefined &&
             isComponentsRef(node.arguments[0])
           ) {
+            // Direct component calls: names may be slightly wrong in a
+            // selection answer (stale/hallucinated API); classify by the
+            // component module being addressed.
             const reference = node.arguments[0].getText();
-            if (reference.includes("createThread")) facts.threadCreate = true;
+            const readCall = method === "runQuery";
+            if (
+              reference.includes("createThread") ||
+              (!readCall &&
+                /\.threads\./.test(reference) &&
+                /creat/i.test(reference))
+            ) {
+              facts.threadCreate = true;
+            }
             if (
               reference.includes("addMessages") ||
-              reference.includes("saveMessage")
+              reference.includes("saveMessage") ||
+              (!readCall && /\.messages\./.test(reference))
             ) {
               facts.componentSave = true;
             }
             if (
               reference.includes("listMessages") ||
-              reference.includes("listUIMessages")
+              reference.includes("listUIMessages") ||
+              (readCall && /\.messages\./.test(reference))
             ) {
               facts.componentList = true;
             }
@@ -895,16 +1122,10 @@ function analyze(): Analysis {
   let toolWiredInConstructor = false;
   for (const [key, ctor] of constructionsByKey) {
     if (ctor.options === undefined) continue;
-    for (const property of ctor.options.properties) {
-      if (
-        ts.isPropertyAssignment(property) &&
-        (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) &&
-        property.name.text === "tools" &&
-        toolsConfigReferencesTool(property.initializer)
-      ) {
-        instancesWithTools.add(key);
-        toolWiredInConstructor = true;
-      }
+    const toolsValue = findOptionValue(ctor.options, "tools");
+    if (toolsValue !== undefined && toolsConfigReferencesTool(toolsValue)) {
+      instancesWithTools.add(key);
+      toolWiredInConstructor = true;
     }
   }
 
@@ -931,6 +1152,13 @@ test("chooses the agent component as a dependency", () => {
 
 test("mounts the component in the app config", () => {
   expect(analysis.mountsAgent).toBe(true);
+});
+
+test("openConversation creates the shared thread in the component", () => {
+  expect(
+    pathFacts("openConversation").threadCreate,
+    "openConversation must create the conversation as a component thread",
+  ).toBe(true);
 });
 
 test("defines two distinctly named specialist agents", () => {
