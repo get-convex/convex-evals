@@ -1,0 +1,23 @@
+Build a backend for recording transactions and reporting totals over time periods.
+
+Create a `package.json` that pins `convex` to exactly `1.41.0` (you may add other dependencies).
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  transactions: defineTable({
+    amount: v.number(),
+    happenedAt: v.number(),
+  }),
+});
+```
+
+Create these functions in `convex/index.ts`:
+
+- A mutation `recordTransaction` that takes `{ amount: number, happenedAt: number }`, inserts the transaction, and returns its ID (`Id<"transactions">`)
+- A query `sumInRange` that takes `{ start: number, end: number }` and returns the sum of `amount` across all transactions whose `happenedAt` is at least `start` and strictly below `end`, as a number
+
+The transactions table may grow to millions of rows spanning years. `sumInRange` powers reporting dashboards over arbitrary periods and must remain efficient at that scale; recording transactions must keep it accurate.
