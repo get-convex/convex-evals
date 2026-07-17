@@ -363,5 +363,7 @@ test("compare schema", async ({ skip }) => {
 });
 
 test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip, { ignoreReturns: true, publicOnly: true });
+  // The task dictates the full function surface ("do not create any other
+  // functions"), so internal functions are compared too - no publicOnly.
+  await compareFunctionSpec(skip, { ignoreReturns: true });
 });
