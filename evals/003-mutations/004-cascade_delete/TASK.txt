@@ -21,6 +21,8 @@ export default defineSchema({
 
 Create a mutation `deleteUserAndDocuments` in `convex/index.ts` that takes `{ userId: Id<"users"> }`, deletes that user and all their documents, and returns nothing.
 
+If the user does not exist, throw an error whose message contains "not found".
+
 The implementation should demonstrate:
 - Proper use of database indexes
 - Parallel operations for better performance

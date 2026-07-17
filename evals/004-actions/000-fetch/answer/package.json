@@ -1,5 +1,5 @@
 {
-  "name": "convex-httpbin-demo",
+  "name": "convex-fetch-demo",
   "private": true,
   "version": "0.0.0",
   "dependencies": {

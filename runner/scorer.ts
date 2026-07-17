@@ -1162,9 +1162,12 @@ async function executeVitest(
     `vitest-${Date.now()}-${Math.random().toString(36).slice(2)}.json`,
   );
 
-  const cmd = `bunx vitest run ${testFile} --reporter=json --outputFile ${tmpJsonPath} --reporter=default --no-color`;
+  // Vitest treats the file argument as a name filter. Without this exclusion,
+  // local agent worktrees containing the same eval path are also discovered
+  // and run against the same backend, corrupting each other's test data.
+  const cmd = `bunx vitest run ${testFile} --exclude '**/.claude/worktrees/**' --reporter=json --outputFile ${tmpJsonPath} --reporter=default --no-color`;
   const result = await withTimeout(
-    $`bunx vitest run ${testFile} --reporter=json --outputFile ${tmpJsonPath} --reporter=default --no-color`
+    $`bunx vitest run ${testFile} --exclude '**/.claude/worktrees/**' --reporter=json --outputFile ${tmpJsonPath} --reporter=default --no-color`
       .env(env)
       .nothrow()
       .quiet(),

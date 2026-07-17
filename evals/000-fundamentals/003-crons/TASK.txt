@@ -3,7 +3,8 @@ Create a cron job demo for Convex that demonstrates all available scheduling pat
 Start by implementing a single `emptyAction` internal action in `crons.ts` that takes
 in an optional `scheduleDescription` string, logs it to the console, and returns null.
 
-Call this action every second using the `interval` syntax and omitting the argument.
+Call this action every second using the `interval` syntax. Pass an empty argument
+object so the optional `scheduleDescription` is omitted.
 Label this cron job "run every second".
 
 Next, call this action every minute using the `interval` syntax.

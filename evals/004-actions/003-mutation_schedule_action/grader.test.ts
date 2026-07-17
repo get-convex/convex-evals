@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { afterAll, beforeAll, beforeEach, expect, test } from "vitest";
 import {
   responseAdminClient,
   responseClient,
@@ -8,8 +8,21 @@ import {
   pollUntil,
 } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
-import { beforeEach } from "vitest";
 import { Doc } from "./answer/convex/_generated/dataModel";
+import {
+  type HttpFixture,
+  startHttpFixture,
+} from "../../../grader/httpFixture";
+
+let fixture: HttpFixture;
+
+beforeAll(async () => {
+  fixture = await startHttpFixture();
+});
+
+afterAll(async () => {
+  await fixture.close();
+});
 
 beforeEach(async () => {
   await deleteAllDocuments(responseAdminClient, ["requests"]);
@@ -20,7 +33,7 @@ test("compare schema", async ({ skip }) => {
 });
 
 test("initiateRequest creates new request record", async () => {
-  const testUrl = "https://httpbin.org/post";
+  const testUrl = `${fixture.baseUrl}/post`;
 
   const requestId = await responseClient.mutation(api.index.initiateRequest, {
     url: testUrl,
@@ -41,7 +54,7 @@ test("initiateRequest creates new request record", async () => {
 });
 
 test("initiateRequest reuses existing request", async () => {
-  const testUrl = "https://httpbin.org/post";
+  const testUrl = `${fixture.baseUrl}/post`;
 
   // Create first request
   const requestId1 = await responseClient.mutation(api.index.initiateRequest, {
@@ -60,7 +73,7 @@ test("initiateRequest reuses existing request", async () => {
 });
 
 test("request eventually completes", { timeout: 90_000 }, async () => {
-  const testUrl = "https://httpbin.org/post";
+  const testUrl = `${fixture.baseUrl}/post`;
 
   const requestId = await responseClient.mutation(api.index.initiateRequest, {
     url: testUrl,
@@ -91,9 +104,9 @@ test("request eventually completes", { timeout: 90_000 }, async () => {
 
 test("handles multiple concurrent requests", { timeout: 90_000 }, async () => {
   const urls = [
-    "https://httpbin.org/post",
-    "https://httpbin.org/post?test=1",
-    "https://httpbin.org/post?test=2",
+    `${fixture.baseUrl}/post`,
+    `${fixture.baseUrl}/post?test=1`,
+    `${fixture.baseUrl}/post?test=2`,
   ];
 
   // Initiate multiple requests concurrently
@@ -138,7 +151,7 @@ test("handles multiple concurrent requests", { timeout: 90_000 }, async () => {
 });
 
 test("initiateRequest does not duplicate async work for same URL concurrently", async () => {
-  const testUrl = "https://httpbin.org/post";
+  const testUrl = `${fixture.baseUrl}/post`;
 
   const ids = await Promise.all([
     responseClient.mutation(api.index.initiateRequest, { url: testUrl }),
@@ -158,7 +171,7 @@ test("initiateRequest does not duplicate async work for same URL concurrently", 
 });
 
 test("handles request failures gracefully", async () => {
-  const invalidUrl = "https://invalid-url-that-will-fail.example.com";
+  const invalidUrl = `${fixture.baseUrl}/status/500`;
 
   const requestId = await responseClient.mutation(api.index.initiateRequest, {
     url: invalidUrl,
