@@ -22,7 +22,7 @@ http.route({
 });
 ```
 
-- `await req.json()` is untyped: treat the result as `unknown` and narrow each field with `typeof` checks before use (never member-access it as `any` - lint forbids it), returning a 400 response for bodies that fail validation.
+- Treat the result of `await req.json()` as `unknown` - narrow each field (e.g. `typeof` checks) before use, and return a 400 response for bodies that fail validation.
 - HTTP endpoints are always registered at the exact path you specify in the `path` field. For example, if you specify `/api/someRoute`, the endpoint will be registered at `/api/someRoute`.
 
 ### Validators
