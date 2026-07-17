@@ -6,7 +6,7 @@ Create these functions in `convex/index.ts`:
 
 - A public mutation `sessionHeartbeat` that:
   - Takes arguments `{ roomId: string, userId: string, sessionId: string, interval: number }`
-  - Is called every `interval` milliseconds by EACH of a user's open tabs/devices independently; `sessionId` is unique per tab/device
+  - Is called every `interval` milliseconds by EACH of a user's open tabs/devices independently; `sessionId` is unique per session (each tab/device mints a fresh one for each room it joins)
   - Returns `{ roomToken: string, sessionToken: string }`: an opaque token for reading the room's participant list plus an opaque token for ending this one session
 
 - A public query `listParticipants` that:

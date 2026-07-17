@@ -6,7 +6,7 @@ Create these functions in `convex/index.ts`:
 
 - A public mutation `docHeartbeat` that:
   - Takes arguments `{ docId: string, userId: string, sessionId: string, interval: number }`
-  - Is called by clients every `interval` milliseconds while the document is open; `sessionId` identifies one open tab
+  - Is called by clients every `interval` milliseconds while the document is open; `sessionId` identifies one viewing session (a tab mints a fresh one for each document it opens)
   - Returns `{ roomToken: string, sessionToken: string }`: an opaque token for reading the document's viewer list plus an opaque token for ending this tab's session
 
 - A public query `whoIsViewing` that:
