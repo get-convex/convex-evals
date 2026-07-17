@@ -1,0 +1,48 @@
+Build an audit-logging backend where audit writes are isolated in a local Convex component, and a failed audit never blocks the main operation.
+
+Create a `package.json` that pins this dependency to exactly this version (you may add other dependencies):
+```json
+{
+  "dependencies": {
+    "convex": "1.41.0"
+  }
+}
+```
+
+Author a local component named `auditSink` with its own schema:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  audits: defineTable({
+    event: v.string(),
+  }).index("by_event", ["event"]),
+});
+```
+
+The component exposes two functions:
+- A mutation `writeAudit` that takes `{ event: string, failAfterWrite: boolean }`, ALWAYS inserts the audit row first, and then throws an error if `failAfterWrite` is true
+- A query `countAudits` that takes `{ event: string }` and returns the number of audit rows for that event as a number
+
+Write this root schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  auditStatuses: defineTable({
+    event: v.string(),
+    status: v.union(v.literal("audit_succeeded"), v.literal("audit_failed")),
+  }),
+});
+```
+
+Create these app functions in `convex/index.ts`:
+- A public mutation `recordAudit` that takes `{ event: string, shouldFail: boolean }` and returns `"audit_succeeded"` or `"audit_failed"`:
+  - It calls the component's `writeAudit` with `failAfterWrite: shouldFail`
+  - If the component call succeeds, it records `{ event, status: "audit_succeeded" }` in `auditStatuses` and returns `"audit_succeeded"`
+  - If the component call fails, no audit row for the event may remain, and the mutation must still record `{ event, status: "audit_failed" }` and return `"audit_failed"` normally rather than throwing
+- A public query `getAuditCount` that takes `{ event: string }` and returns the component's audit count for that event as a number
+
+Only `recordAudit` and `getAuditCount` may be visible to clients.
