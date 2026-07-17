@@ -38,7 +38,11 @@ test(
   "threads persist alternating messages, paginate oldest-first, and stay isolated",
   { timeout: 30_000 },
   async () => {
-    const getPage = (threadId: string, numItems: number, cursor: string | null) =>
+    const getPage = (
+      threadId: string,
+      numItems: number,
+      cursor: string | null,
+    ) =>
       responseClient.query(anyApi.index.getConversation, {
         threadId,
         paginationOpts: { numItems, cursor },
@@ -530,7 +534,10 @@ function resolveExpression(
 }
 
 /** Does the expression resolve to `components.agent` (aliases allowed)? */
-function isComponentsAgent(expression: ts.Expression, info: ModuleInfo): boolean {
+function isComponentsAgent(
+  expression: ts.Expression,
+  info: ModuleInfo,
+): boolean {
   const resolved = resolveExpression(expression, info.consts);
   return (
     ts.isPropertyAccessExpression(resolved) &&
@@ -547,7 +554,8 @@ function isAgentConstruction(
   if (!ts.isNewExpression(expression)) return false;
   const callee = expression.expression;
   const isAgentCtor =
-    (ts.isIdentifier(callee) && info.agentImports.get(callee.text) === "Agent") ||
+    (ts.isIdentifier(callee) &&
+      info.agentImports.get(callee.text) === "Agent") ||
     (ts.isPropertyAccessExpression(callee) &&
       callee.name.text === "Agent" &&
       ts.isIdentifier(callee.expression) &&
