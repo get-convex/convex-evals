@@ -360,6 +360,7 @@ interface SourceModule {
   presenceCtorNames: Set<string>;
   presenceNamespaces: Set<string>; // namespace imports of @convex-dev/presence
   componentsBindings: Set<string>; // local names of `components` from ./_generated/api
+  apiNamespaces: Set<string>; // namespace imports of ./_generated/api
   namedImports: Map<string, { targetPath: string; exportedName: string }>;
   namespaceImports: Map<string, string>; // local ns name -> module path
   localFunctions: Map<string, ts.Node>;
@@ -564,6 +565,7 @@ function createSourceModule(
     presenceCtorNames: new Set(),
     presenceNamespaces: new Set(),
     componentsBindings: new Set(),
+    apiNamespaces: new Set(),
     namedImports: new Map(),
     namespaceImports: new Map(),
     localFunctions: new Map(),
@@ -603,6 +605,10 @@ function createSourceModule(
             module.componentsBindings.add(element.name.text);
           }
         }
+      } else if (bindings !== undefined && ts.isNamespaceImport(bindings)) {
+        // import * as generated from "./_generated/api";
+        // -> generated.components.presence
+        module.apiNamespaces.add(bindings.name.text);
       }
     }
   }
@@ -763,6 +769,12 @@ function componentsChainSegments(
     }
     if (ts.isIdentifier(resolved)) {
       if (module.componentsBindings.has(resolved.text)) return segments;
+      if (
+        module.apiNamespaces.has(resolved.text) &&
+        segments[0] === "components"
+      ) {
+        return segments.slice(1);
+      }
       // Root may itself be a const alias of a components chain.
       const aliased = module.declarations.get(resolved.text);
       if (aliased !== undefined) {
