@@ -1,0 +1,30 @@
+Build a backend for logging search lookups from a search-as-you-type box.
+
+Create a `package.json` that pins `convex` to exactly `1.41.0` (you may add other dependencies).
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  searches: defineTable({
+    searcherTokenIdentifier: v.string(),
+    term: v.string(),
+  }),
+});
+```
+
+Authentication is already configured for this deployment; do NOT create a `convex/auth.config.ts`.
+
+Create a public mutation `logSearch` in `convex/index.ts` that:
+- Takes arguments `{ term: string }`
+- Returns the ID of the inserted search (`Id<"searches">`)
+
+Behavior:
+- Unauthenticated callers must be rejected.
+- Typing bursts are expected: a user may fire up to 10 lookups in quick succession, but sustained usage must be capped at about 1 lookup per second on average, keyed on the caller's identity `tokenIdentifier`. Enforcement must stay correct under concurrent calls.
+- Over-limit lookups must fail with an error the client can distinguish, ideally indicating when retrying will succeed.
+- Otherwise insert the search row and return its ID.
+
+The searches table may grow very large; enforcement must remain efficient regardless of a user's history.

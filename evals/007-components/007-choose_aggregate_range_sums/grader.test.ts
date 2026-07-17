@@ -19,6 +19,8 @@ interface Analysis {
   constructsClient: boolean;
   synchronizesWrites: boolean;
   readsFromAggregate: boolean;
+  usesSum: boolean;
+  configuresSumValue: boolean;
   scanConstructs: string[];
 }
 
@@ -74,6 +76,8 @@ function analyze(): Analysis {
   let constructsClient = false;
   let synchronizesWrites = false;
   let readsFromAggregate = false;
+  let usesSum = false;
+  let configuresSumValue = false;
   const scanConstructs: string[] = [];
 
   const writeMethods = new Set([
@@ -143,6 +147,19 @@ function analyze(): Analysis {
           ) {
             constructsClient = true;
             clientVars.add(node.name.text);
+            const options = initializer.arguments?.[1];
+            if (
+              options !== undefined &&
+              ts.isObjectLiteralExpression(options) &&
+              options.properties.some(
+                (property) =>
+                  property.name !== undefined &&
+                  ts.isIdentifier(property.name) &&
+                  property.name.text === "sumValue",
+              )
+            ) {
+              configuresSumValue = true;
+            }
           }
         }
       }
@@ -191,6 +208,7 @@ function analyze(): Analysis {
         if (ts.isIdentifier(receiver) && clientVars.has(receiver.text)) {
           if (writeMethods.has(name)) synchronizesWrites = true;
           if (readMethods.has(name)) readsFromAggregate = true;
+          if (name === "sum") usesSum = true;
         }
         // Direct component calls also count as wiring: invocation STYLE is
         // an API detail the docs-equipped usage eval grades, not this one.
@@ -226,6 +244,8 @@ function analyze(): Analysis {
     constructsClient,
     synchronizesWrites,
     readsFromAggregate,
+    usesSum,
+    configuresSumValue,
     scanConstructs,
   };
 }
@@ -248,8 +268,12 @@ test("synchronizes aggregate writes alongside table writes", () => {
   expect(analysis.synchronizesWrites).toBe(true);
 });
 
-test("serves range-sum reads from the aggregate", () => {
-  expect(analysis.readsFromAggregate).toBe(true);
+test("serves range-sum reads with the aggregate sum() API", () => {
+  expect(analysis.usesSum).toBe(true);
+});
+
+test("configures sumValue so sums aggregate the amount", () => {
+  expect(analysis.configuresSumValue).toBe(true);
 });
 
 test("does not fall back to scanning the scores table", () => {

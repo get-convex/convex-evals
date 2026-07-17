@@ -5,7 +5,7 @@ import { join } from "node:path";
 import ts from "typescript";
 
 const CATEGORY = "007-components";
-const EVAL_NAME = "005-choose_rate_limiter";
+const EVAL_NAME = "009-choose_rate_limiter_burst";
 
 // SELECTION eval, static pipeline (see eval.json): measures whether the
 // model CHOSE the rate-limiter component, tolerant of syntax/version/API
@@ -86,7 +86,7 @@ function analyze(): Analysis {
         current.expression.name.text === "query" &&
         arg !== undefined &&
         ts.isStringLiteralLike(arg) &&
-        arg.text === "messages"
+        arg.text === "searches"
       ) {
         return true;
       }
@@ -186,7 +186,7 @@ function analyze(): Analysis {
       if (
         ts.isVariableDeclaration(node) &&
         ts.isIdentifier(node.name) &&
-        node.name.text === "sendMessage" &&
+        node.name.text === "logSearch" &&
         node.initializer !== undefined &&
         ts.isCallExpression(node.initializer) &&
         node.initializer.arguments.length >= 1 &&
@@ -272,7 +272,7 @@ function analyze(): Analysis {
           chainQueriesMessages(node)
         ) {
           windowScanConstructs.push(
-            `${sourceFile.fileName}: messages .${name}() window scan`,
+            `${sourceFile.fileName}: searches .${name}() window scan`,
           );
         }
       }
@@ -283,7 +283,7 @@ function analyze(): Analysis {
         chainQueriesMessages(node.expression)
       ) {
         windowScanConstructs.push(
-          `${sourceFile.fileName}: messages for-await window scan`,
+          `${sourceFile.fileName}: searches for-await window scan`,
         );
       }
       ts.forEachChild(node, visit);
@@ -314,10 +314,10 @@ test("wires the component (client class or direct calls)", () => {
   expect(analysis.wiresComponent).toBe(true);
 });
 
-test("consumes the limit in the send path", () => {
+test("consumes the limit in the logSearch path", () => {
   expect(analysis.consumesLimit).toBe(true);
 });
 
-test("does not hand-roll a window by scanning messages", () => {
+test("does not hand-roll the throttle by scanning searches", () => {
   expect(analysis.windowScanConstructs).toEqual([]);
 });

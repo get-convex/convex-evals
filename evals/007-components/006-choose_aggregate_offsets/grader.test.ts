@@ -19,6 +19,7 @@ interface Analysis {
   constructsClient: boolean;
   synchronizesWrites: boolean;
   readsFromAggregate: boolean;
+  usesOffsetRead: boolean;
   scanConstructs: string[];
 }
 
@@ -74,6 +75,7 @@ function analyze(): Analysis {
   let constructsClient = false;
   let synchronizesWrites = false;
   let readsFromAggregate = false;
+  let usesOffsetRead = false;
   const scanConstructs: string[] = [];
 
   const writeMethods = new Set([
@@ -191,6 +193,7 @@ function analyze(): Analysis {
         if (ts.isIdentifier(receiver) && clientVars.has(receiver.text)) {
           if (writeMethods.has(name)) synchronizesWrites = true;
           if (readMethods.has(name)) readsFromAggregate = true;
+          if (name === "at" || name === "indexOf") usesOffsetRead = true;
         }
         // Direct component calls also count as wiring: invocation STYLE is
         // an API detail the docs-equipped usage eval grades, not this one.
@@ -226,6 +229,7 @@ function analyze(): Analysis {
     constructsClient,
     synchronizesWrites,
     readsFromAggregate,
+    usesOffsetRead,
     scanConstructs,
   };
 }
@@ -248,8 +252,12 @@ test("synchronizes aggregate writes alongside table writes", () => {
   expect(analysis.synchronizesWrites).toBe(true);
 });
 
-test("serves rank/count reads from the aggregate", () => {
+test("serves reads from the aggregate", () => {
   expect(analysis.readsFromAggregate).toBe(true);
+});
+
+test("serves the offset lookup with an offset-capable read (at/indexOf)", () => {
+  expect(analysis.usesOffsetRead).toBe(true);
 });
 
 test("does not fall back to scanning the scores table", () => {

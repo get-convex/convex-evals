@@ -4,7 +4,9 @@ import { components } from "./_generated/api";
 import { RateLimiter, SECOND } from "@convex-dev/rate-limiter";
 
 const rateLimiter = new RateLimiter(components.rateLimiter, {
-  requestCode: { kind: "fixed window", rate: 1, period: 30 * SECOND },
+  // Token bucket with capacity 1 is a true rolling cooldown; a fixed
+  // window would allow two requests seconds apart across a boundary.
+  requestCode: { kind: "token bucket", rate: 1, period: 30 * SECOND, capacity: 1 },
 });
 
 export const requestCode = mutation({

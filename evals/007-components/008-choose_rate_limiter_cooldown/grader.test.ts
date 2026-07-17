@@ -72,8 +72,33 @@ function analyze(): Analysis {
   let consumesLimit = false;
   const windowScanConstructs: string[] = [];
 
+  // Pass 1 (all files): client constructors, limiter vars, helper bodies -
+  // collected globally so instances/helpers factored into other modules
+  // still count (models legitimately split these out).
+  const chainQueriesMessages = (call: ts.CallExpression): boolean => {
+    let current: ts.Expression = call;
+    while (
+      ts.isCallExpression(current) &&
+      ts.isPropertyAccessExpression(current.expression)
+    ) {
+      const arg = current.arguments[0];
+      if (
+        current.expression.name.text === "query" &&
+        arg !== undefined &&
+        ts.isStringLiteralLike(arg) &&
+        arg.text === "otpRequests"
+      ) {
+        return true;
+      }
+      current = current.expression.expression;
+    }
+    return false;
+  };
+
+  const clientCtors = new Set<string>();
+  const clientVars = new Set<string>();
+  const localFunctions = new Map<string, ts.Node>();
   for (const sourceFile of sources) {
-    const clientCtors = new Set<string>();
     for (const statement of sourceFile.statements) {
       if (
         ts.isImportDeclaration(statement) &&
@@ -106,7 +131,6 @@ function analyze(): Analysis {
       return current;
     };
 
-    const clientVars = new Set<string>();
     const collectVars = (node: ts.Node) => {
       if (
         ts.isVariableDeclaration(node) &&
@@ -133,29 +157,7 @@ function analyze(): Analysis {
     };
     collectVars(sourceFile);
 
-    const chainQueriesMessages = (call: ts.CallExpression): boolean => {
-      let current: ts.Expression = call;
-      while (
-        ts.isCallExpression(current) &&
-        ts.isPropertyAccessExpression(current.expression)
-      ) {
-        const arg = current.arguments[0];
-        if (
-          current.expression.name.text === "query" &&
-          arg !== undefined &&
-          ts.isStringLiteralLike(arg) &&
-          arg.text === "otpRequests"
-        ) {
-          return true;
-        }
-        current = current.expression.expression;
-      }
-      return false;
-    };
-
-    // Same-file function bodies, so helpers called from sendMessage count.
-    const localFunctions = new Map<string, ts.Node>();
-    const collectFunctions = (node: ts.Node) => {
+        const collectFunctions = (node: ts.Node) => {
       if (
         ts.isFunctionDeclaration(node) &&
         node.name !== undefined &&
@@ -175,7 +177,10 @@ function analyze(): Analysis {
       ts.forEachChild(node, collectFunctions);
     };
     collectFunctions(sourceFile);
+  }
 
+  // Pass 2 (all files): handler walk and scan detection.
+  for (const sourceFile of sources) {
     let sendMessageHandler: ts.Node | undefined;
     const findHandler = (node: ts.Node) => {
       if (
