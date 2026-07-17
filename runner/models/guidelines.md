@@ -301,7 +301,7 @@ const results = await ctx.vectorSearch("documents", "by_embedding", {
 
 ```ts
 import { defineApp } from "convex/server";
-import aggregate from "@convex-dev/aggregate/convex.config.js";
+import aggregate from "@convex-dev/aggregate/convex.config"; // no .js suffix
 
 const app = defineApp();
 app.use(aggregate);
@@ -320,13 +320,14 @@ const scoreAggregate = new TableAggregate<{
   TableName: "scores";
 }>(components.aggregate, { sortKey: (doc) => -doc.score });
 
-// In mutations: await scoreAggregate.insert(ctx, doc); .replace(ctx, oldDoc, newDoc); .delete(ctx, doc)
+// In mutations - doc is the FULL stored document (fetch it after ctx.db.insert), not raw fields:
+// await scoreAggregate.insert(ctx, doc); .replace(ctx, oldDoc, newDoc); .delete(ctx, doc)
 // Reads: await scoreAggregate.count(ctx); bounded: .count(ctx, { bounds: { upper: { key, inclusive: false } } }); position: .indexOf(ctx, key)
 ```
 
 The constructor takes only the component reference and `{ sortKey, sumValue? }` - there are no `table`, `field`, or `name` options, and there is no `.rank()` method (derive rank from a bounded `count` or `indexOf`).
 
-- To author a LOCAL component, create a directory under `convex/` containing its own `convex.config.ts` (`export default defineComponent("myComponent");` - the argument is the component's NAME STRING; its schema is picked up from that directory's `schema.ts`), its own `schema.ts`, and functions built from that directory's own `_generated/server`. Mount it from the root config: `import myComponent from "./myComponent/convex.config"; app.use(myComponent);`. `app.use` takes no name option.
+- To author a LOCAL component, create a directory under `convex/` containing its own `convex.config.ts` (`export default defineComponent("myComponent");` - the argument is the component's NAME STRING; its schema is picked up from that directory's `schema.ts`), its own `schema.ts`, and functions built from that directory's own `_generated/server`. Mount it from the root config: `import myComponent from "./myComponent/convex.config"; app.use(myComponent);`. `app.use` takes no name option. Its functions are referenced as `components.<componentName>.<module>.<functionName>` (the module segment is required, e.g. `components.auditSink.index.writeAudit`).
 - Calling a component mutation is a subtransaction: if it throws and the caller catches the error, the component's writes roll back while the calling mutation continues and can still commit its own writes.
 - `@convex-dev/rate-limiter` example - limits are DEFINED in the constructor; the `limit` call only names one and supplies the key:
 
