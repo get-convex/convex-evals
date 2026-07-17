@@ -40,3 +40,20 @@ Create these functions in `convex/index.ts`:
   - Returns the total number of users on the leaderboard as a number
 
 The scores table may grow to millions of users. `getRank` and `getCount` are called on every page load and must remain efficient at that scale; updating a user's score must keep them accurate.
+
+Reference - `@convex-dev/aggregate` client API (from its docs):
+```ts
+const agg = new TableAggregate<{
+  Key: number;
+  DataModel: DataModel;
+  TableName: "scores";
+}>(components.aggregate, { sortKey: (doc) => doc.score });
+
+// Keep in sync in the SAME mutation as each table write; doc is the full stored document:
+await agg.insert(ctx, doc);
+await agg.replace(ctx, oldDoc, newDoc);
+// Reads:
+await agg.count(ctx);
+await agg.count(ctx, { bounds: { lower: { key, inclusive: false } } });
+await agg.indexOf(ctx, key);
+```

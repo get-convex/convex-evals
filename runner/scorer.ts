@@ -131,8 +131,10 @@ function isEnvironmentFailure(lowerError: string): boolean {
     lowerError.includes("enotfound") ||
     lowerError.includes("eai_again") ||
     lowerError.includes("too many requests") ||
-    lowerError.includes("rate limit") ||
-    lowerError.includes("rate_limit") ||
+    // NOTE: do not match bare "rate limit"/"rate_limit" here - step errors
+    // embed project paths, and an eval named *rate_limit* would classify
+    // every model failure as infrastructure and abort the whole run.
+    // Provider throttling always surfaces as 429/too-many-requests.
     lowerError.includes("status code 429") ||
     lowerError.includes("http 429")
   );
