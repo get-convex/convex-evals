@@ -105,6 +105,7 @@ When investigating a model's performance or deciding whether to adjust eval requ
 
 Conventions established during the 2026-07 eval-roadmap work (waves tracked in GitHub issues):
 
+- In guidelines, prefer concrete instances over placeholder syntax: `components.myName.index.myFunction` landed where `components.<name>.<module>.<function>` did not (verified by model runs).
 - Component-specific API reference (constructor options, method signatures) never goes in the global guidelines - it goes in the eval's TASK.txt as a minimal reference excerpt, simulating an agent that fetched the component's docs. Guidelines carry only generic platform knowledge (mounting, local-component authoring, subtransaction semantics).
 - Guidelines are paid for twice: they steer graded models here AND get pulled into every user's project context. Add a guideline line ONLY when it demonstrably helps models pass a specific eval (use `ablation:generate`/`ablation:run` to prove it), keep it as terse as possible, and prefer improving an existing line over adding a new one. Never add guidelines speculatively.
 - Component evals come in two kinds: USAGE evals name the component and test correct wiring (pin exact versions); SELECTION evals state only the product requirement and test that the model chooses the component over hand-rolling (no version pins possible - grade version-agnostically via behavior and scan bans).
