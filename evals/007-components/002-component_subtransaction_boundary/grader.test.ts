@@ -1,7 +1,9 @@
 import { expect, test } from "vitest";
 import {
+  addDocuments,
   compareFunctionSpec,
   compareSchema,
+  deleteAllDocuments,
   getLatestOutputProjectDir,
   listTable,
   readOutputFile,
@@ -71,8 +73,31 @@ test(
       "ok:audit_succeeded",
       "boom:audit_succeeded",
     ]);
+
+    // Counts must come from the component, not be derived from the root
+    // statuses: plant fake statuses and then wipe the root table entirely -
+    // component-owned audit data is unreachable from root tables, so real
+    // counts survive both tamperings. (Extra root tables are ruled out by
+    // the schema compare, so there is nowhere else the data could live.)
+    await addDocuments(responseAdminClient, "auditStatuses", [
+      { event: "ok", status: "audit_succeeded" },
+      { event: "ok", status: "audit_succeeded" },
+      { event: "phantom", status: "audit_succeeded" },
+    ]);
+    expect(await countOf("ok")).toBe(2);
+    expect(await countOf("phantom")).toBe(0);
+    await deleteAllDocuments(responseAdminClient, ["auditStatuses"]);
+    expect(await countOf("ok")).toBe(2);
+    expect(await countOf("boom")).toBe(1);
   },
 );
+
+test("generated solution pins the required dependency", () => {
+  const packageJson = JSON.parse(
+    readOutputFile(CATEGORY, EVAL_NAME, "package.json"),
+  );
+  expect(packageJson.dependencies["convex"]).toBe("1.41.0");
+});
 
 test("generated solution authors a local component that inserts before throwing", () => {
   const projectDir = getLatestOutputProjectDir(CATEGORY, EVAL_NAME);
