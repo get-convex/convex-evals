@@ -1,0 +1,27 @@
+Build the backend participant list for a collaborative workspace where the same user often has several tabs and devices open at once.
+
+Create a `package.json` that pins `convex` to exactly `1.41.0` (you may add other dependencies).
+
+Create these functions in `convex/index.ts`:
+
+- A public mutation `sessionHeartbeat` that:
+  - Takes arguments `{ roomId: string, userId: string, sessionId: string, interval: number }`
+  - Is called every `interval` milliseconds by EACH of a user's open tabs/devices independently; `sessionId` is unique per tab/device
+  - Returns `{ roomToken: string, sessionToken: string }`: an opaque token for reading the room's participant list plus an opaque token for ending this one session
+
+- A public query `listParticipants` that:
+  - Takes arguments `{ roomToken: string }`
+  - Returns the room's participant entries; each entry must carry at least the `userId` and an `online` boolean. Users who went away may remain listed with `online: false`.
+
+- A public mutation `leaveSession` that:
+  - Takes arguments `{ sessionToken: string }`
+  - Ends that single session (one tab closing must not touch the user's other sessions)
+
+Behavior - multi-session aggregation is the core requirement:
+- A user with several live sessions must appear in the participant list exactly ONCE (never one row per tab).
+- The user must stay `online: true` while ANY of their sessions is still alive - closing one of three tabs must not flicker them away.
+- Only after the user's LAST session ends - explicitly via `leaveSession`, or automatically when a session's heartbeats stop for a short while (crashed tab) - may their entry flip to `online: false`.
+- The list must update live for subscribed clients, purely reactively: clients never re-run `listParticipants` on a timer, and its results must not go stale between updates.
+- Rooms are independent: presence in one room must never leak into another.
+
+Get the session bookkeeping right under concurrency: simultaneous heartbeats and leaves from the same user's tabs must never corrupt the aggregation.

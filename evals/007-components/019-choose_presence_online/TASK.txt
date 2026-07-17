@@ -1,0 +1,25 @@
+Build the backend for a collaborative document editor's "viewing now" sidebar: while a document is open in a user's tab, everyone with that document open sees them listed, live as people join, leave, or close tabs.
+
+Create a `package.json` that pins `convex` to exactly `1.41.0` (you may add other dependencies).
+
+Create these functions in `convex/index.ts`:
+
+- A public mutation `docHeartbeat` that:
+  - Takes arguments `{ docId: string, userId: string, sessionId: string, interval: number }`
+  - Is called by clients every `interval` milliseconds while the document is open; `sessionId` identifies one open tab
+  - Returns `{ roomToken: string, sessionToken: string }`: an opaque token for reading the document's viewer list plus an opaque token for ending this tab's session
+
+- A public query `whoIsViewing` that:
+  - Takes arguments `{ roomToken: string }`
+  - Returns the document's viewer entries; each entry must carry at least the viewer's `userId` and an `online` boolean that is `true` only while the user is actively viewing. Users who recently left may remain listed with `online: false`.
+
+- A public mutation `leave` that:
+  - Takes arguments `{ sessionToken: string }`
+  - Ends that tab's session immediately (called via sendBeacon when a tab closes)
+
+Behavior:
+- The sidebar must update live for every subscribed client, purely reactively: clients only consume `whoIsViewing` through a subscription and never re-run it on a timer, and its results must not go stale between updates.
+- If a tab is killed without calling `leave` (crash, lost connection), its heartbeats stop and the user must automatically stop counting as viewing shortly after - without any client-driven cleanup.
+- Viewer state per document must be isolated: a user viewing one document must never appear as viewing another.
+
+The editor serves many documents and users; keep the endpoints efficient and the bookkeeping robust under concurrent tabs.
