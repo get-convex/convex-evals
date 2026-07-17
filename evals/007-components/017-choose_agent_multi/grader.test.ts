@@ -53,6 +53,9 @@ interface PathFacts {
   /** a thread-scoped generation call on this path also overrides `tools`
    * with a defined tool */
   toolsOverrideAtGeneration: boolean;
+  /** an object literal on this path carries an `author` property, or the
+   * path reads `.agentName` (transcript attribution shape) */
+  mapsAuthorAttribution: boolean;
 }
 
 interface Analysis {
@@ -74,6 +77,7 @@ function emptyFacts(): PathFacts {
     componentList: false,
     scopedGenerationInstances: new Map(),
     toolsOverrideAtGeneration: false,
+    mapsAuthorAttribution: false,
   };
 }
 
@@ -957,6 +961,24 @@ function analyze(): Analysis {
     };
 
     const visit = (node: ts.Node, file: ts.SourceFile, depth: number) => {
+      if (
+        ts.isObjectLiteralExpression(node) &&
+        node.properties.some(
+          (property) =>
+            property.name !== undefined &&
+            (ts.isIdentifier(property.name) ||
+              ts.isStringLiteral(property.name)) &&
+            property.name.text === "author",
+        )
+      ) {
+        facts.mapsAuthorAttribution = true;
+      }
+      if (
+        ts.isPropertyAccessExpression(node) &&
+        node.name.text === "agentName"
+      ) {
+        facts.mapsAuthorAttribution = true;
+      }
       if (ts.isCallExpression(node)) {
         const callee = node.expression;
 
@@ -1201,8 +1223,13 @@ test("the handoff switches to a differently-named agent", () => {
 });
 
 test("getTranscript reads the shared history from the component", () => {
+  const facts = pathFacts("getTranscript");
   expect(
-    pathFacts("getTranscript").componentList,
+    facts.componentList,
     "getTranscript must list the thread's messages from the component",
+  ).toBe(true);
+  expect(
+    facts.mapsAuthorAttribution,
+    "getTranscript must attribute assistant replies (an `author` field mapped from the stored message's agent attribution)",
   ).toBe(true);
 });

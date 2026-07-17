@@ -15,7 +15,12 @@ const EVAL_NAME = "016-choose_agent_tools";
 // error-recovering, so choices stay visible even in code that would not
 // compile.
 
-const ENDPOINTS = ["openThread", "askAssistant"] as const;
+const ENDPOINTS = [
+  "openThread",
+  "askAssistant",
+  "getInventoryCount",
+  "getOrderStatus",
+] as const;
 
 type EndpointName = (typeof ENDPOINTS)[number];
 
@@ -48,11 +53,15 @@ interface PathFacts {
   /** a thread-scoped generation call on this path also overrides `tools`
    * with a defined tool */
   toolsOverrideAtGeneration: boolean;
+  /** an object literal on this path carries an `author` property, or the
+   * path reads `.agentName` (transcript attribution shape) */
+  mapsAuthorAttribution: boolean;
 }
 
 interface Analysis {
   dependsOnAgent: boolean;
   mountsAgent: boolean;
+  toolReadsLiveData: boolean;
   /** resolved `name` options across every Agent construction/instance */
   agentNames: (string | undefined)[];
   /** ctor keys whose constructor wires a defined tool into `tools` */
@@ -69,6 +78,7 @@ function emptyFacts(): PathFacts {
     componentList: false,
     scopedGenerationInstances: new Map(),
     toolsOverrideAtGeneration: false,
+    mapsAuthorAttribution: false,
   };
 }
 
@@ -952,6 +962,24 @@ function analyze(): Analysis {
     };
 
     const visit = (node: ts.Node, file: ts.SourceFile, depth: number) => {
+      if (
+        ts.isObjectLiteralExpression(node) &&
+        node.properties.some(
+          (property) =>
+            property.name !== undefined &&
+            (ts.isIdentifier(property.name) ||
+              ts.isStringLiteral(property.name)) &&
+            property.name.text === "author",
+        )
+      ) {
+        facts.mapsAuthorAttribution = true;
+      }
+      if (
+        ts.isPropertyAccessExpression(node) &&
+        node.name.text === "agentName"
+      ) {
+        facts.mapsAuthorAttribution = true;
+      }
       if (ts.isCallExpression(node)) {
         const callee = node.expression;
 
@@ -1124,9 +1152,55 @@ function analyze(): Analysis {
     }
   }
 
+  // Does any defined tool read live data - calling back into the app
+  // (ctx.runQuery/runMutation) or referencing a lookup endpoint by name?
+  // Tools may be const-bound OR defined inline in a `tools: { ... }`
+  // config, so every tool-shaped expression is scanned.
+  let toolReadsLiveData = false;
+  const scanToolBody = (candidate: ts.Node) => {
+    if (
+      ts.isCallExpression(candidate) &&
+      ts.isPropertyAccessExpression(candidate.expression) &&
+      ["runQuery", "runMutation", "runAction"].includes(
+        candidate.expression.name.text,
+      )
+    ) {
+      toolReadsLiveData = true;
+    }
+    if (
+      ts.isIdentifier(candidate) &&
+      ["getInventoryCount", "getOrderStatus"].includes(candidate.text)
+    ) {
+      toolReadsLiveData = true;
+    }
+    ts.forEachChild(candidate, scanToolBody);
+  };
+  for (const sourceFile of sources) {
+    const visit = (node: ts.Node) => {
+      if (ts.isCallExpression(node)) {
+        const callee = node.expression;
+        const isToolCtor =
+          (ts.isIdentifier(callee) &&
+            (agentImports.get(callee.text) === "createTool" ||
+              aiToolCtors.has(callee.text))) ||
+          (ts.isPropertyAccessExpression(callee) &&
+            ts.isIdentifier(callee.expression) &&
+            agentNamespaces.has(callee.expression.text) &&
+            callee.name.text === "createTool");
+        if (isToolCtor) scanToolBody(node);
+      }
+      if (ts.isObjectLiteralExpression(node) && isToolish(node)) {
+        scanToolBody(node);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+  }
+
   return {
     dependsOnAgent,
     mountsAgent,
+    toolReadsLiveData,
     agentNames: [...constructionsByKey.values()].map((ctor) => ctor.name),
     instancesWithTools,
     toolWiredInConstructor,
@@ -1154,6 +1228,21 @@ test("wires a defined tool into the agent or its generation call", () => {
     analysis.toolWiredInConstructor ||
       pathFacts("askAssistant").toolsOverrideAtGeneration,
     "define a lookup tool and wire it into an Agent `tools` config or a generation-call override - an unused tool definition is not enough",
+  ).toBe(true);
+});
+
+test("exposes the lookup queries and backs the tool with live data", () => {
+  expect(
+    analysis.endpoints["getInventoryCount"],
+    "define the getInventoryCount query",
+  ).toBeDefined();
+  expect(
+    analysis.endpoints["getOrderStatus"],
+    "define the getOrderStatus query",
+  ).toBeDefined();
+  expect(
+    analysis.toolReadsLiveData,
+    "a defined tool must fetch live values (call back into the app or reference a lookup endpoint) rather than letting the model invent them",
   ).toBe(true);
 });
 

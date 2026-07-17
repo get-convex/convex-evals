@@ -48,6 +48,9 @@ interface PathFacts {
   /** a thread-scoped generation call on this path also overrides `tools`
    * with a defined tool */
   toolsOverrideAtGeneration: boolean;
+  /** an object literal on this path carries an `author` property, or the
+   * path reads `.agentName` (transcript attribution shape) */
+  mapsAuthorAttribution: boolean;
 }
 
 interface Analysis {
@@ -69,6 +72,7 @@ function emptyFacts(): PathFacts {
     componentList: false,
     scopedGenerationInstances: new Map(),
     toolsOverrideAtGeneration: false,
+    mapsAuthorAttribution: false,
   };
 }
 
@@ -952,6 +956,24 @@ function analyze(): Analysis {
     };
 
     const visit = (node: ts.Node, file: ts.SourceFile, depth: number) => {
+      if (
+        ts.isObjectLiteralExpression(node) &&
+        node.properties.some(
+          (property) =>
+            property.name !== undefined &&
+            (ts.isIdentifier(property.name) ||
+              ts.isStringLiteral(property.name)) &&
+            property.name.text === "author",
+        )
+      ) {
+        facts.mapsAuthorAttribution = true;
+      }
+      if (
+        ts.isPropertyAccessExpression(node) &&
+        node.name.text === "agentName"
+      ) {
+        facts.mapsAuthorAttribution = true;
+      }
       if (ts.isCallExpression(node)) {
         const callee = node.expression;
 
@@ -1158,9 +1180,14 @@ test("startConversation creates a durable component-backed thread", () => {
 
 test("sendMessage runs the exchange through the component thread", () => {
   const facts = pathFacts("sendMessage");
+  // Thread-scoped generation loads prior messages itself; an explicit
+  // persistence implementation must both save through the component AND
+  // read the thread's history there to give the LLM the conversation
+  // context the task requires.
   expect(
-    isThreadScopedGeneration(facts) || facts.componentSave,
-    "sendMessage must generate in the thread's context (thread-scoped generate/continueThread) or explicitly persist messages through the component",
+    isThreadScopedGeneration(facts) ||
+      (facts.componentSave && facts.componentList),
+    "sendMessage must generate in the thread's context (thread-scoped generate/continueThread) or explicitly persist AND read messages through the component",
   ).toBe(true);
 });
 
