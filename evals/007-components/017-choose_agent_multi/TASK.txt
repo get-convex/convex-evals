@@ -1,0 +1,31 @@
+Build the backend for a customer-support conversation that is shared by two specialized AI assistants.
+
+Requirements:
+- A customer's conversation starts with the frontline TRIAGE assistant, which handles general questions.
+- When the issue turns out to be about billing, the conversation is handed off to the BILLING specialist assistant.
+- Both assistants' replies are LLM-generated, and both must read and write the SAME durable conversation history: after a handoff, the billing specialist must see everything the customer and the triage assistant already said, and its replies must land in the same transcript.
+- The stored transcript must record which assistant produced each assistant reply.
+
+Create a `package.json` that pins `convex` to exactly `1.41.0` (you may add other dependencies).
+
+An `OPENAI_API_KEY` environment variable is already configured on the deployment; use any OpenAI model.
+
+Create these functions in `convex/index.ts`:
+
+- A mutation `openConversation` that:
+  - Takes arguments `{ userId: string }`
+  - Creates a new, empty conversation for that customer and returns its id (a string)
+
+- An action `triage` that:
+  - Takes arguments `{ threadId: string, text: string }`
+  - Records the customer's message in that conversation and has the triage assistant generate its reply there
+  - Returns the triage assistant's reply text (a string)
+
+- An action `escalateToBilling` that:
+  - Takes arguments `{ threadId: string }`
+  - Hands the conversation off to the billing specialist: it reviews the conversation so far and posts its takeover reply into the same conversation
+  - Returns the billing assistant's reply text (a string)
+
+- A query `getTranscript` that:
+  - Takes arguments `{ threadId: string }`
+  - Returns the conversation's messages so far, oldest first, as an array of `{ role: string, content: string, author: string | null }` - `author` identifies which assistant wrote an assistant message, and is null for the customer's own messages

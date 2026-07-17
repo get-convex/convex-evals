@@ -1,0 +1,12 @@
+{
+  "name": "convexbot",
+  "version": "1.0.0",
+  "dependencies": {
+    "convex": "1.41.0",
+    "@convex-dev/agent": "0.6.4",
+    "@ai-sdk/openai": "3.0.85",
+    "ai": "6.0.229",
+    "@ai-sdk/provider-utils": "4.0.39",
+    "convex-helpers": "0.1.120"
+  }
+}
