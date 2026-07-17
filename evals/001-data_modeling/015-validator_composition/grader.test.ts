@@ -4,11 +4,14 @@ import {
   compareFunctionSpec,
   compareSchema,
   deleteAllDocuments,
+  getLatestOutputProjectDir,
   listTable,
   readOutputFile,
   responseAdminClient,
   responseClient,
 } from "../../../grader";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { anyApi } from "convex/server";
 import ts from "typescript";
 
@@ -96,10 +99,7 @@ test("create, update, and get behave with derived shapes", async () => {
 });
 
 test("generated solution derives every shape from one base validator", () => {
-  const source = readOutputFile(CATEGORY, EVAL_NAME, "convex/index.ts");
-  const schemaSource = readOutputFile(CATEGORY, EVAL_NAME, "convex/schema.ts");
   const compose = new Set(["pick", "omit", "partial", "extend"]);
-
   const parse = (name: string, text: string) =>
     ts.createSourceFile(
       name,
@@ -108,15 +108,54 @@ test("generated solution derives every shape from one base validator", () => {
       true,
       ts.ScriptKind.TS,
     );
-  const indexFile = parse("index.ts", source);
 
-  // baseVars: consts initialized with v.object(...). derivedVars: consts whose
-  // initializer is a chain of composition methods rooted at a base or derived
-  // var. Models may also compose inline at the use site, so the use-site
-  // checks below accept anonymous chains rooted at a base/derived identifier.
+  // All authored convex sources: derived validators may live in any module
+  // (index.ts, a validators.ts helper, schema.ts) and resolve by name.
+  const convexDir = join(
+    getLatestOutputProjectDir(CATEGORY, EVAL_NAME),
+    "convex",
+  );
+  const corpus = readdirSync(convexDir)
+    .filter((f) => f.endsWith(".ts") && !f.endsWith(".d.ts"))
+    .map((f) => parse(f, readFileSync(join(convexDir, f), "utf8")));
+  const indexFile = parse(
+    "index.ts",
+    readOutputFile(CATEGORY, EVAL_NAME, "convex/index.ts"),
+  );
+  const schemaFile = parse(
+    "schema.ts",
+    readOutputFile(CATEGORY, EVAL_NAME, "convex/schema.ts"),
+  );
+
+  // The task mandates the root's name and location: a base validator named
+  // articleDocValidator declared with v.object in convex/index.ts. Chains
+  // rooted anywhere else (e.g. a second hand-written v.object) don't count,
+  // so duplicating the shape into another "base" can't satisfy the checks.
   const baseVars = new Set<string>();
-  const derivedVars = new Set<string>();
+  const visitBase = (node: ts.Node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === "articleDocValidator" &&
+      node.initializer !== undefined &&
+      ts.isCallExpression(node.initializer) &&
+      node.initializer.expression.getText() === "v.object"
+    ) {
+      baseVars.add(node.name.text);
+    }
+    ts.forEachChild(node, visitBase);
+  };
+  visitBase(indexFile);
+  expect(
+    baseVars.size,
+    "declare articleDocValidator with v.object in convex/index.ts",
+  ).toBeGreaterThan(0);
 
+  // derivedVars: consts (in any module) whose initializer is a chain of
+  // composition methods rooted at the base or another derived var. Models may
+  // also compose inline at the use site; the use-site checks below accept
+  // anonymous chains with the same rooting rule.
+  const derivedVars = new Set<string>();
   let changed = true;
   while (changed) {
     changed = false;
@@ -124,49 +163,34 @@ test("generated solution derives every shape from one base validator", () => {
       if (
         ts.isVariableDeclaration(node) &&
         ts.isIdentifier(node.name) &&
-        node.initializer !== undefined
+        node.initializer !== undefined &&
+        !derivedVars.has(node.name.text) &&
+        ts.isCallExpression(node.initializer)
       ) {
-        const name = node.name.text;
-        const init = node.initializer;
-        if (
-          !baseVars.has(name) &&
-          ts.isCallExpression(init) &&
-          init.expression.getText() === "v.object"
+        // Walk the chain down to its root identifier.
+        let current: ts.Expression = node.initializer;
+        const methods: string[] = [];
+        while (
+          ts.isCallExpression(current) &&
+          ts.isPropertyAccessExpression(current.expression)
         ) {
-          baseVars.add(name);
-          changed = true;
+          methods.push(current.expression.name.text);
+          current = current.expression.expression;
         }
-        if (!derivedVars.has(name) && ts.isCallExpression(init)) {
-          // Walk the chain down to its root identifier.
-          let current: ts.Expression = init;
-          const methods: string[] = [];
-          while (
-            ts.isCallExpression(current) &&
-            ts.isPropertyAccessExpression(current.expression)
-          ) {
-            methods.push(current.expression.name.text);
-            current = current.expression.expression;
-          }
-          if (
-            methods.length > 0 &&
-            methods.every((m) => compose.has(m)) &&
-            ts.isIdentifier(current) &&
-            (baseVars.has(current.text) || derivedVars.has(current.text))
-          ) {
-            derivedVars.add(name);
-            changed = true;
-          }
+        if (
+          methods.length > 0 &&
+          methods.every((m) => compose.has(m)) &&
+          ts.isIdentifier(current) &&
+          (baseVars.has(current.text) || derivedVars.has(current.text))
+        ) {
+          derivedVars.add(node.name.text);
+          changed = true;
         }
       }
       ts.forEachChild(node, visit);
     };
-    visit(indexFile);
+    for (const file of corpus) visit(file);
   }
-
-  expect(
-    baseVars.size,
-    "declare the base document validator with v.object",
-  ).toBeGreaterThan(0);
 
   const derivedOrBase = new Set([...baseVars, ...derivedVars]);
 
@@ -191,7 +215,7 @@ test("generated solution derives every shape from one base validator", () => {
   };
 
   // Count every distinct composition method applied to a base- or
-  // derived-rooted chain anywhere in the module, named const or inline.
+  // derived-rooted chain anywhere in the authored sources.
   const usedMethods = new Set<string>();
   const collectMethods = (node: ts.Node) => {
     if (
@@ -206,15 +230,15 @@ test("generated solution derives every shape from one base validator", () => {
     }
     ts.forEachChild(node, collectMethods);
   };
-  collectMethods(indexFile);
+  for (const file of corpus) collectMethods(file);
   expect(
     usedMethods.size,
     "use at least three distinct composition operations",
   ).toBeGreaterThanOrEqual(3);
 
   // A use site consumes a derivation when it references a derived const or
-  // contains a composition chain rooted at a base/derived var. Hand-written
-  // duplicate shapes contain neither and fail.
+  // contains a composition chain rooted at the base or a derived var.
+  // Hand-written duplicate shapes contain neither and fail.
   const usesDerivation = (expression: ts.Expression): boolean => {
     let found = false;
     const scan = (node: ts.Node) => {
@@ -240,26 +264,46 @@ test("generated solution derives every shape from one base validator", () => {
     return found;
   };
 
-  // The schema must consume a derived validator (an imported identifier or an
-  // inline chain over one) rather than a duplicated shape.
+  // The schema must consume the derived table validator. The identifier at
+  // the chain root must be a known base/derived name, and must not be
+  // shadowed by a hand-written v.object const local to schema.ts.
+  const schemaLocalObjects = new Set<string>();
+  const visitSchemaLocals = (node: ts.Node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer !== undefined &&
+      ts.isCallExpression(node.initializer) &&
+      node.initializer.expression.getText() === "v.object"
+    ) {
+      schemaLocalObjects.add(node.name.text);
+    }
+    ts.forEachChild(node, visitSchemaLocals);
+  };
+  visitSchemaLocals(schemaFile);
+
   let schemaUsesDerived = false;
-  const schemaFile = parse("schema.ts", schemaSource);
   const visitSchema = (node: ts.Node) => {
     if (
       ts.isCallExpression(node) &&
       node.expression.getText() === "defineTable" &&
       node.arguments.length >= 1
     ) {
-      // Imports resolve by name, so accept any identifier-rooted argument.
       const root = chainRoot(node.arguments[0]);
-      if (ts.isIdentifier(root)) schemaUsesDerived = true;
+      if (
+        ts.isIdentifier(root) &&
+        derivedOrBase.has(root.text) &&
+        !schemaLocalObjects.has(root.text)
+      ) {
+        schemaUsesDerived = true;
+      }
     }
     ts.forEachChild(node, visitSchema);
   };
   visitSchema(schemaFile);
   expect(
     schemaUsesDerived,
-    "defineTable must consume the derived document validator, not a duplicated shape",
+    "defineTable must consume a validator derived from articleDocValidator, not a duplicated shape",
   ).toBe(true);
 
   let argsUseDerived = 0;
