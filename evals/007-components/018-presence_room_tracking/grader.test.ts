@@ -222,10 +222,11 @@ test(
 );
 
 test(
-  "timeout: a session that stops heartbeating goes offline at ~2.5x its interval",
+  "timeout: keepalives reschedule the deadline; a silent session goes offline at ~2.5x its interval",
   { timeout: 30_000 },
   async () => {
     // Dedicated session in a dedicated room; never reused by other tests.
+    const startedAt = Date.now();
     const eve = await heartbeat(
       "room-D",
       "eve",
@@ -240,10 +241,24 @@ test(
       "a freshly heartbeating session must be online immediately",
     ).toBe(true);
 
-    // No further heartbeats: the component's scheduled timeout must mark the
-    // entry offline at ~5s (2.5x the 2000ms interval). The 15s budget cleanly
-    // separates a passed-through interval from implementations that drop the
-    // caller's interval (component default 10s -> timeout at 25s).
+    // A second keepalive before the first deadline (~5s = 2.5x 2000ms) must
+    // reschedule the timeout to ~8.5s. Wrappers that only delegate a
+    // session's FIRST heartbeat leave the original deadline armed and flip
+    // eve offline at ~5s, failing the 6.5s still-online checkpoint below.
+    await waitUntilElapsed(startedAt, 3_500);
+    await heartbeat("room-D", "eve", "eve-timeout-tab", SHORT_INTERVAL);
+
+    await waitUntilElapsed(startedAt, 6_500);
+    const afterKeepalive = entriesFor(await listRoom(eve.roomToken), "eve");
+    expect(
+      afterKeepalive[0]?.online,
+      "a keepalive must reschedule the session's timeout deadline",
+    ).toBe(true);
+
+    // No further heartbeats: the scheduled timeout must now mark the entry
+    // offline at ~8.5s from the start. The 15s budget (from the checkpoint)
+    // cleanly separates a passed-through interval from implementations that
+    // drop the caller's interval (component default 10s -> timeout at 25s+).
     await pollUntil(
       async () => {
         const entries = await listRoom(eve.roomToken);
@@ -321,6 +336,10 @@ test("every endpoint delegates to the presence component on its call path", () =
     analysis.endpointComponentCalls.disconnect.has("disconnect"),
     "the disconnect mutation must reach the component's disconnect on its call path",
   ).toBe(true);
+  expect(
+    analysis.intervalPassThroughViolations,
+    "the caller's interval must be passed through unchanged",
+  ).toEqual([]);
 });
 
 // ── Static analysis machinery ─────────────────────────────────────────
@@ -353,6 +372,7 @@ interface SourceModule {
 interface SourceAnalysis {
   constructsPresenceClient: boolean;
   endpointComponentCalls: Record<EndpointName, Set<string>>;
+  intervalPassThroughViolations: string[];
 }
 
 function analyzeAuthoredConvexSources(): SourceAnalysis {
@@ -463,6 +483,7 @@ function analyzeAuthoredConvexSources(): SourceAnalysis {
     disconnect: new Set(),
   };
 
+  const intervalPassThroughViolations: string[] = [];
   for (const module of modules) {
     for (const endpointName of ENDPOINT_NAMES) {
       const handler = findEndpointHandler(module, endpointName);
@@ -474,11 +495,18 @@ function analyzeAuthoredConvexSources(): SourceAnalysis {
         endpointComponentCalls[endpointName],
         0,
         new Set(),
+        endpointName === "heartbeat"
+          ? intervalPassThroughViolations
+          : undefined,
       );
     }
   }
 
-  return { constructsPresenceClient, endpointComponentCalls };
+  return {
+    constructsPresenceClient,
+    endpointComponentCalls,
+    intervalPassThroughViolations,
+  };
 }
 
 function readAuthoredModules(): SourceModule[] {
@@ -579,37 +607,41 @@ function createSourceModule(
     }
   }
 
-  const collectFunctions = (node: ts.Node) => {
+  // Only MODULE-SCOPE functions are name-addressable from other functions;
+  // nested closures inside handlers are traversed in place by the walker.
+  for (const statement of sourceFile.statements) {
     if (
-      ts.isFunctionDeclaration(node) &&
-      node.name !== undefined &&
-      node.body !== undefined
+      ts.isFunctionDeclaration(statement) &&
+      statement.name !== undefined &&
+      statement.body !== undefined
     ) {
-      module.localFunctions.set(node.name.text, node);
-      if (hasExportModifier(node)) {
-        module.exportedFunctions.set(node.name.text, node);
+      module.localFunctions.set(statement.name.text, statement);
+      if (hasExportModifier(statement)) {
+        module.exportedFunctions.set(statement.name.text, statement);
       }
     }
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.initializer !== undefined &&
-      (ts.isArrowFunction(node.initializer) ||
-        ts.isFunctionExpression(node.initializer))
-    ) {
-      module.localFunctions.set(node.name.text, node.initializer);
-      const statement = node.parent?.parent;
-      if (
-        statement !== undefined &&
-        ts.isVariableStatement(statement) &&
-        hasExportModifier(statement)
-      ) {
-        module.exportedFunctions.set(node.name.text, node.initializer);
+    if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (
+          ts.isIdentifier(declaration.name) &&
+          declaration.initializer !== undefined &&
+          (ts.isArrowFunction(declaration.initializer) ||
+            ts.isFunctionExpression(declaration.initializer))
+        ) {
+          module.localFunctions.set(
+            declaration.name.text,
+            declaration.initializer,
+          );
+          if (hasExportModifier(statement)) {
+            module.exportedFunctions.set(
+              declaration.name.text,
+              declaration.initializer,
+            );
+          }
+        }
       }
     }
-    ts.forEachChild(node, collectFunctions);
-  };
-  collectFunctions(sourceFile);
+  }
 
   return module;
 }
@@ -816,17 +848,42 @@ function collectComponentCallsOnPath(
   reached: Set<string>,
   depth: number,
   visiting: Set<ts.Node>,
+  intervalViolations?: string[],
 ): void {
   if (depth > 4 || visiting.has(root)) return;
   visiting.add(root);
 
   const visit = (node: ts.Node) => {
+    // The task requires the caller's interval to be passed through
+    // UNCHANGED: any arithmetic over an `interval` binding on the heartbeat
+    // call path (including at helper call sites) scales the component's
+    // timeout and is rejected. Comparisons are fine.
+    if (
+      intervalViolations !== undefined &&
+      ts.isBinaryExpression(node) &&
+      ["*", "/", "+", "-", "%"].includes(node.operatorToken.getText()) &&
+      /\binterval\b/.test(node.getText())
+    ) {
+      intervalViolations.push(
+        module.path + ": arithmetic over interval (" + node.getText() + ")",
+      );
+    }
     if (ts.isCallExpression(node)) {
       if (ts.isPropertyAccessExpression(node.expression)) {
         const method = node.expression.name.text;
         const receiver = node.expression.expression;
         if (isPresenceInstanceExpression(module, modulesByPath, receiver)) {
           reached.add(method);
+          if (
+            intervalViolations !== undefined &&
+            method === "heartbeat" &&
+            !isPassedThroughInterval(module, node.arguments[4])
+          ) {
+            intervalViolations.push(
+              module.path +
+                ": the component heartbeat's interval argument must be the caller's interval binding, unmodified",
+            );
+          }
         }
         if (
           ["runQuery", "runMutation", "runAction"].includes(method) &&
@@ -835,6 +892,16 @@ function collectComponentCallsOnPath(
           const segments = componentsChainSegments(module, node.arguments[0]);
           if (segments !== undefined && segments.length > 0) {
             reached.add(segments[segments.length - 1]);
+            if (
+              intervalViolations !== undefined &&
+              segments[segments.length - 1] === "heartbeat" &&
+              !isPassedThroughIntervalProperty(module, node.arguments[1])
+            ) {
+              intervalViolations.push(
+                module.path +
+                  ": the direct component heartbeat call must forward the caller's interval binding, unmodified",
+              );
+            }
           }
         }
         // Helper invoked through a namespace import: ns.helper(...).
@@ -853,6 +920,7 @@ function collectComponentCallsOnPath(
               reached,
               depth + 1,
               visiting,
+              intervalViolations,
             );
           }
         }
@@ -867,6 +935,7 @@ function collectComponentCallsOnPath(
             reached,
             depth + 1,
             visiting,
+            intervalViolations,
           );
         } else {
           const imported = module.namedImports.get(name);
@@ -885,6 +954,7 @@ function collectComponentCallsOnPath(
               reached,
               depth + 1,
               visiting,
+              intervalViolations,
             );
           }
         }
@@ -894,6 +964,54 @@ function collectComponentCallsOnPath(
   };
   visit(root);
   visiting.delete(root);
+}
+
+/**
+ * The interval handed to the component must be the caller's binding,
+ * unmodified: a bare identifier that resolves to a parameter binding (const
+ * re-aliases are resolved first) or a property access ending in `.interval`.
+ * Literals and computed expressions (e.g. `interval * 2`, `2000`) fail.
+ */
+function isPassedThroughInterval(
+  module: SourceModule,
+  argument: ts.Expression | undefined,
+): boolean {
+  if (argument === undefined) return false;
+  const resolved = resolveExpression(argument, module.declarations);
+  if (ts.isIdentifier(resolved)) return true;
+  return (
+    ts.isPropertyAccessExpression(resolved) && resolved.name.text === "interval"
+  );
+}
+
+/** Same rule for the direct-call form's args object: `{ ..., interval }`. */
+function isPassedThroughIntervalProperty(
+  module: SourceModule,
+  argument: ts.Expression | undefined,
+): boolean {
+  if (argument === undefined) return false;
+  const resolved = resolveExpression(argument, module.declarations);
+  if (!ts.isObjectLiteralExpression(resolved)) return false;
+  for (const property of resolved.properties) {
+    if (
+      ts.isShorthandPropertyAssignment(property) &&
+      property.name.text === "interval"
+    ) {
+      return true;
+    }
+    if (
+      ts.isPropertyAssignment(property) &&
+      (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) &&
+      property.name.text === "interval"
+    ) {
+      return isPassedThroughInterval(module, property.initializer);
+    }
+    if (ts.isSpreadAssignment(property)) {
+      // A spread of the whole args object forwards interval untouched.
+      return true;
+    }
+  }
+  return false;
 }
 
 function hasPresenceMount(sourceText: string): boolean {

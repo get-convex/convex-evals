@@ -211,7 +211,17 @@ function analyze(): Analysis {
                 )
             : undefined,
       });
-      if (reached.size > 0) {
+      // Selection tolerance: models that CHOSE the component but hallucinated
+      // its method names (no API docs in a selection task) must still pass,
+      // so mutation endpoints count ANY presence interaction on their call
+      // path. The read endpoint is held to more: its RESULT must flow from a
+      // component call - an ignored decorative presence call followed by
+      // returning hand-rolled rows does not count. Correct wiring is the
+      // usage eval's job (018).
+      const listReturnsFromComponent =
+        endpointName !== LIST_ENDPOINT ||
+        handlerReturnsComponentData(module, modulesByPath, handler);
+      if (reached.size > 0 && listReturnsFromComponent) {
         endpointTouchesComponent[endpointName] = true;
       }
       wallClockOnReadPath.push(...wallClock);
@@ -396,37 +406,42 @@ function createSourceModule(
     }
   }
 
-  const collectFunctions = (node: ts.Node) => {
+  // Only MODULE-SCOPE functions are name-addressable from other functions;
+  // collecting nested closures into a flat map could misattribute a
+  // mutation-local helper to a query's call path under name collisions.
+  for (const statement of sourceFile.statements) {
     if (
-      ts.isFunctionDeclaration(node) &&
-      node.name !== undefined &&
-      node.body !== undefined
+      ts.isFunctionDeclaration(statement) &&
+      statement.name !== undefined &&
+      statement.body !== undefined
     ) {
-      module.localFunctions.set(node.name.text, node);
-      if (hasExportModifier(node)) {
-        module.exportedFunctions.set(node.name.text, node);
+      module.localFunctions.set(statement.name.text, statement);
+      if (hasExportModifier(statement)) {
+        module.exportedFunctions.set(statement.name.text, statement);
       }
     }
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.initializer !== undefined &&
-      (ts.isArrowFunction(node.initializer) ||
-        ts.isFunctionExpression(node.initializer))
-    ) {
-      module.localFunctions.set(node.name.text, node.initializer);
-      const statement = node.parent?.parent;
-      if (
-        statement !== undefined &&
-        ts.isVariableStatement(statement) &&
-        hasExportModifier(statement)
-      ) {
-        module.exportedFunctions.set(node.name.text, node.initializer);
+    if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (
+          ts.isIdentifier(declaration.name) &&
+          declaration.initializer !== undefined &&
+          (ts.isArrowFunction(declaration.initializer) ||
+            ts.isFunctionExpression(declaration.initializer))
+        ) {
+          module.localFunctions.set(
+            declaration.name.text,
+            declaration.initializer,
+          );
+          if (hasExportModifier(statement)) {
+            module.exportedFunctions.set(
+              declaration.name.text,
+              declaration.initializer,
+            );
+          }
+        }
       }
     }
-    ts.forEachChild(node, collectFunctions);
-  };
-  collectFunctions(sourceFile);
+  }
 
   return module;
 }
@@ -661,8 +676,7 @@ function walkCallPath(
     if (
       callbacks.onWallClock !== undefined &&
       ts.isNewExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      node.expression.text === "Date" &&
+      isDateGlobalExpression(module, node.expression) &&
       (node.arguments === undefined || node.arguments.length === 0)
     ) {
       // Only a ZERO-argument new Date() reads the wall clock;
@@ -670,17 +684,15 @@ function walkCallPath(
       callbacks.onWallClock("new Date()", module.path);
     }
     if (ts.isCallExpression(node)) {
+      if (
+        callbacks.onWallClock !== undefined &&
+        isDateNowExpression(module, node.expression)
+      ) {
+        callbacks.onWallClock("Date.now()", module.path);
+      }
       if (ts.isPropertyAccessExpression(node.expression)) {
         const method = node.expression.name.text;
         const receiver = node.expression.expression;
-        if (
-          callbacks.onWallClock !== undefined &&
-          method === "now" &&
-          ts.isIdentifier(receiver) &&
-          receiver.text === "Date"
-        ) {
-          callbacks.onWallClock("Date.now()", module.path);
-        }
         if (isPresenceInstanceExpression(module, modulesByPath, receiver)) {
           callbacks.onComponentCall(method);
         }
@@ -749,6 +761,219 @@ function walkCallPath(
   };
   visit(root);
   visiting.delete(root);
+}
+
+/**
+ * The read endpoint's RESULT must come from the component: at least one
+ * returned expression must be (or chain off / alias) a presence-component
+ * call, directly or through a returned helper. Any component method name
+ * counts (selection tasks carry no API docs, so hallucinated names are
+ * tolerated); what matters is that the returned data originates in the
+ * component rather than hand-rolled tables.
+ */
+function handlerReturnsComponentData(
+  module: SourceModule,
+  modulesByPath: Map<string, SourceModule>,
+  handler: ts.Node,
+  depth = 0,
+  visiting: Set<ts.Node> = new Set(),
+): boolean {
+  if (depth > 4 || visiting.has(handler)) return false;
+  visiting.add(handler);
+  try {
+    const returned = returnedExpressions(handler);
+    return returned.some((expression) =>
+      expressionFlowsFromComponent(
+        module,
+        modulesByPath,
+        expression,
+        depth,
+        visiting,
+      ),
+    );
+  } finally {
+    visiting.delete(handler);
+  }
+}
+
+function expressionFlowsFromComponent(
+  module: SourceModule,
+  modulesByPath: Map<string, SourceModule>,
+  expression: ts.Expression,
+  depth: number,
+  visiting: Set<ts.Node>,
+): boolean {
+  // Unwind chained transforms (entries.map(...).filter(...)) and aliases
+  // down to the root expression.
+  let current = resolveExpression(expression, module.declarations);
+  for (let i = 0; i < 20; i++) {
+    if (ts.isCallExpression(current)) {
+      if (ts.isPropertyAccessExpression(current.expression)) {
+        const method = current.expression.name.text;
+        const receiver = current.expression.expression;
+        // A call on a Presence instance, with any method name.
+        if (isPresenceInstanceExpression(module, modulesByPath, receiver)) {
+          return true;
+        }
+        // A direct run* call whose reference is a components.* chain.
+        if (
+          ["runQuery", "runMutation", "runAction"].includes(method) &&
+          current.arguments.length >= 1 &&
+          componentsChainSegments(module, current.arguments[0]) !== undefined
+        ) {
+          return true;
+        }
+        // ns.helper(...) whose own return flows from the component.
+        if (ts.isIdentifier(receiver)) {
+          const targetPath = module.namespaceImports.get(receiver.text);
+          const target =
+            targetPath === undefined
+              ? undefined
+              : modulesByPath.get(targetPath);
+          const helper = target?.exportedFunctions.get(method);
+          if (
+            target !== undefined &&
+            helper !== undefined &&
+            handlerReturnsComponentData(
+              target,
+              modulesByPath,
+              helper,
+              depth + 1,
+              visiting,
+            )
+          ) {
+            return true;
+          }
+        }
+        // Otherwise keep unwinding the method chain toward its root.
+        current = resolveExpression(
+          current.expression.expression,
+          module.declarations,
+        );
+        continue;
+      }
+      if (ts.isIdentifier(current.expression)) {
+        const name = current.expression.text;
+        const local = module.localFunctions.get(name);
+        if (local !== undefined) {
+          return handlerReturnsComponentData(
+            module,
+            modulesByPath,
+            local,
+            depth + 1,
+            visiting,
+          );
+        }
+        const imported = module.namedImports.get(name);
+        const target =
+          imported === undefined
+            ? undefined
+            : modulesByPath.get(imported.targetPath);
+        const helper = target?.exportedFunctions.get(
+          imported?.exportedName ?? "",
+        );
+        if (target !== undefined && helper !== undefined) {
+          return handlerReturnsComponentData(
+            target,
+            modulesByPath,
+            helper,
+            depth + 1,
+            visiting,
+          );
+        }
+      }
+      return false;
+    }
+    return false;
+  }
+  return false;
+}
+
+/** Collect a function's returned expressions (conditional branches split). */
+function returnedExpressions(handler: ts.Node): ts.Expression[] {
+  const body =
+    (ts.isArrowFunction(handler) ||
+      ts.isFunctionExpression(handler) ||
+      ts.isFunctionDeclaration(handler) ||
+      ts.isMethodDeclaration(handler)) &&
+    handler.body !== undefined
+      ? handler.body
+      : handler;
+  const expressions: ts.Expression[] = [];
+  const push = (expression: ts.Expression) => {
+    let resolved = expression;
+    while (
+      ts.isParenthesizedExpression(resolved) ||
+      ts.isAsExpression(resolved) ||
+      ts.isSatisfiesExpression(resolved) ||
+      ts.isNonNullExpression(resolved) ||
+      ts.isAwaitExpression(resolved)
+    ) {
+      resolved = resolved.expression;
+    }
+    if (ts.isConditionalExpression(resolved)) {
+      push(resolved.whenTrue);
+      push(resolved.whenFalse);
+    } else {
+      expressions.push(resolved);
+    }
+  };
+  if (ts.isBlock(body)) {
+    const visit = (node: ts.Node) => {
+      if (node !== body && ts.isFunctionLike(node)) return;
+      if (ts.isReturnStatement(node) && node.expression !== undefined) {
+        push(node.expression);
+        return;
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(body);
+  } else if (!ts.isBlock(body)) {
+    push(body as ts.Expression);
+  }
+  return expressions;
+}
+
+/**
+ * Recognize the Date global behind common spellings: `Date`,
+ * `globalThis.Date` / `self.Date` / `window.Date`, and const aliases.
+ */
+function isDateGlobalExpression(
+  module: SourceModule,
+  expression: ts.Expression,
+): boolean {
+  const resolved = resolveExpression(expression, module.declarations);
+  if (ts.isIdentifier(resolved) && resolved.text === "Date") return true;
+  return (
+    ts.isPropertyAccessExpression(resolved) &&
+    resolved.name.text === "Date" &&
+    ts.isIdentifier(resolved.expression) &&
+    ["globalThis", "self", "window"].includes(resolved.expression.text)
+  );
+}
+
+/**
+ * Recognize a wall-clock read callee: `Date.now`, `Date["now"]`,
+ * `globalThis.Date.now`, or a const alias of any of them.
+ */
+function isDateNowExpression(
+  module: SourceModule,
+  callee: ts.Expression,
+): boolean {
+  const resolved = resolveExpression(callee, module.declarations);
+  if (
+    ts.isPropertyAccessExpression(resolved) &&
+    resolved.name.text === "now" &&
+    isDateGlobalExpression(module, resolved.expression)
+  ) {
+    return true;
+  }
+  return (
+    ts.isElementAccessExpression(resolved) &&
+    ts.isStringLiteralLike(resolved.argumentExpression) &&
+    resolved.argumentExpression.text === "now" &&
+    isDateGlobalExpression(module, resolved.expression)
+  );
 }
 
 // ── Shared AST helpers ────────────────────────────────────────────────
