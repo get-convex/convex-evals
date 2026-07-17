@@ -173,6 +173,68 @@ interface Tsconfig {
  * lists `node`, or installs vitest — which brings vite — and lists `vite/client`) still
  * resolve and are kept. Runs after install, before tsc. Returns the removed entries.
  */
+/**
+ * Normalize module resolution in model-authored tsconfigs. Convex projects
+ * require Bundler-style resolution to see package `exports` (the deploy
+ * path always resolves them via esbuild); models often emit legacy
+ * `moduleResolution: "node"` boilerplate, which fails tsc for reasons
+ * orthogonal to every eval's concept. Returns a description of each change.
+ */
+export function normalizeModelTsconfigResolution(projectDir: string): string[] {
+  const adjusted: string[] = [];
+  const tsconfigPaths = [
+    resolve(join(projectDir, "tsconfig.json")),
+    resolve(join(projectDir, "convex", "tsconfig.json")),
+  ];
+
+  for (const tsconfigPath of tsconfigPaths) {
+    if (!existsSync(tsconfigPath)) continue;
+
+    let parsed: Tsconfig;
+    try {
+      parsed = JSON.parse(readFileSync(tsconfigPath, "utf-8")) as Tsconfig;
+    } catch {
+      continue; // Non-strict JSON - leave untouched.
+    }
+    if (parsed.compilerOptions === undefined) {
+      (parsed as Record<string, unknown>).compilerOptions = {};
+    }
+    const compilerOptions = parsed.compilerOptions as Record<string, unknown>;
+
+    let changed = false;
+    const moduleResolution = compilerOptions.moduleResolution;
+    const resolutionIsModern =
+      typeof moduleResolution === "string" &&
+      ["bundler", "node16", "nodenext"].includes(moduleResolution.toLowerCase());
+    if (!resolutionIsModern) {
+      // Absent counts too: tsc then defaults to legacy node resolution.
+      adjusted.push(
+        `${tsconfigPath}: moduleResolution ${typeof moduleResolution === "string" ? moduleResolution : "(absent)"} -> Bundler`,
+      );
+      compilerOptions.moduleResolution = "Bundler";
+      changed = true;
+    }
+    const moduleKind = compilerOptions.module;
+    const moduleSupportsBundler =
+      typeof moduleKind === "string" &&
+      (moduleKind.toLowerCase() === "preserve" ||
+        moduleKind.toLowerCase().startsWith("es"));
+    if (compilerOptions.moduleResolution === "Bundler" && !moduleSupportsBundler) {
+      adjusted.push(
+        `${tsconfigPath}: module ${typeof moduleKind === "string" ? moduleKind : "(absent)"} -> ESNext`,
+      );
+      compilerOptions.module = "ESNext";
+      changed = true;
+    }
+    if (changed) {
+      writeFileSync(tsconfigPath, `${JSON.stringify(parsed, null, 2)}
+`, "utf-8");
+    }
+  }
+
+  return adjusted;
+}
+
 export function sanitizeModelTsconfigTypes(projectDir: string): string[] {
   const nodeModules = resolve(join(projectDir, "node_modules"));
   const removed: string[] = [];
@@ -458,6 +520,12 @@ export async function convexScorer(
     return ctx.scores;
   }
 
+  // ── Static-pipeline evals: grade the raw files and stop ──
+  if (isStaticPipelineEval(category, name)) {
+    await runStaticTestsStep(ctx, category, name);
+    return ctx.scores;
+  }
+
   // ── Step 2: Install dependencies ──
   const installResult = await ctx.runStep(
     "install",
@@ -513,6 +581,13 @@ export async function convexScorer(
         `[setup] dropped unresolvable tsconfig types: ${removedTypes.join(", ")}`,
       );
     }
+    const resolutionChanges = normalizeModelTsconfigResolution(outputProjectDir);
+    if (resolutionChanges.length > 0) {
+      appendLog(
+        ctx.runLogPath,
+        `[setup] normalized tsconfig resolution: ${resolutionChanges.join(", ")}`,
+      );
+    }
     const tscResult = await ctx.runStep(
       "tsc",
       "Passes tsc",
@@ -545,6 +620,106 @@ export async function convexScorer(
 }
 
 // ── Test step (more complex than the others) ──────────────────────────
+
+/**
+ * Evals may opt out of the deploy/typecheck pipeline by shipping an
+ * eval.json with { "pipeline": "static" }. The grader then runs directly
+ * against the generated files - used by selection evals that measure what
+ * a model CHOSE, deliberately tolerant of syntax and stale-API errors.
+ */
+export function isStaticPipelineEval(category: string, name: string): boolean {
+  const configPath = resolve(join("evals", category, name, "eval.json"));
+  if (!existsSync(configPath)) return false;
+  try {
+    const parsed = JSON.parse(readFileSync(configPath, "utf-8")) as {
+      pipeline?: string;
+    };
+    return parsed.pipeline === "static";
+  } catch {
+    return false;
+  }
+}
+
+async function runStaticTestsStep(
+  ctx: ScoringContext,
+  category: string,
+  name: string,
+): Promise<void> {
+  const testFile = resolve(join("evals", category, name, "grader.test.ts"));
+  const env: Record<string, string> = {
+    ...(process.env as Record<string, string>),
+    MODEL_OUTPUT_DIR: ctx.outputProjectDir,
+  };
+  const stepStart = Date.now();
+  let testsRatio = 0;
+  let vitestStdout: string | null = null;
+  let testCmd: string | null = null;
+
+  try {
+    logInfo(`[${ctx.evalPrefix}] Running static grader`);
+    const testResult = await executeVitest(env, testFile);
+    testsRatio = testResult.ratio;
+    vitestStdout = testResult.stdout;
+    testCmd = testResult.cmd;
+    ctx.scores.push({ name: "Tests pass", score: testsRatio });
+    const elapsed = ((Date.now() - stepStart) / 1000).toFixed(1);
+    if (testsRatio === 1) {
+      logInfo(`[${ctx.evalPrefix}] tests: PASS (${elapsed}s)`);
+      if (ctx.evalId) {
+        void recordStep(ctx.evalId, "tests", {
+          kind: "passed",
+          durationMs: Date.now() - stepStart,
+        });
+      }
+    } else {
+      const pct = (testsRatio * 100).toFixed(0);
+      logInfo(`[${ctx.evalPrefix}] tests: FAIL (${pct}% passed, ${elapsed}s)`);
+      if (ctx.evalId) {
+        void recordStep(ctx.evalId, "tests", {
+          kind: "failed",
+          failureReason: `tests failed (${pct}%)`,
+          durationMs: Date.now() - stepStart,
+        });
+      }
+    }
+  } catch (e) {
+    if (e instanceof TestsFailedError) {
+      testsRatio = e.ratio;
+      vitestStdout = e.vitestStdout;
+      testCmd = e.testCmd;
+      ctx.scores.push({ name: "Tests pass", score: e.ratio });
+      const pct = (e.ratio * 100).toFixed(0);
+      const elapsed = ((Date.now() - stepStart) / 1000).toFixed(1);
+      logInfo(`[${ctx.evalPrefix}] tests: FAIL (${pct}% passed, ${elapsed}s)`);
+      if (ctx.evalId) {
+        void recordStep(ctx.evalId, "tests", {
+          kind: "failed",
+          failureReason: `tests failed (${pct}%)`,
+          durationMs: Date.now() - stepStart,
+        });
+      }
+    } else {
+      ctx.scores.push({ name: "Tests pass", score: 0 });
+      logInfo(
+        `[${ctx.evalPrefix}] tests: FAIL (error: ${String(e).slice(0, 100)})`,
+      );
+      if (ctx.evalId) {
+        void recordStep(ctx.evalId, "tests", {
+          kind: "failed",
+          failureReason: String(e),
+          durationMs: Date.now() - stepStart,
+        });
+      }
+    }
+    appendLog(ctx.runLogPath, `[error] vitest: ${String(e)}`);
+  }
+
+  if (testCmd && vitestStdout) {
+    logVitestResults(ctx.runLogPath, testCmd, vitestStdout);
+  }
+
+  await ctx.reportCompletion(testsRatio);
+}
 
 async function runTestsStep(
   ctx: ScoringContext,
@@ -933,6 +1108,13 @@ async function runTests(
     CONVEX_ANSWER_PORT: String(answerBackend.port),
     MODEL_OUTPUT_DIR: outputProjectDir,
   };
+  return executeVitest(env, testFile);
+}
+
+async function executeVitest(
+  env: Record<string, string>,
+  testFile: string,
+): Promise<{ ratio: number; stdout: string; cmd: string }> {
 
   const tmpJsonPath = join(
     tmpdir(),
