@@ -822,6 +822,47 @@ function analyze(): Analysis {
     return /action/i.test(factoryName);
   };
 
+  /**
+   * The enqueued action must actually perform the sync work - a bounded,
+   * retried NO-OP action would pass every wiring test while every export
+   * stays pending. Form-agnostic: the sync action's essence is the
+   * external call (fetch) and/or recording the outcome (ctx.run* /
+   * database writes), any of which counts.
+   */
+  const referencedFunctionDoesSyncWork = (
+    module: ModuleInfo,
+    expression: ts.Expression | undefined,
+  ): boolean => {
+    if (expression === undefined) return false;
+    const target = resolveFunctionReference(modules, module, expression);
+    if (target === undefined) return false;
+    const declaration = findExportedDeclaration(
+      target.module,
+      target.exportName,
+    );
+    if (declaration === undefined) return false;
+    let doesWork = false;
+    walkCalls(modules, target.module, declaration, (call) => {
+      const callee = unwrap(call.expression);
+      if (ts.isIdentifier(callee) && callee.text === "fetch") {
+        doesWork = true;
+      }
+      if (ts.isPropertyAccessExpression(callee)) {
+        const name = callee.name.text;
+        if (
+          name === "fetch" ||
+          DB_WRITE_METHODS.has(name) ||
+          name === "runMutation" ||
+          name === "runAction" ||
+          name === "runQuery"
+        ) {
+          doesWork = true;
+        }
+      }
+    });
+    return doesWork;
+  };
+
   const entry = findHandler(modules, "createOrderExport");
   if (entry !== undefined) {
     walkCalls(modules, entry.module, entry.handler, (call, module) => {
@@ -857,6 +898,9 @@ function analyze(): Analysis {
           !isActionMethod &&
           !referencesActionFunction(module, call.arguments[1])
         ) {
+          return;
+        }
+        if (!referencedFunctionDoesSyncWork(module, call.arguments[1])) {
           return;
         }
         enqueuesSyncAsAction = true;
@@ -913,10 +957,13 @@ function analyze(): Analysis {
             boundsParallelism = true;
           }
         }
+        const handle = options.get("fnHandle");
         if (
           fnType !== undefined &&
           resolveStringLiteral(modules, fnType.module, fnType.expression) ===
-            "action"
+            "action" &&
+          handle !== undefined &&
+          referencedFunctionDoesSyncWork(handle.module, handle.expression)
         ) {
           enqueuesSyncAsAction = true;
           if (options.has("retryBehavior")) retriesConfigured = true;

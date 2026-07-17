@@ -838,9 +838,32 @@ function analyze(): Analysis {
 
   const entry = findHandler(modules, "recordEvent");
   if (entry !== undefined) {
+    // The classic id-first write forms (ctx.db.patch(doc._id, ...)) carry
+    // no table string, but the hot document's id can only come from
+    // querying `statistics` on the same path: a query of the hot table
+    // combined with ANY id-first write is a synchronous hot-doc update.
+    let queriesStatisticsOnPath = false;
+    let classicWriteOnPath = false;
     walkCalls(modules, entry.module, entry.handler, (call, module) => {
       if (isTableWrite(modules, module, call, "statistics")) {
         statisticsWriteOnRecordEventPath = true;
+      }
+      if (
+        ts.isPropertyAccessExpression(call.expression) &&
+        call.expression.name.text === "query" &&
+        call.arguments[0] !== undefined &&
+        resolveStringLiteral(modules, module, call.arguments[0]) ===
+          "statistics"
+      ) {
+        queriesStatisticsOnPath = true;
+      }
+      if (
+        ts.isPropertyAccessExpression(call.expression) &&
+        ["patch", "replace", "delete"].includes(call.expression.name.text) &&
+        call.arguments[0] !== undefined &&
+        resolveStringLiteral(modules, module, call.arguments[0]) === undefined
+      ) {
+        classicWriteOnPath = true;
       }
       if (!ts.isPropertyAccessExpression(call.expression)) return;
       const method = call.expression.name.text;
@@ -923,6 +946,9 @@ function analyze(): Analysis {
         }
       }
     });
+    if (queriesStatisticsOnPath && classicWriteOnPath) {
+      statisticsWriteOnRecordEventPath = true;
+    }
   }
 
   return {
