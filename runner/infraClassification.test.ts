@@ -24,3 +24,50 @@ describe("isInfrastructureStepFailure", () => {
     );
   });
 });
+
+import { mkdtempSync, writeFileSync as wf, readFileSync as rf } from "node:fs";
+import { tmpdir } from "node:os";
+import { join as pjoin } from "node:path";
+import { normalizeModelTsconfigResolution } from "./scorer";
+
+describe("normalizeModelTsconfigResolution", () => {
+  test("rewrites legacy node resolution to Bundler and commonjs to ESNext", () => {
+    const dir = mkdtempSync(pjoin(tmpdir(), "tsconfig-norm-"));
+    wf(
+      pjoin(dir, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: { module: "commonjs", moduleResolution: "node" },
+      }),
+    );
+    const changes = normalizeModelTsconfigResolution(dir);
+    expect(changes).toHaveLength(2);
+    const parsed = JSON.parse(rf(pjoin(dir, "tsconfig.json"), "utf-8")) as {
+      compilerOptions: { moduleResolution: string; module: string };
+    };
+    expect(parsed.compilerOptions.moduleResolution).toBe("Bundler");
+    expect(parsed.compilerOptions.module).toBe("ESNext");
+  });
+
+  test("normalizes configs that omit resolution fields entirely", () => {
+    const dir = mkdtempSync(pjoin(tmpdir(), "tsconfig-norm-"));
+    wf(pjoin(dir, "tsconfig.json"), JSON.stringify({ compilerOptions: { strict: true } }));
+    const changes = normalizeModelTsconfigResolution(dir);
+    expect(changes).toHaveLength(2);
+    const parsed = JSON.parse(rf(pjoin(dir, "tsconfig.json"), "utf-8")) as {
+      compilerOptions: { moduleResolution: string; module: string };
+    };
+    expect(parsed.compilerOptions.moduleResolution).toBe("Bundler");
+    expect(parsed.compilerOptions.module).toBe("ESNext");
+  });
+
+  test("leaves modern configs untouched", () => {
+    const dir = mkdtempSync(pjoin(tmpdir(), "tsconfig-norm-"));
+    wf(
+      pjoin(dir, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: { module: "ESNext", moduleResolution: "Bundler" },
+      }),
+    );
+    expect(normalizeModelTsconfigResolution(dir)).toHaveLength(0);
+  });
+});

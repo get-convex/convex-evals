@@ -173,6 +173,68 @@ interface Tsconfig {
  * lists `node`, or installs vitest — which brings vite — and lists `vite/client`) still
  * resolve and are kept. Runs after install, before tsc. Returns the removed entries.
  */
+/**
+ * Normalize module resolution in model-authored tsconfigs. Convex projects
+ * require Bundler-style resolution to see package `exports` (the deploy
+ * path always resolves them via esbuild); models often emit legacy
+ * `moduleResolution: "node"` boilerplate, which fails tsc for reasons
+ * orthogonal to every eval's concept. Returns a description of each change.
+ */
+export function normalizeModelTsconfigResolution(projectDir: string): string[] {
+  const adjusted: string[] = [];
+  const tsconfigPaths = [
+    resolve(join(projectDir, "tsconfig.json")),
+    resolve(join(projectDir, "convex", "tsconfig.json")),
+  ];
+
+  for (const tsconfigPath of tsconfigPaths) {
+    if (!existsSync(tsconfigPath)) continue;
+
+    let parsed: Tsconfig;
+    try {
+      parsed = JSON.parse(readFileSync(tsconfigPath, "utf-8")) as Tsconfig;
+    } catch {
+      continue; // Non-strict JSON - leave untouched.
+    }
+    const compilerOptions = parsed.compilerOptions as
+      | Record<string, unknown>
+      | undefined;
+    if (compilerOptions === undefined) continue;
+
+    let changed = false;
+    const moduleResolution = compilerOptions.moduleResolution;
+    const resolutionIsModern =
+      typeof moduleResolution === "string" &&
+      ["bundler", "node16", "nodenext"].includes(moduleResolution.toLowerCase());
+    if (!resolutionIsModern) {
+      // Absent counts too: tsc then defaults to legacy node resolution.
+      adjusted.push(
+        `${tsconfigPath}: moduleResolution ${String(moduleResolution ?? "(absent)")} -> Bundler`,
+      );
+      compilerOptions.moduleResolution = "Bundler";
+      changed = true;
+    }
+    const moduleKind = compilerOptions.module;
+    const moduleSupportsBundler =
+      typeof moduleKind === "string" &&
+      (moduleKind.toLowerCase() === "preserve" ||
+        moduleKind.toLowerCase().startsWith("es"));
+    if (compilerOptions.moduleResolution === "Bundler" && !moduleSupportsBundler) {
+      adjusted.push(
+        `${tsconfigPath}: module ${String(moduleKind ?? "(absent)")} -> ESNext`,
+      );
+      compilerOptions.module = "ESNext";
+      changed = true;
+    }
+    if (changed) {
+      writeFileSync(tsconfigPath, `${JSON.stringify(parsed, null, 2)}
+`, "utf-8");
+    }
+  }
+
+  return adjusted;
+}
+
 export function sanitizeModelTsconfigTypes(projectDir: string): string[] {
   const nodeModules = resolve(join(projectDir, "node_modules"));
   const removed: string[] = [];
@@ -511,6 +573,13 @@ export async function convexScorer(
       appendLog(
         ctx.runLogPath,
         `[setup] dropped unresolvable tsconfig types: ${removedTypes.join(", ")}`,
+      );
+    }
+    const resolutionChanges = normalizeModelTsconfigResolution(outputProjectDir);
+    if (resolutionChanges.length > 0) {
+      appendLog(
+        ctx.runLogPath,
+        `[setup] normalized tsconfig resolution: ${resolutionChanges.join(", ")}`,
       );
     }
     const tscResult = await ctx.runStep(

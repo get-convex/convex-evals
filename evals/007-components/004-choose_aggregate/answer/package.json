@@ -1,0 +1,8 @@
+{
+  "name": "convexbot",
+  "version": "1.0.0",
+  "dependencies": {
+    "convex": "1.41.0",
+    "@convex-dev/aggregate": "0.2.2"
+  }
+}
