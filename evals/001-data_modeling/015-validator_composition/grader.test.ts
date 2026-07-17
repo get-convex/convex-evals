@@ -39,11 +39,24 @@ test("getArticle declares the extended response validator", async () => {
   expect(entry, "getArticle must exist in convex/index.ts").toBeDefined();
   let returns = entry!.returns;
   if (typeof returns === "string") returns = JSON.parse(returns);
-  const value = (returns as { value?: Record<string, unknown> })?.value ?? {};
+  const field = (fieldType: Record<string, unknown>) => ({
+    fieldType,
+    optional: false,
+  });
   expect(
-    Object.keys(value).sort(),
-    "the return validator must be the full document extended with excerpt",
-  ).toEqual(["_creationTime", "_id", "body", "excerpt", "slug", "title"]);
+    returns,
+    "the return validator must be the full document extended with excerpt: string",
+  ).toEqual({
+    type: "object",
+    value: {
+      _id: field({ type: "id", tableName: "articles" }),
+      _creationTime: field({ type: "number" }),
+      title: field({ type: "string" }),
+      body: field({ type: "string" }),
+      slug: field({ type: "string" }),
+      excerpt: field({ type: "string" }),
+    },
+  });
 });
 
 test("create, update, and get behave with derived shapes", async () => {
