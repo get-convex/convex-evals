@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { afterAll, beforeAll, beforeEach, expect, test } from "vitest";
 import {
   responseAdminClient,
   responseClient,
@@ -8,10 +8,23 @@ import {
 } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
 import { createAIGraderTest } from "../../../grader/aiGrader";
+import {
+  type HttpFixture,
+  startHttpFixture,
+} from "../../../grader/httpFixture";
 
 createAIGraderTest(import.meta.url);
-import { beforeEach } from "vitest";
 import { Doc } from "./answer/convex/_generated/dataModel";
+
+let fixture: HttpFixture;
+
+beforeAll(async () => {
+  fixture = await startHttpFixture();
+});
+
+afterAll(async () => {
+  await fixture.close();
+});
 
 beforeEach(async () => {
   await deleteAllDocuments(responseAdminClient, ["fetchRequests"]);
@@ -22,7 +35,7 @@ test("compare schema", async ({ skip }) => {
 });
 
 test("fetchIfNeeded caches new requests", async () => {
-  const testUrl = "https://httpbin.org/json";
+  const testUrl = `${fixture.baseUrl}/json`;
 
   // First request should fetch and cache
   const id1 = await responseClient.action(api.index.fetchIfNeeded, {
@@ -42,7 +55,7 @@ test("fetchIfNeeded caches new requests", async () => {
 });
 
 test("fetchIfNeeded reuses cached results", async () => {
-  const testUrl = "https://httpbin.org/json";
+  const testUrl = `${fixture.baseUrl}/json`;
 
   // Make two requests to the same URL
   const id1 = await responseClient.action(api.index.fetchIfNeeded, {
@@ -61,7 +74,7 @@ test("fetchIfNeeded reuses cached results", async () => {
 });
 
 test("fetchIfNeeded handles different URLs separately", async () => {
-  const urls = ["https://httpbin.org/json", "https://httpbin.org/get"];
+  const urls = [`${fixture.baseUrl}/json`, `${fixture.baseUrl}/get`];
 
   // Fetch both URLs
   const ids = await Promise.all(
@@ -89,7 +102,7 @@ test("fetchIfNeeded handles different URLs separately", async () => {
 });
 
 test("handles concurrent requests to same URL", async () => {
-  const testUrl = "https://httpbin.org/json";
+  const testUrl = `${fixture.baseUrl}/json`;
 
   // Make multiple concurrent requests
   const ids = await Promise.all([
@@ -107,7 +120,7 @@ test("handles concurrent requests to same URL", async () => {
 });
 
 test("handles invalid URLs appropriately", async () => {
-  const invalidUrl = "https://invalid-url-that-does-not-exist.example.com";
+  const invalidUrl = `${fixture.baseUrl}/status/500`;
 
   await expect(
     responseClient.action(api.index.fetchIfNeeded, { url: invalidUrl }),
@@ -127,7 +140,7 @@ test("getFetchResult returns null when URL not cached", async () => {
 });
 
 test("saveFetchResult updates existing record for same URL", async () => {
-  const testUrl = "https://httpbin.org/json";
+  const testUrl = `${fixture.baseUrl}/json`;
   const firstData = { v: 1 } as const;
   const secondData = { v: 2 } as const;
 
@@ -158,7 +171,7 @@ test("saveFetchResult updates existing record for same URL", async () => {
 });
 
 test("getFetchResult returns ID when URL is cached", async () => {
-  const testUrl = "https://httpbin.org/get";
+  const testUrl = `${fixture.baseUrl}/get`;
 
   // Seed cache via action
   const createdId = await responseClient.action(api.index.fetchIfNeeded, {

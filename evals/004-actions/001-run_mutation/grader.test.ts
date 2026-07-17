@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { afterAll, beforeAll, beforeEach, expect, test } from "vitest";
 import {
   responseAdminClient,
   responseClient,
@@ -7,11 +7,24 @@ import {
   listTable,
 } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
-import { beforeEach } from "vitest";
 import { Doc } from "./answer/convex/_generated/dataModel";
 import { createAIGraderTest } from "../../../grader/aiGrader";
+import {
+  type HttpFixture,
+  startHttpFixture,
+} from "../../../grader/httpFixture";
 
 createAIGraderTest(import.meta.url);
+
+let fixture: HttpFixture;
+
+beforeAll(async () => {
+  fixture = await startHttpFixture();
+});
+
+afterAll(async () => {
+  await fixture.close();
+});
 
 beforeEach(async () => {
   await deleteAllDocuments(responseAdminClient, ["fetchResults"]);
@@ -22,7 +35,7 @@ test("compare schema", async ({ skip }) => {
 });
 
 test("saveFetchResult saves data correctly", async () => {
-  const testUrl = "https://httpbin.org/json";
+  const testUrl = `${fixture.baseUrl}/json`;
   const testData = { test: "data" };
 
   const id = await responseClient.mutation(api.index.saveFetchResult, {
@@ -43,7 +56,7 @@ test("saveFetchResult saves data correctly", async () => {
 });
 
 test("fetchAndSave fetches and saves external data", async () => {
-  const testUrl = "https://httpbin.org/json";
+  const testUrl = `${fixture.baseUrl}/json`;
 
   const id = await responseClient.action(api.index.fetchAndSave, {
     url: testUrl,
@@ -62,7 +75,7 @@ test("fetchAndSave fetches and saves external data", async () => {
 });
 
 test("fetchAndSave then saveFetchResult persists identical URL and data", async () => {
-  const testUrl = "https://httpbin.org/get";
+  const testUrl = `${fixture.baseUrl}/get`;
 
   const id = await responseClient.action(api.index.fetchAndSave, {
     url: testUrl,
@@ -80,7 +93,7 @@ test("fetchAndSave then saveFetchResult persists identical URL and data", async 
 });
 
 test("fetchAndSave handles different JSON responses", async () => {
-  const urls = ["https://httpbin.org/json", "https://httpbin.org/get"];
+  const urls = [`${fixture.baseUrl}/json`, `${fixture.baseUrl}/get`];
 
   const ids = await Promise.all(
     urls.map(
@@ -110,7 +123,7 @@ test("fetchAndSave handles different JSON responses", async () => {
 
 test("handles complex nested JSON data", async () => {
   const id = await responseClient.action(api.index.fetchAndSave, {
-    url: "https://httpbin.org/json",
+    url: `${fixture.baseUrl}/json`,
   });
 
   const results = (await listTable(
