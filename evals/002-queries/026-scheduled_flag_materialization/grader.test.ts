@@ -11,7 +11,7 @@ import {
 } from "../../../grader";
 import { anyApi, makeFunctionReference } from "convex/server";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import ts from "typescript";
 
 const CATEGORY = "002-queries";
@@ -292,7 +292,12 @@ test(
   },
 );
 
-function collectAuthoredSources(): ts.SourceFile[] {
+interface AuthoredFile {
+  path: string;
+  source: ts.SourceFile;
+}
+
+function collectAuthoredSources(): AuthoredFile[] {
   const convexDir = join(
     getLatestOutputProjectDir(CATEGORY, EVAL_NAME),
     "convex",
@@ -308,74 +313,181 @@ function collectAuthoredSources(): ts.SourceFile[] {
     }
   };
   walk(convexDir);
-  return files.map((file) =>
-    ts.createSourceFile(
+  return files.map((file) => ({
+    path: file,
+    source: ts.createSourceFile(
       file,
       readFileSync(file, "utf8"),
       ts.ScriptTarget.Latest,
       true,
       ts.ScriptKind.TS,
     ),
-  );
+  }));
+}
+
+interface ModuleInfo {
+  label: string;
+  source: ts.SourceFile;
+  /** Function-like declarations by local name ("default" for a default export). */
+  functions: Map<string, ts.Node>;
+  /** Named-import local name -> defining module path + exported name. */
+  imports: Map<string, { module: string; exportedName: string }>;
+  /** Namespace-import local name -> defining module path. */
+  namespaces: Map<string, string>;
+  /** Local names that register queries (query/internalQuery + aliases). */
+  queryBuilders: Set<string>;
+  /** Namespace-import names for _generated/server (ns.query style). */
+  builderNamespaces: Set<string>;
+}
+
+function resolveModulePath(fromFile: string, specifier: string): string | null {
+  if (!specifier.startsWith(".")) return null;
+  const base = join(dirname(fromFile), specifier);
+  return base.endsWith(".ts") ? base : `${base}.ts`;
+}
+
+function buildModuleInfo(file: AuthoredFile): ModuleInfo {
+  const info: ModuleInfo = {
+    label: basename(file.path),
+    source: file.source,
+    functions: new Map(),
+    imports: new Map(),
+    namespaces: new Map(),
+    queryBuilders: new Set(),
+    builderNamespaces: new Set(),
+  };
+
+  const isFunctionLike = (node: ts.Node | undefined): node is ts.Node =>
+    node !== undefined &&
+    (ts.isArrowFunction(node) || ts.isFunctionExpression(node));
+
+  const collect = (node: ts.Node) => {
+    if (
+      ts.isImportDeclaration(node) &&
+      ts.isStringLiteralLike(node.moduleSpecifier)
+    ) {
+      const specifier = node.moduleSpecifier.text;
+      const isGeneratedServer = specifier.includes("_generated/server");
+      const resolved = resolveModulePath(file.path, specifier);
+      const clause = node.importClause;
+      if (clause?.name !== undefined && resolved !== null) {
+        info.imports.set(clause.name.text, {
+          module: resolved,
+          exportedName: "default",
+        });
+      }
+      const bindings = clause?.namedBindings;
+      if (bindings !== undefined && ts.isNamedImports(bindings)) {
+        for (const element of bindings.elements) {
+          const imported = element.propertyName?.text ?? element.name.text;
+          if (
+            isGeneratedServer &&
+            (imported === "query" || imported === "internalQuery")
+          ) {
+            info.queryBuilders.add(element.name.text);
+          }
+          if (resolved !== null) {
+            info.imports.set(element.name.text, {
+              module: resolved,
+              exportedName: imported,
+            });
+          }
+        }
+      } else if (bindings !== undefined && ts.isNamespaceImport(bindings)) {
+        if (isGeneratedServer) info.builderNamespaces.add(bindings.name.text);
+        if (resolved !== null)
+          info.namespaces.set(bindings.name.text, resolved);
+      }
+    }
+    if (ts.isFunctionDeclaration(node) && node.name !== undefined) {
+      info.functions.set(node.name.text, node);
+      const modifiers = ts.getModifiers(node) ?? [];
+      if (modifiers.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword)) {
+        info.functions.set("default", node);
+      }
+    }
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      isFunctionLike(node.initializer)
+    ) {
+      info.functions.set(node.name.text, node.initializer);
+    }
+    if (ts.isExportAssignment(node) && !node.isExportEquals) {
+      if (isFunctionLike(node.expression)) {
+        info.functions.set("default", node.expression);
+      }
+    }
+    ts.forEachChild(node, collect);
+  };
+  collect(file.source);
+
+  // Default-export aliases (`export default helper;`) and builder aliases
+  // (`const q = query;`) need the registries above, so resolve them second.
+  const collectAliases = (node: ts.Node) => {
+    if (
+      ts.isExportAssignment(node) &&
+      !node.isExportEquals &&
+      ts.isIdentifier(node.expression)
+    ) {
+      const target = info.functions.get(node.expression.text);
+      if (target !== undefined) info.functions.set("default", target);
+    }
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer !== undefined &&
+      ts.isIdentifier(node.initializer) &&
+      info.queryBuilders.has(node.initializer.text)
+    ) {
+      info.queryBuilders.add(node.name.text);
+    }
+    ts.forEachChild(node, collectAliases);
+  };
+  collectAliases(file.source);
+
+  return info;
 }
 
 /**
  * Wall-clock reads are banned inside query handlers only: the marking
  * mutation legitimately calls Date.now(). Query registrations are resolved
  * through however the file imports the builders from _generated/server
- * (named, renamed, namespace, or a const alias), and the entire registration
- * expression is scanned so helpers inlined into the handler are covered.
+ * (named, renamed, namespace, or a const alias). The scan then follows
+ * every function referenced from a query registration - same-file helpers,
+ * named/renamed/namespace/default imports from other authored files, and
+ * transitive helper chains - so extracting the clock read into a helper
+ * (or a separately-declared handler) does not evade the ban. Functions
+ * only reachable from mutations stay unscanned.
  */
-function findQueryWallClockReads(source: ts.SourceFile): string[] {
-  const builderNames = new Set<string>();
-  const namespaceNames = new Set<string>();
+function findQueryWallClockReads(files: AuthoredFile[]): string[] {
+  const modules = new Map<string, ModuleInfo>();
+  for (const file of files) modules.set(file.path, buildModuleInfo(file));
 
-  const collectImports = (node: ts.Node) => {
-    if (
-      ts.isImportDeclaration(node) &&
-      node.importClause?.namedBindings !== undefined &&
-      ts.isStringLiteralLike(node.moduleSpecifier) &&
-      node.moduleSpecifier.text.includes("_generated/server")
-    ) {
-      const bindings = node.importClause.namedBindings;
-      if (ts.isNamedImports(bindings)) {
-        for (const element of bindings.elements) {
-          const imported = element.propertyName?.text ?? element.name.text;
-          if (imported === "query" || imported === "internalQuery") {
-            builderNames.add(element.name.text);
-          }
-        }
-      } else if (ts.isNamespaceImport(bindings)) {
-        namespaceNames.add(bindings.name.text);
-      }
+  const violations: string[] = [];
+  const visited = new Set<ts.Node>();
+  const worklist: { node: ts.Node; module: ModuleInfo; label: string }[] = [];
+
+  const enqueue = (node: ts.Node, module: ModuleInfo, label: string) => {
+    if (visited.has(node)) return;
+    visited.add(node);
+    worklist.push({ node, module, label });
+  };
+
+  const resolveName = (name: string, module: ModuleInfo) => {
+    const local = module.functions.get(name);
+    if (local !== undefined) {
+      enqueue(local, module, `helper ${name} (${module.label})`);
+      return;
     }
-    ts.forEachChild(node, collectImports);
-  };
-  collectImports(source);
-
-  const isQueryBuilder = (callee: ts.Expression): boolean => {
-    if (ts.isIdentifier(callee)) return builderNames.has(callee.text);
-    return (
-      ts.isPropertyAccessExpression(callee) &&
-      ts.isIdentifier(callee.expression) &&
-      namespaceNames.has(callee.expression.text) &&
-      (callee.name.text === "query" || callee.name.text === "internalQuery")
-    );
-  };
-
-  // `const publicQuery = query;` style aliases also register queries.
-  const collectAliases = (node: ts.Node) => {
-    if (
-      ts.isVariableDeclaration(node) &&
-      node.initializer !== undefined &&
-      ts.isIdentifier(node.name) &&
-      isQueryBuilder(node.initializer)
-    ) {
-      builderNames.add(node.name.text);
+    const imported = module.imports.get(name);
+    if (imported === undefined) return;
+    const target = modules.get(imported.module);
+    const fn = target?.functions.get(imported.exportedName);
+    if (target !== undefined && fn !== undefined) {
+      enqueue(fn, target, `helper ${imported.exportedName} (${target.label})`);
     }
-    ts.forEachChild(node, collectAliases);
   };
-  collectAliases(source);
 
   const isDateRef = (expr: ts.Expression): boolean => {
     if (ts.isIdentifier(expr) && expr.text === "Date") return true;
@@ -388,53 +500,104 @@ function findQueryWallClockReads(source: ts.SourceFile): string[] {
     );
   };
 
-  const reads: string[] = [];
-  const scanForWallClock = (node: ts.Node) => {
-    // Date.now(), globalThis.Date.now()
-    if (
-      ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression) &&
-      node.expression.name.text === "now" &&
-      isDateRef(node.expression.expression)
-    ) {
-      reads.push("Date.now()");
-    }
-    // Bare Date() call - returns the current time as a string.
-    if (ts.isCallExpression(node) && isDateRef(node.expression)) {
-      reads.push("Date()");
-    }
-    // new Date() with no arguments; new Date(value) is a deterministic
-    // conversion and stays allowed.
-    if (
-      ts.isNewExpression(node) &&
-      isDateRef(node.expression) &&
-      (node.arguments === undefined || node.arguments.length === 0)
-    ) {
-      reads.push("new Date()");
-    }
-    ts.forEachChild(node, scanForWallClock);
-  };
-
-  const visit = (node: ts.Node) => {
-    if (ts.isCallExpression(node) && isQueryBuilder(node.expression)) {
-      for (const argument of node.arguments) {
-        scanForWallClock(argument);
+  const scan = (root: ts.Node, module: ModuleInfo, where: string) => {
+    const visit = (node: ts.Node) => {
+      // Date.now(), globalThis.Date.now()
+      if (
+        ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression) &&
+        node.expression.name.text === "now" &&
+        isDateRef(node.expression.expression)
+      ) {
+        violations.push(`Date.now() in ${where}`);
       }
-      return;
-    }
-    ts.forEachChild(node, visit);
+      // Bare Date() call - returns the current time as a string.
+      if (ts.isCallExpression(node) && isDateRef(node.expression)) {
+        violations.push(`Date() in ${where}`);
+      }
+      // new Date() with no arguments; new Date(value) is a deterministic
+      // conversion and stays allowed.
+      if (
+        ts.isNewExpression(node) &&
+        isDateRef(node.expression) &&
+        (node.arguments === undefined || node.arguments.length === 0)
+      ) {
+        violations.push(`new Date() in ${where}`);
+      }
+      // ns.helper references through a namespace import; property names on
+      // anything else are not identifier references, so only the expression
+      // side is walked.
+      if (ts.isPropertyAccessExpression(node)) {
+        if (ts.isIdentifier(node.expression)) {
+          const nsModule = module.namespaces.get(node.expression.text);
+          if (nsModule !== undefined) {
+            const target = modules.get(nsModule);
+            const fn = target?.functions.get(node.name.text);
+            if (target !== undefined && fn !== undefined) {
+              enqueue(fn, target, `helper ${node.name.text} (${target.label})`);
+            }
+            return;
+          }
+        }
+        visit(node.expression);
+        return;
+      }
+      // Skip property names in object literals; `{ handler }` shorthand IS a
+      // reference.
+      if (ts.isPropertyAssignment(node)) {
+        visit(node.initializer);
+        return;
+      }
+      if (ts.isShorthandPropertyAssignment(node)) {
+        resolveName(node.name.text, module);
+        return;
+      }
+      if (ts.isIdentifier(node)) {
+        resolveName(node.text, module);
+        return;
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(root);
   };
-  visit(source);
 
-  return reads;
+  // Seed the worklist with every query registration's full argument list.
+  for (const module of modules.values()) {
+    const isQueryBuilder = (callee: ts.Expression): boolean => {
+      if (ts.isIdentifier(callee)) return module.queryBuilders.has(callee.text);
+      return (
+        ts.isPropertyAccessExpression(callee) &&
+        ts.isIdentifier(callee.expression) &&
+        module.builderNamespaces.has(callee.expression.text) &&
+        (callee.name.text === "query" || callee.name.text === "internalQuery")
+      );
+    };
+    const findRegistrations = (node: ts.Node) => {
+      if (ts.isCallExpression(node) && isQueryBuilder(node.expression)) {
+        for (const argument of node.arguments) {
+          scan(argument, module, `a query registration (${module.label})`);
+        }
+        return;
+      }
+      ts.forEachChild(node, findRegistrations);
+    };
+    findRegistrations(module.source);
+  }
+
+  // Follow helpers reachable from those registrations, transitively.
+  for (;;) {
+    const entry = worklist.pop();
+    if (entry === undefined) break;
+    scan(entry.node, entry.module, entry.label);
+  }
+
+  return violations;
 }
 
 test("query handlers never read the wall clock", () => {
-  const reads = collectAuthoredSources().flatMap((source) =>
-    findQueryWallClockReads(source),
-  );
+  const reads = findQueryWallClockReads(collectAuthoredSources());
   expect(
     reads,
-    "queries must derive expiry from the materialized flag; wall-clock reads belong in the scheduled mutation",
+    "queries (and every helper they reach) must derive expiry from the materialized flag; wall-clock reads belong in the scheduled mutation",
   ).toEqual([]);
 });
