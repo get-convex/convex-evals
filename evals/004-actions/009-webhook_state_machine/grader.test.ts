@@ -374,13 +374,14 @@ test("the HTTP path commits through a single internal mutation", () => {
   // Names that refer to the generated `internal` object: the plain import,
   // renamed imports (`import { internal as convexInternal }`), and namespace
   // imports (`import * as generated` gives `generated.internal.*`).
-  const internalRoots = new Set<string>(["internal"]);
+  const internalRoots = new Set<string>();
   const namespaceRoots = new Set<string>();
   for (const source of sources) {
     const collectImports = (node: ts.Node) => {
       if (
         ts.isImportDeclaration(node) &&
-        node.importClause?.namedBindings !== undefined
+        node.importClause?.namedBindings !== undefined &&
+        node.moduleSpecifier.getText().includes("_generated/api")
       ) {
         const bindings = node.importClause.namedBindings;
         if (ts.isNamedImports(bindings)) {
@@ -388,10 +389,7 @@ test("the HTTP path commits through a single internal mutation", () => {
             const imported = element.propertyName?.text ?? element.name.text;
             if (imported === "internal") internalRoots.add(element.name.text);
           }
-        } else if (
-          ts.isNamespaceImport(bindings) &&
-          node.moduleSpecifier.getText().includes("_generated/api")
-        ) {
+        } else if (ts.isNamespaceImport(bindings)) {
           namespaceRoots.add(bindings.name.text);
         }
       }
@@ -454,10 +452,19 @@ test("the HTTP path commits through a single internal mutation", () => {
         if (name === "runMutation") {
           runMutationCalls++;
           const target = node.arguments[0];
+          let targetRoot: ts.Expression | undefined = target;
+          while (
+            targetRoot !== undefined &&
+            ts.isPropertyAccessExpression(targetRoot)
+          ) {
+            targetRoot = targetRoot.expression;
+          }
           if (
             target !== undefined &&
             (isInternalRooted(target.getText()) ||
-              (ts.isIdentifier(target) && internalRefs.has(target.text)))
+              (targetRoot !== undefined &&
+                ts.isIdentifier(targetRoot) &&
+                internalRefs.has(targetRoot.text)))
           ) {
             internalMutationTargets++;
           }
