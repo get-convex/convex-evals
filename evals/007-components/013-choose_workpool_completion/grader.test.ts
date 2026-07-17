@@ -704,6 +704,7 @@ interface Analysis {
   mountsWorkpool: boolean;
   wiresPool: boolean;
   enqueuesWithOnComplete: boolean;
+  enqueuedJobDoesDatabaseWork: boolean;
   auditWriteInsideOnComplete: boolean;
   auditWriteOnStartProcessingPath: boolean;
   auditWriteReachableOutsideCompletion: boolean;
@@ -790,6 +791,7 @@ function analyze(): Analysis {
 
   // Call-path analysis from startProcessing.
   let enqueuesWithOnComplete = false;
+  let enqueuedJobDoesDatabaseWork = false;
   let auditWriteInsideOnComplete = false;
   let auditWriteOnStartProcessingPath = false;
   const onCompleteTargets = new Map<
@@ -837,6 +839,35 @@ function analyze(): Analysis {
           `${target.module.path}:${target.exportName}`,
           target,
         );
+      }
+      // The completion callback must wrap the actual upload processor: a
+      // no-op job with recordOutcome attached (processUpload left unused)
+      // would track completions of nothing. Resolve the enqueued function
+      // and require database work on its call path - form-agnostic, since
+      // the classic ctx.db.patch(id, ...) form carries no table string.
+      const jobExpression = isClientEnqueue
+        ? call.arguments[1]
+        : options.get("fnHandle")?.expression;
+      const jobModule = isClientEnqueue
+        ? module
+        : (options.get("fnHandle")?.module ?? module);
+      const job =
+        jobExpression === undefined
+          ? undefined
+          : resolveFunctionReference(modules, jobModule, jobExpression);
+      const jobDeclaration =
+        job === undefined
+          ? undefined
+          : findExportedDeclaration(job.module, job.exportName);
+      if (job !== undefined && jobDeclaration !== undefined) {
+        walkCalls(modules, job.module, jobDeclaration, (jobCall) => {
+          if (
+            ts.isPropertyAccessExpression(jobCall.expression) &&
+            DB_WRITE_METHODS.has(jobCall.expression.name.text)
+          ) {
+            enqueuedJobDoesDatabaseWork = true;
+          }
+        });
       }
     });
   }
@@ -904,6 +935,7 @@ function analyze(): Analysis {
     mountsWorkpool,
     wiresPool,
     enqueuesWithOnComplete,
+    enqueuedJobDoesDatabaseWork,
     auditWriteInsideOnComplete,
     auditWriteOnStartProcessingPath,
     auditWriteReachableOutsideCompletion,
@@ -926,6 +958,10 @@ test("constructs a Workpool over the mounted component", () => {
 
 test("startProcessing enqueues the job with an onComplete callback", () => {
   expect(analysis.enqueuesWithOnComplete).toBe(true);
+  expect(
+    analysis.enqueuedJobDoesDatabaseWork,
+    "the completion callback must wrap the upload processor - a job that does no database work leaves uploads unprocessed",
+  ).toBe(true);
 });
 
 test("only the completion callback writes audit rows", () => {
