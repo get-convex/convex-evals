@@ -1,0 +1,30 @@
+Build a rate-limited messaging backend.
+
+Create a `package.json` that pins `convex` to exactly `1.41.0` (you may add other dependencies).
+
+Write this schema to `convex/schema.ts`:
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  messages: defineTable({
+    authorTokenIdentifier: v.string(),
+    body: v.string(),
+  }),
+});
+```
+
+Authentication is already configured for this deployment; do NOT create a `convex/auth.config.ts`.
+
+Create a public mutation `sendMessage` in `convex/index.ts` that:
+- Takes arguments `{ body: string }`
+- Returns the ID of the inserted message (`Id<"messages">`)
+
+Behavior:
+- Unauthenticated callers must be rejected.
+- Each user may send at most 2 messages per hour, keyed on the caller's identity `tokenIdentifier`. Enforcement must stay correct when the same user sends messages concurrently, and must not lose or leak quota when a send fails for other reasons.
+- Over-limit sends must fail with an error the client can distinguish from other failures.
+- Reject a message whose trimmed `body` is empty, then insert the message and return its ID.
+
+The messages table may grow large; rate-limit enforcement must remain efficient regardless of how many messages a user has sent historically.
