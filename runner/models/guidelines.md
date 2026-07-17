@@ -311,6 +311,34 @@ export default app;
 - After mounting, the generated `components` object in `convex/_generated/api` references the component (e.g. `components.aggregate`), and is passed to the component's client class.
 - Component functions are not exposed to clients; the app's own queries and mutations wrap them. Perform authentication and authorization in the app functions before calling into a component.
 - Component reads and writes participate in the calling mutation's transaction. When a component mirrors state from one of your tables (like an aggregate over a table), update the component in the SAME mutation as every insert, patch, replace, or delete of that table - never from a separate function - so the two can never drift.
+- `@convex-dev/aggregate` example - construct one `TableAggregate` and keep it synchronized in the same mutation as every table write:
+
+```ts
+const scoreAggregate = new TableAggregate<{
+  Key: number;
+  DataModel: DataModel;
+  TableName: "scores";
+}>(components.aggregate, { sortKey: (doc) => -doc.score });
+
+// In mutations: await scoreAggregate.insert(ctx, doc); .replace(ctx, oldDoc, newDoc); .delete(ctx, doc)
+// Reads: await scoreAggregate.count(ctx); bounded: .count(ctx, { bounds: { upper: { key, inclusive: false } } }); position: .indexOf(ctx, key)
+```
+
+The constructor takes only the component reference and `{ sortKey, sumValue? }` - there are no `table`, `field`, or `name` options, and there is no `.rank()` method (derive rank from a bounded `count` or `indexOf`).
+
+- To author a LOCAL component, create a directory under `convex/` containing its own `convex.config.ts` (`export default defineComponent("myComponent");` - the argument is the component's NAME STRING; its schema is picked up from that directory's `schema.ts`), its own `schema.ts`, and functions built from that directory's own `_generated/server`. Mount it from the root config: `import myComponent from "./myComponent/convex.config"; app.use(myComponent);`. `app.use` takes no name option.
+- Calling a component mutation is a subtransaction: if it throws and the caller catches the error, the component's writes roll back while the calling mutation continues and can still commit its own writes.
+- `@convex-dev/rate-limiter` example - limits are DEFINED in the constructor; the `limit` call only names one and supplies the key:
+
+```ts
+const rateLimiter = new RateLimiter(components.rateLimiter, {
+  sendMessage: { kind: "fixed window", rate: 2, period: HOUR },
+});
+// In a mutation:
+await rateLimiter.limit(ctx, "sendMessage", { key, throws: true });
+```
+
+The `limit` options accept only `key`, `count`, `reserve`, `throws`, and `config` - not inline `rate`/`period` fields.
 
 ## Query guidelines
 
