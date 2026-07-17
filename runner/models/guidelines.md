@@ -42,6 +42,7 @@ export default mutation({
 });
 ```
 
+- `v.object(...)` validators compose: `.pick("a", "b")`, `.omit("c")`, `.partial()`, and `.extend({ d: v.string() })` derive new object validators from an existing one - define a shape once and derive variants instead of duplicating fields. Use an object validator's `.fields` to supply function `args`.
 - Below is an example of a schema with validators that codify a discriminated union type:
 
 ```typescript
@@ -184,6 +185,8 @@ For the return validator of a paginated query, use `paginationResultValidator(it
 - Index fields must be queried in the same order they are defined. If you want to be able to query by "field1" then "field2" and by "field2" then "field1", you must create separate indexes.
 - Do not store unbounded lists as an array field inside a document (e.g. `v.array(v.object({...}))`). As the array grows it will hit the 1MB document size limit, and every update rewrites the entire document. Instead, create a separate table for the child items with a foreign key back to the parent.
 - Separate high-churn operational data (e.g. heartbeats, online status, typing indicators) from stable profile data. Storing frequently updated fields on a shared document forces every write to contend with reads of the entire document. Instead, create a dedicated table for the high-churn data with a foreign key back to the parent record.
+
+- Adding an index to a large existing table blocks the deploy until backfill completes. Declare it staged - `.index("by_field", { fields: ["field"], staged: true })` - to backfill asynchronously without blocking; a staged index cannot be queried until a later deploy removes the flag.
 
 ## Authentication guidelines
 

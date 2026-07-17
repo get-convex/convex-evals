@@ -1,0 +1,22 @@
+Build a backend for managing articles, defining every validator shape exactly once.
+
+Define a single base validator `articleDocValidator` in `convex/index.ts` describing a full article document:
+- `_id: Id<"articles">`
+- `_creationTime: number`
+- `title: string`
+- `body: string`
+- `slug: string` (computed by the server from the title; never supplied by clients)
+
+Derive ALL of the following from `articleDocValidator` (or from validators derived from it) without writing any field's validator twice:
+
+1. The `articles` table validator for `convex/schema.ts`: the document fields without the system fields
+2. `createArticle`'s arguments: `{ title, body }` - no system fields, no `slug`
+3. `updateArticle`'s arguments: `{ articleId: Id<"articles">, title?, body? }` - the mutable fields made optional, plus the ID
+4. `getArticle`'s return validator: the full document plus `excerpt: string` (the first 20 characters of the body; computed in the query, never stored)
+
+Create these functions in `convex/index.ts`:
+- A mutation `createArticle` that takes `{ title: string, body: string }`, computes `slug` by lowercasing the title and replacing spaces with dashes, inserts the article, and returns its ID (`Id<"articles">`)
+- A mutation `updateArticle` that takes `{ articleId: Id<"articles">, title?: string, body?: string }`, patches only the provided fields, recomputes `slug` when the title changes, and returns null
+- A query `getArticle` that takes `{ articleId: Id<"articles"> }`, and returns the full article document plus `excerpt` (declare this return validator - it is part of what this task tests)
+
+Use the derived validators directly in the schema definition and the function registrations.
