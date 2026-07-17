@@ -288,6 +288,8 @@ interface ModuleInfo {
   localNamespaceImports: Map<string, string>;
   /** const name -> initializer */
   consts: Map<string, ts.Expression>;
+  /** local names bound to the generated `components` export (aliases allowed) */
+  componentsAliases: Set<string>;
   /** function name -> body (declarations and arrow/function consts) */
   functions: Map<string, ts.Node>;
   /** names of variables holding `new Agent(components.agent, ...)` */
@@ -406,6 +408,7 @@ function buildModuleInfo(
     localImports: new Map(),
     localNamespaceImports: new Map(),
     consts: collectConstDeclarations(sourceFile),
+    componentsAliases: new Set(["components"]),
     functions: new Map(),
     agentInstances: new Set(),
   };
@@ -419,6 +422,17 @@ function buildModuleInfo(
     }
     const spec = statement.moduleSpecifier.text;
     const bindings = statement.importClause?.namedBindings;
+    if (
+      /_generated\/api/.test(spec) &&
+      bindings !== undefined &&
+      ts.isNamedImports(bindings)
+    ) {
+      for (const element of bindings.elements) {
+        if ((element.propertyName ?? element.name).text === "components") {
+          info.componentsAliases.add(element.name.text);
+        }
+      }
+    }
     if (spec === "@convex-dev/agent") {
       if (bindings !== undefined && ts.isNamedImports(bindings)) {
         for (const element of bindings.elements) {
@@ -560,12 +574,14 @@ function isComponentsAgent(
   info: ModuleInfo,
 ): boolean {
   const resolved = resolveExpression(expression, info.consts);
-  return (
-    ts.isPropertyAccessExpression(resolved) &&
-    resolved.name.text === "agent" &&
-    ts.isIdentifier(unwrap(resolved.expression)) &&
-    (unwrap(resolved.expression) as ts.Identifier).text === "components"
-  );
+  if (
+    !ts.isPropertyAccessExpression(resolved) ||
+    resolved.name.text !== "agent"
+  ) {
+    return false;
+  }
+  const root = unwrap(resolved.expression);
+  return ts.isIdentifier(root) && info.componentsAliases.has(root.text);
 }
 
 function isAgentConstruction(
@@ -746,8 +762,23 @@ function classifyCall(
       ["runQuery", "runMutation", "runAction"].includes(method) &&
       call.arguments[0] !== undefined
     ) {
-      const reference = call.arguments[0].getText();
-      if (reference.startsWith("components.agent.")) {
+      // Accept `components.agent.*` through a legal import alias
+      // (`import { components as c } ...` -> `c.agent.*`).
+      const referenceExpression = resolveExpression(
+        call.arguments[0],
+        info.consts,
+      );
+      let root: ts.Expression = referenceExpression;
+      while (
+        ts.isPropertyAccessExpression(root) ||
+        ts.isElementAccessExpression(root)
+      ) {
+        root = root.expression;
+      }
+      const rootIsComponents =
+        ts.isIdentifier(root) && info.componentsAliases.has(root.text);
+      const reference = referenceExpression.getText();
+      if (rootIsComponents && /\.agent\./.test(reference)) {
         if (reference.includes("createThread")) reached.add("threadCreate");
         if (
           reference.includes("addMessages") ||
