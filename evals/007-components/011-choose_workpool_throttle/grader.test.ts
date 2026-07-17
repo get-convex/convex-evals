@@ -439,13 +439,17 @@ function poolInfoForReceiver(
 }
 
 /**
- * Collect the top-level properties of every object-literal argument of a
- * call, following const aliases and one level of spreads.
+ * Collect the top-level properties of the object-literal arguments of a
+ * call starting at `fromIndex`, following const aliases and one level of
+ * spreads. Positions before `fromIndex` are the function payload: an
+ * option like `onComplete` placed inside `fnArgs` is silently ignored by
+ * the workpool at runtime, so it must not count as configuration.
  */
 function collectOptionProperties(
   modules: Map<string, ModuleInfo>,
   module: ModuleInfo,
   call: ts.CallExpression,
+  fromIndex: number,
 ): Map<string, Resolved> {
   const properties = new Map<string, Resolved>();
   const addFrom = (m: ModuleInfo, expr: ts.Expression, depth: number) => {
@@ -477,7 +481,9 @@ function collectOptionProperties(
       }
     }
   };
-  for (const argument of call.arguments) addFrom(module, argument, 0);
+  for (const argument of call.arguments.slice(fromIndex)) {
+    addFrom(module, argument, 0);
+  }
   return properties;
 }
 
@@ -868,7 +874,13 @@ function analyze(): Analysis {
           return;
         }
         enqueuesSyncAsAction = true;
-        const callOptions = collectOptionProperties(modules, module, call);
+        // Retries must be ENABLED, not merely described: per-call `retry`
+        // or the pool's `retryActionsByDefault`. A `defaultRetryBehavior`
+        // alone only defines WHAT to use if retrying is enabled - failed
+        // actions still run once, violating the automatic-retry
+        // requirement. Options live at index 3; an option inside the
+        // fnArgs payload (index 2) is ignored by the workpool.
+        const callOptions = collectOptionProperties(modules, module, call, 3);
         const retry = callOptions.get("retry");
         if (retry !== undefined && isNonFalse(modules, retry)) {
           retriesConfigured = true;
@@ -879,9 +891,6 @@ function analyze(): Analysis {
           retryByDefault !== undefined &&
           isNonFalse(modules, retryByDefault)
         ) {
-          retriesConfigured = true;
-        }
-        if (poolOptions.has("defaultRetryBehavior")) {
           retriesConfigured = true;
         }
         return;
@@ -896,7 +905,7 @@ function analyze(): Analysis {
         /^components\./.test(firstArg.getText()) &&
         /\.enqueue/i.test(firstArg.getText())
       ) {
-        const options = collectOptionProperties(modules, module, call);
+        const options = collectOptionProperties(modules, module, call, 1);
         const fnType = options.get("fnType");
         if (
           fnType !== undefined &&

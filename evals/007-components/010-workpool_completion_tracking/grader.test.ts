@@ -456,13 +456,17 @@ function poolInfoForReceiver(
 }
 
 /**
- * Collect the top-level properties of every object-literal argument of a
- * call, following const aliases and one level of spreads.
+ * Collect the top-level properties of the object-literal arguments of a
+ * call starting at `fromIndex`, following const aliases and one level of
+ * spreads. Positions before `fromIndex` are the function payload: an
+ * option like `onComplete` placed inside `fnArgs` is silently ignored by
+ * the workpool at runtime, so it must not count as configuration.
  */
 function collectOptionProperties(
   modules: Map<string, ModuleInfo>,
   module: ModuleInfo,
   call: ts.CallExpression,
+  fromIndex: number,
 ): Map<string, Resolved> {
   const properties = new Map<string, Resolved>();
   const addFrom = (m: ModuleInfo, expr: ts.Expression, depth: number) => {
@@ -494,7 +498,9 @@ function collectOptionProperties(
       }
     }
   };
-  for (const argument of call.arguments) addFrom(module, argument, 0);
+  for (const argument of call.arguments.slice(fromIndex)) {
+    addFrom(module, argument, 0);
+  }
   return properties;
 }
 
@@ -976,7 +982,15 @@ function analyze(): Analysis {
       /^components\./.test(firstArg.getText()) &&
       /\.enqueue/i.test(firstArg.getText());
     if (!isClientEnqueue && !isRawEnqueue) return { hasOnComplete: false };
-    const options = collectOptionProperties(modules, module, call);
+    // Client form: (ctx, fn, fnArgs, options) - options live at index 3;
+    // raw form: (ref, args) - the enqueue args object is index 1. An
+    // onComplete inside the job payload is ignored by the workpool.
+    const options = collectOptionProperties(
+      modules,
+      module,
+      call,
+      isClientEnqueue ? 3 : 1,
+    );
     const onComplete = options.get("onComplete");
     if (onComplete === undefined) return { hasOnComplete: false };
     const target = resolveFunctionReference(
