@@ -209,7 +209,7 @@ export function normalizeModelTsconfigResolution(projectDir: string): string[] {
     if (!resolutionIsModern) {
       // Absent counts too: tsc then defaults to legacy node resolution.
       adjusted.push(
-        `${tsconfigPath}: moduleResolution ${String(moduleResolution ?? "(absent)")} -> Bundler`,
+        `${tsconfigPath}: moduleResolution ${typeof moduleResolution === "string" ? moduleResolution : "(absent)"} -> Bundler`,
       );
       compilerOptions.moduleResolution = "Bundler";
       changed = true;
@@ -221,7 +221,7 @@ export function normalizeModelTsconfigResolution(projectDir: string): string[] {
         moduleKind.toLowerCase().startsWith("es"));
     if (compilerOptions.moduleResolution === "Bundler" && !moduleSupportsBundler) {
       adjusted.push(
-        `${tsconfigPath}: module ${String(moduleKind ?? "(absent)")} -> ESNext`,
+        `${tsconfigPath}: module ${typeof moduleKind === "string" ? moduleKind : "(absent)"} -> ESNext`,
       );
       compilerOptions.module = "ESNext";
       changed = true;
