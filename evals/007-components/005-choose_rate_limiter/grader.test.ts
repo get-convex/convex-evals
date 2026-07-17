@@ -133,7 +133,80 @@ function analyze(): Analysis {
     };
     collectVars(sourceFile);
 
-    const visit = (node: ts.Node) => {
+    const chainQueriesMessages = (call: ts.CallExpression): boolean => {
+      let current: ts.Expression = call;
+      while (
+        ts.isCallExpression(current) &&
+        ts.isPropertyAccessExpression(current.expression)
+      ) {
+        const arg = current.arguments[0];
+        if (
+          current.expression.name.text === "query" &&
+          arg !== undefined &&
+          ts.isStringLiteralLike(arg) &&
+          arg.text === "messages"
+        ) {
+          return true;
+        }
+        current = current.expression.expression;
+      }
+      return false;
+    };
+
+    // Same-file function bodies, so helpers called from sendMessage count.
+    const localFunctions = new Map<string, ts.Node>();
+    const collectFunctions = (node: ts.Node) => {
+      if (
+        ts.isFunctionDeclaration(node) &&
+        node.name !== undefined &&
+        node.body !== undefined
+      ) {
+        localFunctions.set(node.name.text, node.body);
+      }
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        node.initializer !== undefined &&
+        (ts.isArrowFunction(node.initializer) ||
+          ts.isFunctionExpression(node.initializer))
+      ) {
+        localFunctions.set(node.name.text, node.initializer.body ?? node.initializer);
+      }
+      ts.forEachChild(node, collectFunctions);
+    };
+    collectFunctions(sourceFile);
+
+    let sendMessageHandler: ts.Node | undefined;
+    const findHandler = (node: ts.Node) => {
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        node.name.text === "sendMessage" &&
+        node.initializer !== undefined &&
+        ts.isCallExpression(node.initializer) &&
+        node.initializer.arguments.length >= 1 &&
+        ts.isObjectLiteralExpression(node.initializer.arguments[0])
+      ) {
+        for (const property of node.initializer.arguments[0].properties) {
+          const isHandler =
+            property.name !== undefined &&
+            ts.isIdentifier(property.name) &&
+            property.name.text === "handler";
+          if (ts.isPropertyAssignment(property) && isHandler) {
+            sendMessageHandler = property.initializer;
+          }
+          if (ts.isMethodDeclaration(property) && isHandler) {
+            sendMessageHandler = property.body;
+          }
+        }
+      }
+      ts.forEachChild(node, findHandler);
+    };
+    findHandler(sourceFile);
+
+    // Limit consumption only counts on the sendMessage call path.
+    const walked = new Set<ts.Node>();
+    const walkHandler = (node: ts.Node, depth: number) => {
       if (
         ts.isCallExpression(node) &&
         ts.isPropertyAccessExpression(node.expression)
@@ -143,46 +216,70 @@ function analyze(): Analysis {
         if (
           ts.isIdentifier(receiver) &&
           clientVars.has(receiver.text) &&
-          ["limit", "check", "reset"].includes(name)
+          name === "limit"
         ) {
-          consumesLimit = consumesLimit || name === "limit";
+          consumesLimit = true;
         }
-        // Direct component calls count as wiring too.
+        if (
+          name === "runMutation" &&
+          node.arguments.length >= 1 &&
+          node.arguments[0].getText().startsWith("components.rateLimiter.")
+        ) {
+          consumesLimit = true;
+        }
+      }
+      if (
+        ts.isCallExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        localFunctions.has(node.expression.text) &&
+        depth < 4
+      ) {
+        const body = localFunctions.get(node.expression.text)!;
+        if (!walked.has(body)) {
+          walked.add(body);
+          walkHandler(body, depth + 1);
+          walked.delete(body);
+        }
+      }
+      ts.forEachChild(node, (child) => walkHandler(child, depth));
+    };
+    if (sendMessageHandler !== undefined) {
+      walkHandler(sendMessageHandler, 0);
+    }
+
+    const visit = (node: ts.Node) => {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression)
+      ) {
+        const name = node.expression.name.text;
+        // Direct component calls count as wiring anywhere in the file.
         if (
           (name === "runMutation" || name === "runQuery") &&
           node.arguments.length >= 1 &&
           node.arguments[0].getText().startsWith("components.rateLimiter.")
         ) {
           wiresComponent = true;
-          if (name === "runMutation") consumesLimit = true;
         }
         // Hand-rolled fallback: scanning messages to count a time window.
         if (
-          ["collect", "take", "filter", "paginate"].includes(name)
+          ["collect", "take", "filter", "paginate"].includes(name) &&
+          chainQueriesMessages(node)
         ) {
-          let current: ts.Expression = node;
-          let queriesMessages = false;
-          while (
-            ts.isCallExpression(current) &&
-            ts.isPropertyAccessExpression(current.expression)
-          ) {
-            const arg = current.arguments[0];
-            if (
-              current.expression.name.text === "query" &&
-              arg !== undefined &&
-              ts.isStringLiteralLike(arg) &&
-              arg.text === "messages"
-            ) {
-              queriesMessages = true;
-            }
-            current = current.expression.expression;
-          }
-          if (queriesMessages) {
-            windowScanConstructs.push(
-              `${sourceFile.fileName}: messages .${name}() window scan`,
-            );
-          }
+          windowScanConstructs.push(
+            `${sourceFile.fileName}: messages .${name}() window scan`,
+          );
         }
+      }
+      if (
+        ts.isForOfStatement(node) &&
+        node.awaitModifier !== undefined &&
+        ts.isCallExpression(node.expression) &&
+        chainQueriesMessages(node.expression)
+      ) {
+        windowScanConstructs.push(
+          `${sourceFile.fileName}: messages for-await window scan`,
+        );
       }
       ts.forEachChild(node, visit);
     };
