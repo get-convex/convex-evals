@@ -1,0 +1,61 @@
+Build room-scoped user presence tracking using the `@convex-dev/presence` component.
+
+Create a `package.json` that pins these dependencies to exactly these versions (you may add other dependencies):
+```json
+{
+  "dependencies": {
+    "convex": "1.41.0",
+    "@convex-dev/presence": "0.3.2"
+  }
+}
+```
+
+No authentication and no app tables are needed; do NOT create a `convex/auth.config.ts` or a `convex/schema.ts`.
+
+Create these functions in `convex/index.ts`:
+
+- A mutation `heartbeat` that:
+  - Takes arguments `{ roomId: string, userId: string, sessionId: string, interval: number }`
+  - Registers (or keeps alive) that session's presence in the room, where `interval` is the client's heartbeat cadence in milliseconds
+  - Returns `{ roomToken: string, sessionToken: string }`
+
+- A query `list` that:
+  - Takes arguments `{ roomToken: string }`
+  - Returns the presence entries for the room identified by `roomToken`
+
+- A mutation `disconnect` that:
+  - Takes arguments `{ sessionToken: string }`
+  - Gracefully disconnects that session
+
+All three functions must delegate to the presence component: mount it and construct its client (`new Presence(components.presence)`). Do not build your own presence bookkeeping, and pass the caller's `interval` through unchanged.
+
+Reference - `@convex-dev/presence` server API (from its docs):
+```ts
+// convex/convex.config.ts
+import { defineApp } from "convex/server";
+import presence from "@convex-dev/presence/convex.config.js";
+
+const app = defineApp();
+app.use(presence);
+export default app;
+
+// In your Convex functions:
+import { Presence } from "@convex-dev/presence";
+const presence = new Presence(components.presence);
+
+// In a mutation: registers the session and schedules its timeout. A session
+// is disconnected if no heartbeat arrives for ~2.5x `interval` ms, or on
+// graceful disconnect. sessionId must be unique per room/user session.
+await presence.heartbeat(ctx, roomId, userId, sessionId, interval);
+// -> { roomToken: string, sessionToken: string }
+
+// In a query: entries for the room, ONE per user - all of a user's sessions
+// aggregate into a single entry whose `online` stays true while ANY of their
+// sessions is alive. Users who went offline REMAIN in the list with
+// `online: false`.
+await presence.list(ctx, roomToken);
+// -> Array<{ userId: string, online: boolean, lastDisconnected: number, data?: unknown }>
+
+// In a mutation: gracefully disconnect one session.
+await presence.disconnect(ctx, sessionToken);
+```
