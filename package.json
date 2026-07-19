@@ -9,6 +9,8 @@
     "@convex-dev/aggregate": "0.2.2",
     "@convex-dev/presence": "0.3.2",
     "@convex-dev/rate-limiter": "0.3.2",
+    "@convex-dev/workpool": "0.4.8",
+    "convex-helpers": "0.1.111",
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.19.0",
     "@types/markdown-it": "^14.1.2",
