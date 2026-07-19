@@ -1,0 +1,9 @@
+{
+  "name": "convexbot",
+  "version": "1.0.0",
+  "dependencies": {
+    "convex": "1.41.0",
+    "@convex-dev/workpool": "0.4.8",
+    "convex-helpers": "0.1.111"
+  }
+}
