@@ -1,0 +1,25 @@
+Build the backend for chat-room typing indicators: while a user is composing a message, everyone in the room sees them marked as typing; the indicator clears when they stop.
+
+Create a `package.json` that pins `convex` to exactly `1.41.0` (you may add other dependencies).
+
+Create these functions in `convex/index.ts`:
+
+- A public mutation `typingHeartbeat` that:
+  - Takes arguments `{ channelId: string, userId: string, sessionId: string, interval: number }`
+  - Is called by clients every `interval` milliseconds while the user is actively composing; `sessionId` identifies one composing session
+  - Returns `{ roomToken: string, sessionToken: string }`: an opaque token for reading the channel's typing state plus an opaque token for ending this composing session
+
+- A public query `whoIsTyping` that:
+  - Takes arguments `{ roomToken: string }`
+  - Returns the channel's typing entries; each entry must carry at least the `userId` and an `online` boolean that is `true` only while that user is still typing. Users who stopped may remain listed with `online: false` - treat the flag, not the row's existence, as the indicator.
+
+- A public mutation `stopTyping` that:
+  - Takes arguments `{ sessionToken: string }`
+  - Clears that session's typing state immediately (sent when the user submits the message or clears the input)
+
+Behavior:
+- Indicators must clear automatically shortly after a user stops sending keepalives (navigated away, crashed, connection dropped) - with no client-driven cleanup.
+- Indicators must update live for all subscribed room members, purely reactively: clients only consume `whoIsTyping` through a subscription and never re-run it on a timer, and its results must not go stale between updates.
+- Channels are independent: typing in one channel must never show up in another.
+
+Rooms can be busy; keep the endpoints efficient and correct under many concurrent typers.
