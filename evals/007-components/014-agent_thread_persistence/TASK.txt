@@ -1,0 +1,88 @@
+Build a conversation-history backend on the `@convex-dev/agent` component's data plane: durable threads with persisted messages. No LLM is involved anywhere - messages arrive through the mutations below and are only stored and read back. Do not call any model provider and do not use the `Agent` class; the standalone helpers in the reference are sufficient.
+
+Create a `package.json` that pins these dependencies to exactly these versions (you may add other dependencies):
+```json
+{
+  "dependencies": {
+    "convex": "1.41.0",
+    "@convex-dev/agent": "0.6.4",
+    "ai": "6.0.229",
+    "@ai-sdk/provider-utils": "4.0.39",
+    "convex-helpers": "0.1.120"
+  }
+}
+```
+(`ai`, `@ai-sdk/provider-utils`, and `convex-helpers` are peer dependencies the component needs at install and typecheck time.)
+
+All conversation state must live in the component. Write this schema to `convex/schema.ts` - the app itself owns no tables:
+```ts
+import { defineSchema } from "convex/server";
+
+export default defineSchema({});
+```
+
+Create these functions in `convex/index.ts`:
+
+- A mutation `createConversation` that:
+  - Takes arguments `{ userId: string, title: string }`
+  - Creates a new agent thread for that user with that title
+  - Returns the new thread's id (a string)
+
+- A mutation `postUserMessage` that:
+  - Takes arguments `{ threadId: string, text: string }`
+  - Appends `{ role: "user", content: text }` to that thread's history in the component
+
+- A mutation `postAssistantMessage` that:
+  - Takes arguments `{ threadId: string, text: string }`
+  - Appends `{ role: "assistant", content: text }` to that thread's history in the component
+
+- A query `getConversation` that:
+  - Takes arguments `{ threadId: string, paginationOpts }`, validating `paginationOpts` with `paginationOptsValidator`
+  - Reads that thread's messages from the component and returns exactly `{ page, isDone, continueCursor }` where:
+    - `page` is an array of `{ role: string, content: string }` - the role each message was saved with and its exact text, nothing else
+    - within every page, messages are ordered OLDEST-FIRST
+    - pagination walks backward through history (the standard chat-UI pattern): the first request (`cursor: null`) returns the MOST RECENT messages, and each following request with the previous `continueCursor` returns the next-older page
+    - `isDone` and `continueCursor` are the component's own pagination values passed through unchanged, so a caller looping on `continueCursor` reaches `isDone: true` once history is exhausted (depending on where page boundaries fall, the component may report the end via a final empty page)
+  - The order the component returns messages in is an implementation detail it does not document: whatever it is, `getConversation` must satisfy the contract above.
+
+Reference - `@convex-dev/agent` (from its docs):
+```ts
+// convex/convex.config.ts
+import { defineApp } from "convex/server";
+import agent from "@convex-dev/agent/convex.config";
+const app = defineApp();
+app.use(agent);
+export default app;
+
+// Standalone data-plane helpers (no Agent instance needed):
+import { createThread, saveMessage, listMessages, listUIMessages } from "@convex-dev/agent";
+import { paginationOptsValidator } from "convex/server";
+import { components } from "./_generated/api";
+
+// In a mutation or action:
+const threadId: string = await createThread(ctx, components.agent, {
+  userId,  // optional
+  title,   // optional
+});
+
+const { messageId } = await saveMessage(ctx, components.agent, {
+  threadId,
+  message: { role: "user", content: "The user message text" },
+});
+
+// In a query, mutation, or action - paginated, usePaginatedQuery-compatible:
+const result = await listMessages(ctx, components.agent, {
+  threadId,
+  paginationOpts, // { numItems: number, cursor: string | null }
+});
+// result: { page: MessageDoc[], isDone: boolean, continueCursor: string }
+// MessageDoc fields include:
+//   message?: { role: "user" | "assistant" | ..., content: ... } // as saved
+//   text?: string       // the message's plain text
+//   order: number       // position of the message's turn in the thread
+//   stepOrder: number   // position within that turn
+//   threadId, status, tool, _id, _creationTime, userId?, agentName?, ...
+
+// listUIMessages(ctx, components.agent, { threadId, paginationOpts })
+// is the same query shaped for UI rendering (UIMessage[] with parts).
+```
