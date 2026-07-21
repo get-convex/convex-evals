@@ -62,6 +62,7 @@ export const ALL_MODELS: string[] = [
   "deepseek/deepseek-v4-pro",
   "deepseek/deepseek-r1",
   "meta-llama/llama-4-maverick",
+  "poolside/laguna-s-2.1",
   "qwen/qwen3-235b-a22b",
   "qwen/qwen3.5-plus-02-15",
   "qwen/qwen3.5-397b-a17b",
