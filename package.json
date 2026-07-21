@@ -31,7 +31,7 @@
     "@ai-sdk/openai-compatible": "^2.0.27",
     "@ai-sdk/togetherai": "^2.0.30",
     "@ai-sdk/xai": "^3.0.47",
-    "@cursor/sdk": "1.0.19",
+    "@cursor/sdk": "1.0.24",
     "@inquirer/prompts": "^8.0.0",
     "@types/bun": "^1.3.8",
     "@types/jszip": "^3.4.1",
