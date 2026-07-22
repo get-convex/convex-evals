@@ -34,8 +34,6 @@ export function hasCompleteBenchmarkPlan(
   run: Doc<"runs">,
   expectedEvalCount: number | undefined,
 ): boolean {
-  // Historical runs remain available only through the labelled legacy archive.
-  if (run.benchmarkVersion === undefined) return true;
   return (
     expectedEvalCount !== undefined &&
     run.plannedEvals.length === expectedEvalCount

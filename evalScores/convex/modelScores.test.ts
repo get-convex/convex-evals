@@ -453,22 +453,12 @@ describe("recomputeModelScores", () => {
     expect(repeatedMint[0].curatedModelCount).toBe(2);
   });
 
-  it("keeps legacy compatible while the version-aware site requests current explicitly", async () => {
+  it("uses the current benchmark when the site omits a version", async () => {
     const t = convexTest(schema, modules);
 
     await createCompletedRun(t, {
-      model: "legacy-model",
+      model: "old-model",
       evals: [{ category: "cat1", name: "eval1", passed: true }],
-    });
-
-    // Simulate the materialised row written by the pre-versioning backend.
-    // During the rolling deploy the old site must keep seeing this row until
-    // the migration rebuilds it under a benchmark version document ID.
-    await t.run(async (ctx) => {
-      const [score] = await ctx.db.query("modelScores").collect();
-      await ctx.db.patch("modelScores", score._id, {
-        benchmarkVersion: undefined,
-      });
     });
     expect(await t.query(api.runs.leaderboardScores, {})).toHaveLength(1);
 
@@ -478,17 +468,17 @@ describe("recomputeModelScores", () => {
       curatedModels: ["new-model"],
     });
 
-    expect(await t.query(api.runs.leaderboardScores, {})).toHaveLength(1);
+    expect(await t.query(api.runs.leaderboardScores, {})).toEqual([]);
     expect(
       await t.query(api.runs.leaderboardScores, {
         benchmarkVersion: "new-benchmark",
       }),
     ).toEqual([]);
-    const legacy = await t.query(api.runs.leaderboardScores, {
-      benchmarkVersion: "legacy",
+    const archived = await t.query(api.runs.leaderboardScores, {
+      benchmarkVersion: "test-suite-1",
     });
-    expect(legacy).toHaveLength(1);
-    expect(legacy[0].model).toBe("legacy-model");
+    expect(archived).toHaveLength(1);
+    expect(archived[0].model).toBe("old-model");
   });
 
   it("does not score filtered runs as full benchmark results", async () => {

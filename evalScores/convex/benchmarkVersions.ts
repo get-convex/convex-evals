@@ -1,34 +1,10 @@
-import {
-  internalMutation,
-  type MutationCtx,
-  type QueryCtx,
-} from "./_generated/server";
+import { internalMutation, type MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   HISTORICAL_BENCHMARKS,
   UNMINTED_BENCHMARK_VERSION,
 } from "./historicalBenchmarks";
-
-type BenchmarkReference = string | Id<"benchmarkVersions"> | undefined;
-
-export async function getBenchmarkByReference(
-  ctx: Pick<QueryCtx, "db">,
-  reference: BenchmarkReference,
-): Promise<Doc<"benchmarkVersions"> | null> {
-  if (reference === undefined) return null;
-
-  const id = ctx.db.normalizeId("benchmarkVersions", reference);
-  if (id) {
-    const byId = await ctx.db.get(id);
-    if (byId) return byId;
-  }
-
-  return await ctx.db
-    .query("benchmarkVersions")
-    .withIndex("by_version", (q) => q.eq("version", reference))
-    .unique();
-}
 
 async function getOrCreateUnmintedBenchmark(
   ctx: Pick<MutationCtx, "db">,

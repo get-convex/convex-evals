@@ -1,17 +1,9 @@
-import {
-  internalMutation,
-  query,
-  type MutationCtx,
-  type QueryCtx,
-} from "./_generated/server";
+import { internalMutation, query, type QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { experimentLiteral, languageModelUsage, evalStatus } from "./schema.js";
 import { internal } from "./_generated/api.js";
-import {
-  getBenchmarkByReference,
-  resolveBenchmarkForRun,
-} from "./benchmarkVersions";
+import { resolveBenchmarkForRun } from "./benchmarkVersions";
 import {
   LEADERBOARD_HISTORY_SIZE,
   isFullyCompletedRun,
@@ -19,16 +11,6 @@ import {
   isRateLimitFailure,
   computeRunScores,
 } from "./scoringUtils.js";
-
-const LEGACY_BENCHMARK_VERSION = "legacy";
-
-function normalizeBenchmarkId(
-  ctx: Pick<QueryCtx, "db">,
-  reference: Doc<"runs">["benchmarkVersion"],
-): Id<"benchmarkVersions"> | null {
-  if (reference === undefined) return null;
-  return ctx.db.normalizeId("benchmarkVersions", String(reference));
-}
 
 async function getCurrentBenchmark(
   ctx: Pick<QueryCtx, "db">,
@@ -41,21 +23,6 @@ async function getCurrentBenchmark(
   return (
     publicVersions.find((version) => version.provenance !== "unminted") ?? null
   );
-}
-
-async function ensureRunBenchmarkId(
-  ctx: Pick<MutationCtx, "db">,
-  run: Doc<"runs">,
-): Promise<Id<"benchmarkVersions">> {
-  const existing = await getBenchmarkByReference(ctx, run.benchmarkVersion);
-  if (existing) return existing._id;
-
-  const id = await resolveBenchmarkForRun(
-    ctx,
-    typeof run.benchmarkVersion === "string" ? run.benchmarkVersion : undefined,
-  );
-  await ctx.db.patch("runs", run._id, { benchmarkVersion: id });
-  return id;
 }
 
 export const createRun = internalMutation({
@@ -177,7 +144,7 @@ export const completeRun = internalMutation({
   handler: async (ctx, args) => {
     const run = await ctx.db.get("runs", args.runId);
     if (!run) return null;
-    const benchmarkVersion = await ensureRunBenchmarkId(ctx, run);
+    const benchmarkVersion = run.benchmarkVersion;
 
     await ctx.db.patch("runs", args.runId, {
       status: args.status,
@@ -221,7 +188,7 @@ export const deleteRun = internalMutation({
   handler: async (ctx, args) => {
     const run = await ctx.db.get("runs", args.runId);
     if (!run) return null;
-    const benchmarkVersion = await ensureRunBenchmarkId(ctx, run);
+    const benchmarkVersion = run.benchmarkVersion;
 
     // Collect all evals for this run
     const evals = await ctx.db
@@ -492,40 +459,24 @@ export const leaderboardScores = query({
     benchmarkVersion: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const currentBenchmark = await getCurrentBenchmark(ctx);
-    const requestedVersion =
-      args.benchmarkVersion ??
-      currentBenchmark?.version ??
-      LEGACY_BENCHMARK_VERSION;
-    const benchmark =
-      requestedVersion === LEGACY_BENCHMARK_VERSION
-        ? null
-        : await ctx.db
-            .query("benchmarkVersions")
-            .withIndex("by_version", (q) => q.eq("version", requestedVersion))
-            .unique();
-    if (requestedVersion !== LEGACY_BENCHMARK_VERSION && benchmark === null) {
-      return [];
-    }
-    const storedVersion = benchmark?._id;
-    let rows = await ctx.db
+    const benchmark = args.benchmarkVersion
+      ? await ctx.db
+          .query("benchmarkVersions")
+          .withIndex("by_version", (q) =>
+            q.eq("version", args.benchmarkVersion!),
+          )
+          .unique()
+      : await getCurrentBenchmark(ctx);
+    if (!benchmark) return [];
+
+    const rows = await ctx.db
       .query("modelScores")
       .withIndex("by_experiment_benchmark", (q) =>
         q
           .eq("experiment", args.experiment)
-          .eq("benchmarkVersion", storedVersion),
+          .eq("benchmarkVersion", benchmark._id),
       )
       .collect();
-    // During the staged migration, the reconstructed ID rows may not exist
-    // yet. Keep the old site populated from the unversioned materialised rows.
-    if (args.benchmarkVersion === undefined && rows.length === 0) {
-      rows = await ctx.db
-        .query("modelScores")
-        .withIndex("by_experiment_benchmark", (q) =>
-          q.eq("experiment", args.experiment).eq("benchmarkVersion", undefined),
-        )
-        .collect();
-    }
     const models = await ctx.db.query("models").collect();
     const modelMap = new Map(models.map((m) => [m._id, m] as const));
 
@@ -542,7 +493,7 @@ export const leaderboardScores = query({
       formattedName: modelMap.get(r.modelId)?.formattedName ?? "Unknown model",
       openRouterFirstSeenAt:
         modelMap.get(r.modelId)?.openRouterFirstSeenAt ?? 0,
-      benchmarkVersion: requestedVersion,
+      benchmarkVersion: benchmark.version,
       totalScore: r.totalScore,
       totalScoreErrorBar: r.totalScoreErrorBar,
       averageRunDurationMs: r.averageRunDurationMs,
@@ -558,11 +509,7 @@ export const leaderboardScores = query({
   },
 });
 
-/**
- * Lists the current benchmark and archived score partitions. Historical rows
- * from before explicit versioning are retained as one labelled legacy archive;
- * they are never mixed into a versioned leaderboard.
- */
+/** Lists the current benchmark and archived score partitions. */
 export const leaderboardVersions = query({
   args: {
     experiment: v.optional(experimentLiteral),
@@ -585,8 +532,7 @@ export const leaderboardVersions = query({
       .filter((benchmark) => benchmark.provenance !== "unminted")
       .map((benchmark) => {
         const rows = scoreRows.filter(
-          (row) =>
-            normalizeBenchmarkId(ctx, row.benchmarkVersion) === benchmark._id,
+          (row) => row.benchmarkVersion === benchmark._id,
         );
         const scoredSlugs = new Set(
           rows.map((row) => modelSlugs.get(row.modelId)).filter(Boolean),
@@ -606,25 +552,6 @@ export const leaderboardVersions = query({
           isLegacy: false,
         };
       });
-
-    const legacyRows = scoreRows.filter(
-      (row) =>
-        row.benchmarkVersion === undefined ||
-        normalizeBenchmarkId(ctx, row.benchmarkVersion) === null,
-    );
-    if (legacyRows.length > 0) {
-      versions.push({
-        version: LEGACY_BENCHMARK_VERSION,
-        evalCount: 0,
-        mintedAt: 0,
-        provenance: "reconstructed" as const,
-        modelCount: legacyRows.length,
-        curatedModelCount: 0,
-        curatedModelsScored: 0,
-        isCurrent: currentBenchmark === null,
-        isLegacy: true,
-      });
-    }
 
     return versions;
   },
@@ -664,22 +591,15 @@ export const leaderboardModelHistory = query({
       return [];
     }
 
-    const currentBenchmark = await getCurrentBenchmark(ctx);
-    const requestedVersion =
-      args.benchmarkVersion ??
-      currentBenchmark?.version ??
-      LEGACY_BENCHMARK_VERSION;
-    const benchmark =
-      requestedVersion === LEGACY_BENCHMARK_VERSION
-        ? null
-        : await ctx.db
-            .query("benchmarkVersions")
-            .withIndex("by_version", (q) => q.eq("version", requestedVersion))
-            .unique();
-    if (requestedVersion !== LEGACY_BENCHMARK_VERSION && benchmark === null) {
-      return [];
-    }
-    const storedVersion = benchmark?._id;
+    const benchmark = args.benchmarkVersion
+      ? await ctx.db
+          .query("benchmarkVersions")
+          .withIndex("by_version", (q) =>
+            q.eq("version", args.benchmarkVersion!),
+          )
+          .unique()
+      : await getCurrentBenchmark(ctx);
+    if (!benchmark) return [];
 
     // Query the exact score partition. A wall-clock cutoff would eventually
     // make archived benchmark charts empty even though their score still
@@ -694,7 +614,7 @@ export const leaderboardModelHistory = query({
         q
           .eq("modelId", targetModelId)
           .eq("experiment", args.experiment)
-          .eq("benchmarkVersion", storedVersion),
+          .eq("benchmarkVersion", benchmark._id),
       )
       .filter((q) => q.eq(q.field("status.kind"), "completed"))
       .order("desc")
@@ -704,8 +624,8 @@ export const leaderboardModelHistory = query({
     runs = runs.filter(
       (r) =>
         r.status.kind === "completed" &&
-        r.benchmarkVersion === storedVersion &&
-        hasCompleteBenchmarkPlan(r, benchmark?.evalCount),
+        r.benchmarkVersion === benchmark._id &&
+        hasCompleteBenchmarkPlan(r, benchmark.evalCount),
     );
 
     // Fetch evals and filter to only fully-completed runs, computing scores

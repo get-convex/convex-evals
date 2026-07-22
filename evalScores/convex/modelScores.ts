@@ -59,12 +59,7 @@ export const backfillAllModelScores = internalMutation({
     }> = [];
     for (const run of runs) {
       if (!run.modelId) continue;
-      if (run.benchmarkVersion === undefined) continue;
-      const benchmarkVersion = ctx.db.normalizeId(
-        "benchmarkVersions",
-        run.benchmarkVersion,
-      );
-      if (!benchmarkVersion) continue;
+      const benchmarkVersion = run.benchmarkVersion;
       const benchmark = benchmarkById.get(benchmarkVersion);
       if (!hasCompleteBenchmarkPlan(run, benchmark?.evalCount)) continue;
       const key = `${run.modelId}|${run.experiment ?? ""}|${benchmarkVersion}`;

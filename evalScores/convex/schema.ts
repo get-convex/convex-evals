@@ -14,14 +14,6 @@ export const benchmarkProvenance = v.union(
   v.literal("unminted"),
 );
 
-// Temporary compatibility validator for the staged migration. Historical
-// documents currently have either no version or the old string hash. After the
-// backfill proves every row has an ID, this becomes v.id("benchmarkVersions").
-export const migratingBenchmarkReference = v.union(
-  v.string(),
-  v.id("benchmarkVersions"),
-);
-
 // Step name as union of literals
 export const stepNameLiteral = v.union(
   v.literal("filesystem"),
@@ -154,7 +146,7 @@ export default defineSchema({
     provider: v.string(),
     runId: v.optional(v.string()),
     plannedEvals: v.array(v.string()),
-    benchmarkVersion: v.optional(migratingBenchmarkReference),
+    benchmarkVersion: v.id("benchmarkVersions"),
     status: runStatus,
     experiment: v.optional(experimentLiteral),
   })
@@ -213,7 +205,7 @@ export default defineSchema({
   modelScores: defineTable({
     modelId: v.id("models"),
     experiment: v.optional(experimentLiteral),
-    benchmarkVersion: v.optional(migratingBenchmarkReference),
+    benchmarkVersion: v.id("benchmarkVersions"),
     totalScore: v.number(),
     totalScoreErrorBar: v.number(),
     averageRunDurationMs: v.number(),
