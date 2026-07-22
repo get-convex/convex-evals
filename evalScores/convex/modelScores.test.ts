@@ -14,6 +14,8 @@
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
+import { backfillCompletedRunsToBenchmark } from "./benchmarkVersions";
 import schema from "./schema";
 import { modules } from "./test.setup";
 
@@ -25,7 +27,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
 });
-import type { Id } from "./_generated/dataModel";
 
 // ── Test helper ───────────────────────────────────────────────────────
 
@@ -471,10 +472,12 @@ describe("recomputeModelScores", () => {
     expect(await t.query(api.runs.leaderboardScores, {})).toEqual([]);
 
     await expect(
-      t.mutation(internal.benchmarkVersions.backfillCompletedRunsToBenchmark, {
-        version: "new-benchmark",
-        runIds: [runId],
-      }),
+      t.run(async (ctx) =>
+        backfillCompletedRunsToBenchmark(ctx, {
+          version: "new-benchmark",
+          runIds: [runId],
+        }),
+      ),
     ).resolves.toEqual({
       updated: 1,
       alreadyAssigned: 0,
@@ -493,10 +496,12 @@ describe("recomputeModelScores", () => {
     });
 
     await expect(
-      t.mutation(internal.benchmarkVersions.backfillCompletedRunsToBenchmark, {
-        version: "new-benchmark",
-        runIds: [runId],
-      }),
+      t.run(async (ctx) =>
+        backfillCompletedRunsToBenchmark(ctx, {
+          version: "new-benchmark",
+          runIds: [runId],
+        }),
+      ),
     ).resolves.toEqual({
       updated: 0,
       alreadyAssigned: 1,
@@ -529,10 +534,12 @@ describe("recomputeModelScores", () => {
     });
 
     await expect(
-      t.mutation(internal.benchmarkVersions.backfillCompletedRunsToBenchmark, {
-        version: "new-benchmark",
-        runIds: [runId],
-      }),
+      t.run(async (ctx) =>
+        backfillCompletedRunsToBenchmark(ctx, {
+          version: "new-benchmark",
+          runIds: [runId],
+        }),
+      ),
     ).rejects.toThrow(`Run ${runId} is not completed`);
   });
 
