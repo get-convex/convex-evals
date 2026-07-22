@@ -12,6 +12,37 @@ import { createHash } from "crypto";
 import { join } from "path";
 import { tmpdir } from "os";
 import JSZip from "jszip";
+import { canReportEvalResultsTo } from "./reporting.js";
+
+describe("production reporting boundary", () => {
+  const productionUrl = "https://fabulous-panther-525.convex.cloud";
+
+  it("rejects production reporting from a local process", () => {
+    expect(canReportEvalResultsTo(productionUrl, {})).toBe(false);
+    expect(canReportEvalResultsTo(`${productionUrl}/`, {})).toBe(false);
+  });
+
+  it("allows production reporting only from GitHub Actions on main", () => {
+    expect(
+      canReportEvalResultsTo(productionUrl, {
+        GITHUB_ACTIONS: "true",
+        GITHUB_REF: "refs/heads/main",
+      }),
+    ).toBe(true);
+    expect(
+      canReportEvalResultsTo(productionUrl, {
+        GITHUB_ACTIONS: "true",
+        GITHUB_REF: "refs/heads/feature",
+      }),
+    ).toBe(false);
+  });
+
+  it("allows local reporting to non-production deployments", () => {
+    expect(
+      canReportEvalResultsTo("https://brazen-pelican-414.convex.cloud", {}),
+    ).toBe(true);
+  });
+});
 
 describe("zip creation with JSZip", () => {
   let tempDir: string;

@@ -72,6 +72,7 @@
     "ablation:generate": "bun run scripts/ablateGuidelines.ts",
     "ablation:run": "bun run scripts/runAblation.ts",
     "evalscores:sync-from-prod": "bun run scripts/syncEvalScoresFromProd.ts",
+    "benchmark:mint": "bun run scripts/mintBenchmark.ts",
     "validate:guidelines": "bun run scripts/validateGuidelines.ts",
     "validate:answers": "bun run scripts/validateAnswers.ts",
     "generate:answer-types": "bun run scripts/generateAnswerTypes.ts",

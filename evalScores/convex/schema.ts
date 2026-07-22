@@ -8,6 +8,20 @@ export const experimentLiteral = v.union(
   v.literal("agents_md"),
 );
 
+export const benchmarkProvenance = v.union(
+  v.literal("minted"),
+  v.literal("reconstructed"),
+  v.literal("unminted"),
+);
+
+// Temporary compatibility validator for the staged migration. Historical
+// documents currently have either no version or the old string hash. After the
+// backfill proves every row has an ID, this becomes v.id("benchmarkVersions").
+export const migratingBenchmarkReference = v.union(
+  v.string(),
+  v.id("benchmarkVersions"),
+);
+
 // Step name as union of literals
 export const stepNameLiteral = v.union(
   v.literal("filesystem"),
@@ -25,16 +39,20 @@ export const stepNameLiteral = v.union(
 // uses v.any() since its shape is opaque and varies by provider.
 export const languageModelUsage = v.object({
   inputTokens: v.optional(v.number()),
-  inputTokenDetails: v.optional(v.object({
-    noCacheTokens: v.optional(v.number()),
-    cacheReadTokens: v.optional(v.number()),
-    cacheWriteTokens: v.optional(v.number()),
-  })),
+  inputTokenDetails: v.optional(
+    v.object({
+      noCacheTokens: v.optional(v.number()),
+      cacheReadTokens: v.optional(v.number()),
+      cacheWriteTokens: v.optional(v.number()),
+    }),
+  ),
   outputTokens: v.optional(v.number()),
-  outputTokenDetails: v.optional(v.object({
-    textTokens: v.optional(v.number()),
-    reasoningTokens: v.optional(v.number()),
-  })),
+  outputTokenDetails: v.optional(
+    v.object({
+      textTokens: v.optional(v.number()),
+      reasoningTokens: v.optional(v.number()),
+    }),
+  ),
   totalTokens: v.optional(v.number()),
   // Deprecated SDK fields, kept for backward compat with stored data
   reasoningTokens: v.optional(v.number()),
@@ -47,13 +65,25 @@ export const languageModelUsage = v.object({
 export const runStatus = v.union(
   v.object({ kind: v.literal("pending") }),
   v.object({ kind: v.literal("running") }),
-  v.object({ kind: v.literal("completed"), durationMs: v.number(), usage: v.optional(languageModelUsage) }),
-  v.object({ kind: v.literal("failed"), failureReason: v.string(), durationMs: v.number(), usage: v.optional(languageModelUsage) }),
+  v.object({
+    kind: v.literal("completed"),
+    durationMs: v.number(),
+    usage: v.optional(languageModelUsage),
+  }),
+  v.object({
+    kind: v.literal("failed"),
+    failureReason: v.string(),
+    durationMs: v.number(),
+    usage: v.optional(languageModelUsage),
+  }),
 );
 
 export const evalStatus = v.union(
   v.object({ kind: v.literal("pending") }),
-  v.object({ kind: v.literal("running"), outputStorageId: v.optional(v.id("_storage")) }),
+  v.object({
+    kind: v.literal("running"),
+    outputStorageId: v.optional(v.id("_storage")),
+  }),
   v.object({
     kind: v.literal("passed"),
     durationMs: v.number(),
@@ -74,7 +104,11 @@ export const evalStatus = v.union(
 export const stepStatus = v.union(
   v.object({ kind: v.literal("running") }),
   v.object({ kind: v.literal("passed"), durationMs: v.number() }),
-  v.object({ kind: v.literal("failed"), failureReason: v.string(), durationMs: v.number() }),
+  v.object({
+    kind: v.literal("failed"),
+    failureReason: v.string(),
+    durationMs: v.number(),
+  }),
   v.object({ kind: v.literal("skipped") }),
 );
 
@@ -104,8 +138,7 @@ export default defineSchema({
     // Store models as an array since Set isn't supported
     models: v.array(v.id("models")),
     latestRunTime: v.number(),
-  })
-    .index("by_name", ["name"]),
+  }).index("by_name", ["name"]),
 
   authTokens: defineTable({
     name: v.string(),
@@ -121,11 +154,27 @@ export default defineSchema({
     provider: v.string(),
     runId: v.optional(v.string()),
     plannedEvals: v.array(v.string()),
+    benchmarkVersion: v.optional(migratingBenchmarkReference),
     status: runStatus,
     experiment: v.optional(experimentLiteral),
   })
     .index("by_modelId", ["modelId"])
-    .index("by_experiment", ["experiment"]),
+    .index("by_experiment", ["experiment"])
+    .index("by_modelId_experiment_benchmark", [
+      "modelId",
+      "experiment",
+      "benchmarkVersion",
+    ]),
+
+  benchmarkVersions: defineTable({
+    version: v.string(),
+    effectiveAt: v.number(),
+    evalCount: v.number(),
+    curatedModels: v.array(v.string()),
+    provenance: benchmarkProvenance,
+  })
+    .index("by_version", ["version"])
+    .index("by_effectiveAt", ["effectiveAt"]),
 
   evals: defineTable({
     runId: v.id("runs"),
@@ -149,23 +198,22 @@ export default defineSchema({
     assetType: v.union(v.literal("evalSource"), v.literal("output")),
     // Reference to the stored file
     storageId: v.id("_storage"),
-  })
-    .index("by_hash", ["hash"]),
+  }).index("by_hash", ["hash"]),
 
   steps: defineTable({
     evalId: v.id("evals"),
     name: stepNameLiteral,
     status: stepStatus,
-  })
-    .index("by_evalId", ["evalId"]),
+  }).index("by_evalId", ["evalId"]),
 
-  // Materialised leaderboard scores per (model, experiment) pair.
+  // Materialised leaderboard scores per (model, experiment, benchmark) group.
   // Updated via a scheduled mutation whenever a run completes or is deleted.
   // The leaderboardScores query reads directly from this table instead of
   // recomputing from runs + evals on every request.
   modelScores: defineTable({
     modelId: v.id("models"),
     experiment: v.optional(experimentLiteral),
+    benchmarkVersion: v.optional(migratingBenchmarkReference),
     totalScore: v.number(),
     totalScoreErrorBar: v.number(),
     averageRunDurationMs: v.number(),
@@ -179,5 +227,11 @@ export default defineSchema({
     latestRunTime: v.number(),
   })
     .index("by_modelId_experiment", ["modelId", "experiment"])
-    .index("by_experiment", ["experiment"]),
+    .index("by_experiment", ["experiment"])
+    .index("by_modelId_experiment_benchmark", [
+      "modelId",
+      "experiment",
+      "benchmarkVersion",
+    ])
+    .index("by_experiment_benchmark", ["experiment", "benchmarkVersion"]),
 });

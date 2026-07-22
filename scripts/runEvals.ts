@@ -33,7 +33,10 @@ interface EvalInfo {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const EVALS_DIR = "evals";
-const DEFAULT_MODEL = "claude-sonnet-4-5";
+const DEFAULT_MODEL = ALL_MODELS[0];
+if (!DEFAULT_MODEL) {
+  throw new Error("ALL_MODELS must contain at least one model");
+}
 
 // Valid experiment values
 const VALID_EXPERIMENTS = ["no_guidelines", "web_search", "web_search_no_guidelines"] as const;
@@ -262,7 +265,7 @@ async function selectModels(): Promise<SelectResult<string[]>> {
   const modelChoice = await select({
     message: "Select model(s):",
     choices: [
-      { name: "Claude 4.5 Sonnet (default)", value: DEFAULT_MODEL },
+      { name: `${DEFAULT_MODEL} (default)`, value: DEFAULT_MODEL },
       { name: "Choose from list", value: "choose" },
       { name: "← Back", value: "back" },
     ],

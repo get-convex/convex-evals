@@ -6,23 +6,40 @@ import type { Doc } from "./_generated/dataModel";
 
 export const LEADERBOARD_HISTORY_SIZE = 10;
 
-export const LEADERBOARD_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000;
-
-export function computeMeanAndStdDev(values: number[]): { mean: number; stdDev: number } {
+export function computeMeanAndStdDev(values: number[]): {
+  mean: number;
+  stdDev: number;
+} {
   if (values.length === 0) return { mean: 0, stdDev: 0 };
   if (values.length === 1) return { mean: values[0], stdDev: 0 };
   const mean = values.reduce((s, v) => s + v, 0) / values.length;
-  const variance = values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length;
+  const variance =
+    values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length;
   return { mean, stdDev: Math.sqrt(variance) };
 }
 
-export function isFullyCompletedRun(run: Doc<"runs">, evals: Doc<"evals">[]): boolean {
+export function isFullyCompletedRun(
+  run: Doc<"runs">,
+  evals: Doc<"evals">[],
+): boolean {
   const planned = run.plannedEvals.length;
   if (planned === 0) return false;
   const finished = evals.filter(
     (e) => e.status.kind === "passed" || e.status.kind === "failed",
   ).length;
   return finished >= planned;
+}
+
+export function hasCompleteBenchmarkPlan(
+  run: Doc<"runs">,
+  expectedEvalCount: number | undefined,
+): boolean {
+  // Historical runs remain available only through the labelled legacy archive.
+  if (run.benchmarkVersion === undefined) return true;
+  return (
+    expectedEvalCount !== undefined &&
+    run.plannedEvals.length === expectedEvalCount
+  );
 }
 
 export function isRateLimitFailure(evalDoc: Doc<"evals">): boolean {
@@ -77,9 +94,10 @@ export function computeRunDurationMs(evals: Doc<"evals">[]): number | null {
   return completedCount > 0 ? total / completedCount : null;
 }
 
-export function computeRunScores(
-  evals: Doc<"evals">[],
-): { totalScore: number; scores: Record<string, number> } {
+export function computeRunScores(evals: Doc<"evals">[]): {
+  totalScore: number;
+  scores: Record<string, number>;
+} {
   const completed = evals.filter(
     (e) =>
       (e.status.kind === "passed" || e.status.kind === "failed") &&

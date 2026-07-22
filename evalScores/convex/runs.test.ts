@@ -8,8 +8,12 @@ import { modules } from "./test.setup";
 // Prevent scheduled functions (from completeRun/deleteRun) from firing
 // asynchronously during tests and causing "write outside of transaction" errors.
 // Each test drains its own scheduled functions explicitly via the helper.
-beforeEach(() => { vi.useFakeTimers(); });
-afterEach(() => { vi.useRealTimers(); });
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 /**
  * Helper: Create a completed run with the given evals.
@@ -30,11 +34,18 @@ async function createCompletedRunWithEvals(
     }>;
   },
 ): Promise<Id<"runs">> {
+  const benchmarkVersion = `test-suite-${opts.evals.length}`;
+  await t.mutation(internal.benchmarkVersions.mint, {
+    version: benchmarkVersion,
+    evalCount: opts.evals.length,
+    curatedModels: [opts.model],
+  });
   const runId = await t.mutation(internal.runs.createRun, {
     model: opts.model,
     formattedName: opts.formattedName ?? opts.model,
     provider: opts.provider ?? "test",
     plannedEvals: opts.evals.map((e) => `${e.category}/${e.name}`),
+    benchmarkVersion,
     experiment: opts.experiment,
   });
 
@@ -204,7 +215,9 @@ describe("leaderboardScores", () => {
     });
 
     const results = await t.query(api.runs.leaderboardScores, {});
-    const entry = results.find((r: { model: string }) => r.model === "cost-model");
+    const entry = results.find(
+      (r: { model: string }) => r.model === "cost-model",
+    );
     expect(entry).toBeDefined();
 
     // Mean of [1.0, 3.0] = 2.0
@@ -226,7 +239,9 @@ describe("leaderboardScores", () => {
     });
 
     const results = await t.query(api.runs.leaderboardScores, {});
-    const entry = results.find((r: { model: string }) => r.model === "no-cost-model");
+    const entry = results.find(
+      (r: { model: string }) => r.model === "no-cost-model",
+    );
     expect(entry).toBeDefined();
     expect(entry!.averageRunCostUsd).toBeNull();
     expect(entry!.averageRunCostUsdErrorBar).toBeNull();
@@ -402,8 +417,12 @@ describe("leaderboardScores", () => {
 
     expect(results).toHaveLength(2);
     // Sorted by model name
-    const modelA = results.find((r: { model: string }) => r.model === "model-a");
-    const modelB = results.find((r: { model: string }) => r.model === "model-b");
+    const modelA = results.find(
+      (r: { model: string }) => r.model === "model-a",
+    );
+    const modelB = results.find(
+      (r: { model: string }) => r.model === "model-b",
+    );
     expect(modelA).toBeDefined();
     expect(modelB).toBeDefined();
     expect(modelA!.totalScore).toBe(1.0);

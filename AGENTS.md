@@ -51,6 +51,13 @@ When deploying changes to the evalScores backend, use `npx convex deploy` from t
 
 ## Deployment & Migration Workflow
 
+### Schema Change Approval Gate
+
+Before making any Convex schema change, show the user the proposed schema diff
+and explain its migration and deployment implications. Wait for the user's
+explicit approval before editing `evalScores/convex/schema.ts`, adding a schema
+migration, or deploying the schema change to any Convex deployment.
+
 When making schema or data changes to the Convex backend that require migrations:
 
 1. **Never deploy directly to production** from your local dev environment.
@@ -66,9 +73,29 @@ When making schema or data changes to the Convex backend that require migrations
    ```
 6. **If the migration enables further schema tightening** (e.g. making optional fields required, removing deprecated tables), make those changes in a **second commit** and push again to deploy the tightened schema.
 
-There are currently no historical backfills left in `migrations:runAll`, but we keep the scaffold in place for future schema/data migrations.
+`migrations:runAll` currently includes the run benchmark-version ID backfill.
+Seed the reconstructed benchmark documents with
+`benchmarkVersions:seedHistorical` before running it. Do not tighten the schema
+until `migrations:auditBenchmarkVersionBackfill` reports zero unresolved runs
+and the derived `modelScores` rows have been rebuilt.
 
 The general pattern is: deploy code first (with loose/compatible schema), run data migrations if needed, then deploy tightened schema.
+
+## Benchmark Version Minting
+
+Benchmark versions are minted manually, never automatically as part of a
+release. When a batch of eval additions or meaningful eval changes appears to
+be complete, tell the user that it is probably a good time to mint a new
+benchmark version. If the user expects more eval work over the next few days,
+offer to schedule a follow-up task to revisit minting after that work is done.
+
+Do not mint or publish a benchmark version without the user's explicit
+approval. Minting is metadata-only and must not trigger paid model runs; the
+normal periodic schedule populates the new version over time.
+
+Local eval runs must never write to the production Convex deployment. Local
+runs may report only to the development deployment. Production eval reporting
+is reserved for GitHub Actions running on `main`.
 
 ## Deleting a Run
 

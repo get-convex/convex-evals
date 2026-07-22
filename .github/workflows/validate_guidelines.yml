@@ -6,7 +6,7 @@ on:
       models:
         description: "Comma-separated model names to validate against"
         required: false
-        default: "anthropic/claude-sonnet-4.5,anthropic/claude-opus-4.6,google/gemini-3-pro-preview,openai/gpt-5.2-codex"
+        default: "anthropic/claude-sonnet-5,anthropic/claude-opus-4.8,deepseek/deepseek-v4-pro,openai/gpt-5.5"
         type: string
       filter:
         description: "Regex to filter evals (e.g. '000-fundamentals', '002-queries'). Leave empty for all."

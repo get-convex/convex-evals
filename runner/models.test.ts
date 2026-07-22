@@ -25,22 +25,18 @@ describe("ALL_MODELS", () => {
     expect(new Set(ALL_MODELS).size).toBe(ALL_MODELS.length);
   });
 
-  it("contains known models", () => {
-    expect(ALL_MODELS).toContain("openai/gpt-5.2-codex");
-    expect(ALL_MODELS).toContain("openai/gpt-5");
+  it("contains the current curated models", () => {
+    expect(ALL_MODELS).toContain("cursor/composer-2.5");
+    expect(ALL_MODELS).toContain("anthropic/claude-sonnet-5");
+    expect(ALL_MODELS).toContain("anthropic/claude-opus-4.8");
+    expect(ALL_MODELS).toContain("anthropic/claude-fable-5");
     expect(ALL_MODELS).toContain("openai/gpt-5.5");
     expect(ALL_MODELS).toContain("openai/gpt-5.6-sol");
     expect(ALL_MODELS).toContain("openai/gpt-5.6-terra");
     expect(ALL_MODELS).toContain("openai/gpt-5.6-luna");
-    expect(ALL_MODELS).toContain("anthropic/claude-opus-4.6");
-    expect(ALL_MODELS).toContain("anthropic/claude-opus-4.7");
-    expect(ALL_MODELS).toContain("anthropic/claude-opus-4.8");
-    expect(ALL_MODELS).toContain("anthropic/claude-fable-5");
     expect(ALL_MODELS).toContain("deepseek/deepseek-v4-pro");
-    expect(ALL_MODELS).toContain("moonshotai/kimi-k2.6");
     expect(ALL_MODELS).toContain("moonshotai/kimi-k3");
     expect(ALL_MODELS).toContain("poolside/laguna-s-2.1");
-    expect(ALL_MODELS).toContain("google/gemini-2.5-flash");
     expect(ALL_MODELS).toContain("x-ai/grok-4.5");
   });
 });
@@ -51,7 +47,7 @@ describe("MODEL_NAMES", () => {
   });
 
   it("contains a known model", () => {
-    expect(MODEL_NAMES.has("openai/gpt-5")).toBe(true);
+    expect(MODEL_NAMES.has("openai/gpt-5.5")).toBe(true);
   });
 
   it("returns false for non-existent model", () => {

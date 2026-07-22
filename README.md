@@ -78,10 +78,10 @@ Run evals directly without interactive mode:
 bun run evals run -c 000-fundamentals 002-queries
 
 # Run with a specific model
-bun run evals run -m claude-sonnet-4-5 -c 005-idioms
+bun run evals run -m anthropic/claude-sonnet-5 -c 005-idioms
 
 # Run with multiple models
-bun run evals run -m claude-sonnet-4-5 -m gpt-5 -f "000-fundamentals"
+bun run evals run -m anthropic/claude-sonnet-5 -m openai/gpt-5.5 -f "000-fundamentals"
 
 # Re-run failed evals
 bun run evals run --failed
@@ -116,13 +116,13 @@ OUTPUT_TEMPDIR=/tmp/convex-codegen-evals bun run runner/index.ts
 
 ### Environment variables
 
-| Variable               | Description                                                         |
-| ---------------------- | ------------------------------------------------------------------- |
-| `MODELS`               | Comma-separated list of models to run                               |
-| `TEST_FILTER`          | Regex pattern to filter evals                                       |
-| `OUTPUT_TEMPDIR`       | Directory for generated output files                                |
-| `CONVEX_EVAL_URL`      | Convex deployment URL (e.g. `https://xxx.convex.cloud`)             |
-| `CONVEX_AUTH_TOKEN`    | Auth token for the Convex backend                                   |
+| Variable            | Description                                             |
+| ------------------- | ------------------------------------------------------- |
+| `MODELS`            | Comma-separated list of models to run                   |
+| `TEST_FILTER`       | Regex pattern to filter evals                           |
+| `OUTPUT_TEMPDIR`    | Directory for generated output files                    |
+| `CONVEX_EVAL_URL`   | Convex deployment URL (e.g. `https://xxx.convex.cloud`) |
+| `CONVEX_AUTH_TOKEN` | Auth token for the Convex backend                       |
 
 ### Output
 
@@ -165,12 +165,13 @@ When reviewing a failure, the first question should be: "Is this something the g
 1. **Be explicit about schema** - always provide the complete schema in the prompt using TypeScript code blocks
 
 2. **Clear requirements** - for each function, specify:
+
    - Exact function name
    - Required arguments and their types
    - Expected return type/structure
    - Any specific behaviors or edge cases to handle
 
-3. **Scope the context** - describe what the feature does, but trust the model to know *how* to implement it in Convex. Don't assume knowledge of the problem domain; do assume knowledge of Convex patterns from the guidelines.
+3. **Scope the context** - describe what the feature does, but trust the model to know _how_ to implement it in Convex. Don't assume knowledge of the problem domain; do assume knowledge of Convex patterns from the guidelines.
 
 4. **Implementation constraints** - specify what files to create, what NOT to do, and any performance considerations that aren't obvious from the guidelines.
 
@@ -250,6 +251,34 @@ The periodic workflow uses the same scheduling policy before it actually queues 
 - if we have never run a model before, it is due immediately
 - otherwise we look at the model's stored OpenRouter first-seen timestamp
 - the target interval starts at `24h`, grows with model age, hits about `30d` at one year old, and approaches `60d` for very old models
-- the due check uses the latest completed default-experiment leaderboard run, so failed runs and `no_guidelines` runs do not delay the next periodic default run
+- the due check uses the latest default-experiment attempt across benchmark versions, so minting a benchmark cannot make every model immediately due
+- failed attempts preserve the scheduling cooldown, while `no_guidelines` runs do not delay the next default run
 
 The OpenRouter-derived selectors also do a lightweight preflight check so obviously dead models are skipped before entering the matrix.
+
+### Leaderboard benchmark versions
+
+Benchmark versions are minted manually after a meaningful batch of eval work
+is complete. The version itself is a deterministic hash derived from the
+scoring protocol, system prompt, guidelines, and complete eval suite. Minting
+is metadata-only: it does not queue or run any model, and the periodic workflow
+continues using the age- and cost-aware schedule above.
+
+The public leaderboard shows only scores from the current version. Older
+versions remain available in the archive. Pre-versioning runs are backfilled
+into reconstructed versions using the exact sorted planned-eval set and the
+date that suite first appeared. A few historical partial runs use the version
+active on their run date, but are excluded from aggregates because their
+planned eval count does not match that version.
+
+Runs store a Convex document ID into the `benchmarkVersions` table. New suite
+hashes that have not been manually minted point to a private `unminted`
+sentinel, so the foreign key is always present without publishing a version
+automatically. Local runners are also prevented from reporting to the
+production Convex deployment.
+
+After explicit approval, mint the version against a configured deployment:
+
+```bash
+bun run benchmark:mint
+```

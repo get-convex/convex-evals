@@ -19,8 +19,12 @@ import { modules } from "./test.setup";
 
 // Prevent scheduled functions from firing asynchronously and causing
 // "write outside of transaction" errors.
-beforeEach(() => { vi.useFakeTimers(); });
-afterEach(() => { vi.useRealTimers(); });
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 import type { Id } from "./_generated/dataModel";
 
 // ── Test helper ───────────────────────────────────────────────────────
@@ -31,6 +35,7 @@ async function createCompletedRun(
     model: string;
     formattedName?: string;
     experiment?: "no_guidelines";
+    benchmarkVersion?: string;
     evals: Array<{
       category: string;
       name: string;
@@ -44,12 +49,21 @@ async function createCompletedRun(
     runDurationMs?: number;
   },
 ): Promise<Id<"runs">> {
+  if (opts.benchmarkVersion === undefined) {
+    await t.mutation(internal.benchmarkVersions.mint, {
+      version: `test-suite-${opts.evals.length}`,
+      evalCount: opts.evals.length,
+      curatedModels: [opts.model],
+    });
+  }
   const runId = await t.mutation(internal.runs.createRun, {
     model: opts.model,
     formattedName: opts.formattedName ?? opts.model,
     provider: "test",
     plannedEvals: opts.evals.map((e) => `${e.category}/${e.name}`),
     experiment: opts.experiment,
+    benchmarkVersion:
+      opts.benchmarkVersion ?? `test-suite-${opts.evals.length}`,
   });
 
   for (const evalDef of opts.evals) {
@@ -61,7 +75,9 @@ async function createCompletedRun(
     });
 
     const usage =
-      evalDef.costUsd !== undefined ? { raw: { cost: evalDef.costUsd } } : undefined;
+      evalDef.costUsd !== undefined
+        ? { raw: { cost: evalDef.costUsd } }
+        : undefined;
 
     if (evalDef.rateLimited || evalDef.infrastructureFailure) {
       await t.mutation(internal.evals.completeEval, {
@@ -224,7 +240,7 @@ describe("recomputeModelScores", () => {
   it("deletes the row when all runs for a model are gone", async () => {
     const t = convexTest(schema, modules);
 
-    const runId =     await createCompletedRun(t, {
+    const runId = await createCompletedRun(t, {
       model: "model-a",
       evals: [{ category: "cat1", name: "eval1", passed: true }],
     });
@@ -370,6 +386,145 @@ describe("recomputeModelScores", () => {
     expect(expRows[0].totalScore).toBe(0.0);
   });
 
+  it("shows only the current minted benchmark and preserves older versions in the archive", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.mutation(internal.benchmarkVersions.mint, {
+      version: "benchmark-v1",
+      evalCount: 1,
+      curatedModels: ["model-a"],
+    });
+    await createCompletedRun(t, {
+      model: "model-a",
+      benchmarkVersion: "benchmark-v1",
+      evals: [{ category: "cat1", name: "eval1", passed: true }],
+    });
+
+    await t.mutation(internal.benchmarkVersions.mint, {
+      version: "benchmark-v2",
+      evalCount: 1,
+      curatedModels: ["model-a"],
+    });
+    await createCompletedRun(t, {
+      model: "model-a",
+      benchmarkVersion: "benchmark-v2",
+      evals: [{ category: "cat1", name: "eval1", passed: false }],
+    });
+
+    const current = await t.query(api.runs.leaderboardScores, {
+      benchmarkVersion: "benchmark-v2",
+    });
+    expect(current).toHaveLength(1);
+    expect(current[0].benchmarkVersion).toBe("benchmark-v2");
+    expect(current[0].totalScore).toBe(0);
+
+    const archived = await t.query(api.runs.leaderboardScores, {
+      benchmarkVersion: "benchmark-v1",
+    });
+    expect(archived).toHaveLength(1);
+    expect(archived[0].totalScore).toBe(1);
+    const archivedHistory = await t.query(api.runs.leaderboardModelHistory, {
+      model: "model-a",
+      benchmarkVersion: "benchmark-v1",
+    });
+    expect(archivedHistory).toHaveLength(1);
+    expect(archivedHistory[0].totalScore).toBe(1);
+
+    const versions = await t.query(api.runs.leaderboardVersions, {});
+    expect(versions.map((version) => version.version)).toEqual([
+      "benchmark-v2",
+      "benchmark-v1",
+    ]);
+    expect(versions[0]).toMatchObject({
+      isCurrent: true,
+      curatedModelCount: 1,
+      curatedModelsScored: 1,
+    });
+
+    const originalMintedTime = versions[0].mintedAt;
+    vi.advanceTimersByTime(24 * 60 * 60 * 1000);
+    await t.mutation(internal.benchmarkVersions.mint, {
+      version: "benchmark-v2",
+      evalCount: 1,
+      curatedModels: ["model-a", "model-b"],
+    });
+    const repeatedMint = await t.query(api.runs.leaderboardVersions, {});
+    expect(repeatedMint[0].mintedAt).toBe(originalMintedTime);
+    expect(repeatedMint[0].curatedModelCount).toBe(2);
+  });
+
+  it("keeps legacy compatible while the version-aware site requests current explicitly", async () => {
+    const t = convexTest(schema, modules);
+
+    await createCompletedRun(t, {
+      model: "legacy-model",
+      evals: [{ category: "cat1", name: "eval1", passed: true }],
+    });
+
+    // Simulate the materialised row written by the pre-versioning backend.
+    // During the rolling deploy the old site must keep seeing this row until
+    // the migration rebuilds it under a benchmark version document ID.
+    await t.run(async (ctx) => {
+      const [score] = await ctx.db.query("modelScores").collect();
+      await ctx.db.patch("modelScores", score._id, {
+        benchmarkVersion: undefined,
+      });
+    });
+    expect(await t.query(api.runs.leaderboardScores, {})).toHaveLength(1);
+
+    await t.mutation(internal.benchmarkVersions.mint, {
+      version: "new-benchmark",
+      evalCount: 2,
+      curatedModels: ["new-model"],
+    });
+
+    expect(await t.query(api.runs.leaderboardScores, {})).toHaveLength(1);
+    expect(
+      await t.query(api.runs.leaderboardScores, {
+        benchmarkVersion: "new-benchmark",
+      }),
+    ).toEqual([]);
+    const legacy = await t.query(api.runs.leaderboardScores, {
+      benchmarkVersion: "legacy",
+    });
+    expect(legacy).toHaveLength(1);
+    expect(legacy[0].model).toBe("legacy-model");
+  });
+
+  it("does not score filtered runs as full benchmark results", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.mutation(internal.benchmarkVersions.mint, {
+      version: "full-suite",
+      evalCount: 2,
+      curatedModels: ["model-a"],
+    });
+    await createCompletedRun(t, {
+      model: "model-a",
+      benchmarkVersion: "full-suite",
+      evals: [{ category: "cat1", name: "eval1", passed: true }],
+    });
+
+    expect(await t.query(api.runs.leaderboardScores, {})).toEqual([]);
+  });
+
+  it("does not score a benchmark before it is manually minted", async () => {
+    const t = convexTest(schema, modules);
+
+    await createCompletedRun(t, {
+      model: "model-a",
+      benchmarkVersion: "candidate-suite",
+      evals: [{ category: "cat1", name: "eval1", passed: true }],
+    });
+
+    expect(
+      await t.query(api.runs.leaderboardScores, {
+        benchmarkVersion: "candidate-suite",
+      }),
+    ).toEqual([]);
+    expect(await t.query(api.runs.leaderboardVersions, {})).toEqual([]);
+  });
+
   it("returns latest run time for the requested experiment only", async () => {
     const t = convexTest(schema, modules);
 
@@ -390,9 +545,12 @@ describe("recomputeModelScores", () => {
       evals: [{ category: "cat1", name: "eval1", passed: false }],
     });
 
-    const latestDefaultRunTime = await t.query(api.modelScores.getLatestRunTime, {
-      modelId,
-    });
+    const latestDefaultRunTime = await t.query(
+      api.modelScores.getLatestRunTime,
+      {
+        modelId,
+      },
+    );
     expect(latestDefaultRunTime).toBe(defaultLatestRunTime);
 
     const latestNoGuidelinesRunTime = await t.query(
@@ -412,9 +570,7 @@ describe("recomputeModelScores", () => {
     vi.setSystemTime(new Date("2026-04-01T00:00:00Z"));
     await createCompletedRun(t, {
       model: "model-a",
-      evals: [
-        { category: "cat1", name: "eval1", passed: true, costUsd: 2 },
-      ],
+      evals: [{ category: "cat1", name: "eval1", passed: true, costUsd: 2 }],
     });
 
     const before = await t.query(api.runs.leaderboardScores, {});

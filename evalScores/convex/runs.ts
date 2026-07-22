@@ -1,14 +1,62 @@
-import { internalMutation, query } from "./_generated/server";
+import {
+  internalMutation,
+  query,
+  type MutationCtx,
+  type QueryCtx,
+} from "./_generated/server";
 import { v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { experimentLiteral, languageModelUsage, evalStatus } from "./schema.js";
 import { internal } from "./_generated/api.js";
 import {
-  LEADERBOARD_MAX_AGE_MS,
+  getBenchmarkByReference,
+  resolveBenchmarkForRun,
+} from "./benchmarkVersions";
+import {
+  LEADERBOARD_HISTORY_SIZE,
   isFullyCompletedRun,
+  hasCompleteBenchmarkPlan,
   isRateLimitFailure,
   computeRunScores,
 } from "./scoringUtils.js";
+
+const LEGACY_BENCHMARK_VERSION = "legacy";
+
+function normalizeBenchmarkId(
+  ctx: Pick<QueryCtx, "db">,
+  reference: Doc<"runs">["benchmarkVersion"],
+): Id<"benchmarkVersions"> | null {
+  if (reference === undefined) return null;
+  return ctx.db.normalizeId("benchmarkVersions", String(reference));
+}
+
+async function getCurrentBenchmark(
+  ctx: Pick<QueryCtx, "db">,
+): Promise<Doc<"benchmarkVersions"> | null> {
+  const publicVersions = await ctx.db
+    .query("benchmarkVersions")
+    .withIndex("by_effectiveAt")
+    .order("desc")
+    .collect();
+  return (
+    publicVersions.find((version) => version.provenance !== "unminted") ?? null
+  );
+}
+
+async function ensureRunBenchmarkId(
+  ctx: Pick<MutationCtx, "db">,
+  run: Doc<"runs">,
+): Promise<Id<"benchmarkVersions">> {
+  const existing = await getBenchmarkByReference(ctx, run.benchmarkVersion);
+  if (existing) return existing._id;
+
+  const id = await resolveBenchmarkForRun(
+    ctx,
+    typeof run.benchmarkVersion === "string" ? run.benchmarkVersion : undefined,
+  );
+  await ctx.db.patch("runs", run._id, { benchmarkVersion: id });
+  return id;
+}
 
 export const createRun = internalMutation({
   args: {
@@ -19,6 +67,7 @@ export const createRun = internalMutation({
     provider: v.string(),
     runId: v.optional(v.string()),
     plannedEvals: v.array(v.string()),
+    benchmarkVersion: v.optional(v.string()),
     experiment: v.optional(experimentLiteral),
   },
   returns: v.id("runs"),
@@ -38,8 +87,9 @@ export const createRun = internalMutation({
       if (existingModel) {
         modelId = existingModel._id;
       } else {
-        const provider =
-          args.model.includes("/") ? args.model.split("/")[0] : args.provider;
+        const provider = args.model.includes("/")
+          ? args.model.split("/")[0]
+          : args.provider;
         const apiKind =
           args.model.startsWith("openai/") && args.model.includes("codex")
             ? "responses"
@@ -59,23 +109,28 @@ export const createRun = internalMutation({
     if (!modelId) {
       throw new Error("Failed to resolve modelId");
     }
-    
+    const benchmarkVersion = await resolveBenchmarkForRun(
+      ctx,
+      args.benchmarkVersion,
+    );
+
     // Create the run
     const id = await ctx.db.insert("runs", {
       modelId,
       provider: args.provider,
       runId: args.runId,
       plannedEvals: args.plannedEvals,
+      benchmarkVersion,
       status: { kind: "pending" },
       experiment: args.experiment,
     });
-    
+
     // Update experiment stats
     const existing = await ctx.db
       .query("experiments")
       .withIndex("by_name", (q) => q.eq("name", expName))
       .unique();
-    
+
     if (existing) {
       const models = existing.models.includes(modelId)
         ? existing.models
@@ -96,7 +151,7 @@ export const createRun = internalMutation({
         latestRunTime: now,
       });
     }
-    
+
     return id;
   },
 });
@@ -105,26 +160,36 @@ export const completeRun = internalMutation({
   args: {
     runId: v.id("runs"),
     status: v.union(
-      v.object({ kind: v.literal("completed"), durationMs: v.number(), usage: v.optional(languageModelUsage) }),
-      v.object({ kind: v.literal("failed"), failureReason: v.string(), durationMs: v.number(), usage: v.optional(languageModelUsage) }),
+      v.object({
+        kind: v.literal("completed"),
+        durationMs: v.number(),
+        usage: v.optional(languageModelUsage),
+      }),
+      v.object({
+        kind: v.literal("failed"),
+        failureReason: v.string(),
+        durationMs: v.number(),
+        usage: v.optional(languageModelUsage),
+      }),
     ),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     const run = await ctx.db.get("runs", args.runId);
     if (!run) return null;
-    
+    const benchmarkVersion = await ensureRunBenchmarkId(ctx, run);
+
     await ctx.db.patch("runs", args.runId, {
       status: args.status,
     });
-    
+
     // Update experiment completed run count
     const expName = run.experiment ?? "default";
     const experiment = await ctx.db
       .query("experiments")
       .withIndex("by_name", (q) => q.eq("name", expName))
       .unique();
-    
+
     if (experiment && args.status.kind === "completed") {
       await ctx.db.patch("experiments", experiment._id, {
         completedRuns: experiment.completedRuns + 1,
@@ -133,12 +198,17 @@ export const completeRun = internalMutation({
 
     // Schedule a recompute of the materialised leaderboard row for this model
     if (run.modelId) {
-      await ctx.scheduler.runAfter(0, internal.modelScores.recomputeModelScores, {
-        modelId: run.modelId,
-        experiment: run.experiment,
-      });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.modelScores.recomputeModelScores,
+        {
+          modelId: run.modelId,
+          experiment: run.experiment,
+          benchmarkVersion,
+        },
+      );
     }
-    
+
     return null;
   },
 });
@@ -151,6 +221,7 @@ export const deleteRun = internalMutation({
   handler: async (ctx, args) => {
     const run = await ctx.db.get("runs", args.runId);
     if (!run) return null;
+    const benchmarkVersion = await ensureRunBenchmarkId(ctx, run);
 
     // Collect all evals for this run
     const evals = await ctx.db
@@ -167,7 +238,10 @@ export const deleteRun = internalMutation({
       if (evalDoc.status.kind === "passed") passedEvalsCount++;
 
       // Collect storage IDs from evals
-      if (evalDoc.status.kind === "passed" || evalDoc.status.kind === "failed") {
+      if (
+        evalDoc.status.kind === "passed" ||
+        evalDoc.status.kind === "failed"
+      ) {
         const status = evalDoc.status;
         if ("outputStorageId" in status && status.outputStorageId) {
           storageIdsToDelete.add(status.outputStorageId);
@@ -224,10 +298,15 @@ export const deleteRun = internalMutation({
 
     // Recompute the leaderboard row for this model now that a run is gone
     if (run.modelId) {
-      await ctx.scheduler.runAfter(0, internal.modelScores.recomputeModelScores, {
-        modelId: run.modelId,
-        experiment: run.experiment,
-      });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.modelScores.recomputeModelScores,
+        {
+          modelId: run.modelId,
+          experiment: run.experiment,
+          benchmarkVersion,
+        },
+      );
     }
 
     return null;
@@ -278,10 +357,7 @@ export const getRunDetails = query({
     return {
       _id: run._id,
       modelId: run.modelId,
-      model:
-        model && "slug" in model
-          ? model.slug
-          : "unknown-model",
+      model: model && "slug" in model ? model.slug : "unknown-model",
       formattedName:
         model && "formattedName" in model
           ? model.formattedName
@@ -318,7 +394,7 @@ export const listRuns = query({
   },
   handler: async (ctx, args) => {
     let runsQuery = ctx.db.query("runs").order("desc");
-    
+
     // Apply filters if provided
     if (args.experiment) {
       runsQuery = ctx.db
@@ -332,14 +408,14 @@ export const listRuns = query({
         .withIndex("by_modelId", (q) => q.eq("modelId", modelId))
         .order("desc");
     }
-    
+
     // This query also loads eval documents per returned run to compute counts.
     // Cap the run count to keep total bytes read below Convex function limits.
     const MAX_LIST_RUNS_LIMIT = 40;
     const requestedLimit = args.limit ?? 100;
     const limit = Math.min(Math.max(requestedLimit, 1), MAX_LIST_RUNS_LIMIT);
     const runs = await runsQuery.take(limit);
-    
+
     // Fetch eval counts for each run
     const models = await ctx.db.query("models").collect();
     const modelMap = new Map(models.map((m) => [m._id, m] as const));
@@ -349,11 +425,15 @@ export const listRuns = query({
           .query("evals")
           .withIndex("by_runId", (q) => q.eq("runId", run._id))
           .collect();
-        
-        const passedCount = evals.filter((e) => e.status.kind === "passed").length;
-        const failedCount = evals.filter((e) => e.status.kind === "failed").length;
+
+        const passedCount = evals.filter(
+          (e) => e.status.kind === "passed",
+        ).length;
+        const failedCount = evals.filter(
+          (e) => e.status.kind === "failed",
+        ).length;
         const totalCount = evals.length;
-        
+
         const model = modelMap.get(run.modelId);
         return {
           ...run,
@@ -368,7 +448,7 @@ export const listRuns = query({
         };
       }),
     );
-    
+
     return runsWithCounts;
   },
 });
@@ -391,16 +471,15 @@ export const listExperiments = query({
       passRate: exp.totalEvals > 0 ? exp.passedEvals / exp.totalEvals : 0,
       completedRuns: exp.completedRuns,
     }));
-    
+
     // Sort by latest run (most recent first)
     result.sort((a, b) => b.latestRun - a.latestRun);
-    
+
     return result;
   },
 });
 
 // ── Leaderboard queries (computed from runs + evals) ─────────────────
-
 
 /**
  * Lists all models with their mean scores and standard deviations.
@@ -410,12 +489,43 @@ export const listExperiments = query({
 export const leaderboardScores = query({
   args: {
     experiment: v.optional(experimentLiteral),
+    benchmarkVersion: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const rows = await ctx.db
+    const currentBenchmark = await getCurrentBenchmark(ctx);
+    const requestedVersion =
+      args.benchmarkVersion ??
+      currentBenchmark?.version ??
+      LEGACY_BENCHMARK_VERSION;
+    const benchmark =
+      requestedVersion === LEGACY_BENCHMARK_VERSION
+        ? null
+        : await ctx.db
+            .query("benchmarkVersions")
+            .withIndex("by_version", (q) => q.eq("version", requestedVersion))
+            .unique();
+    if (requestedVersion !== LEGACY_BENCHMARK_VERSION && benchmark === null) {
+      return [];
+    }
+    const storedVersion = benchmark?._id;
+    let rows = await ctx.db
       .query("modelScores")
-      .withIndex("by_experiment", (q) => q.eq("experiment", args.experiment))
+      .withIndex("by_experiment_benchmark", (q) =>
+        q
+          .eq("experiment", args.experiment)
+          .eq("benchmarkVersion", storedVersion),
+      )
       .collect();
+    // During the staged migration, the reconstructed ID rows may not exist
+    // yet. Keep the old site populated from the unversioned materialised rows.
+    if (args.benchmarkVersion === undefined && rows.length === 0) {
+      rows = await ctx.db
+        .query("modelScores")
+        .withIndex("by_experiment_benchmark", (q) =>
+          q.eq("experiment", args.experiment).eq("benchmarkVersion", undefined),
+        )
+        .collect();
+    }
     const models = await ctx.db.query("models").collect();
     const modelMap = new Map(models.map((m) => [m._id, m] as const));
 
@@ -432,6 +542,7 @@ export const leaderboardScores = query({
       formattedName: modelMap.get(r.modelId)?.formattedName ?? "Unknown model",
       openRouterFirstSeenAt:
         modelMap.get(r.modelId)?.openRouterFirstSeenAt ?? 0,
+      benchmarkVersion: requestedVersion,
       totalScore: r.totalScore,
       totalScoreErrorBar: r.totalScoreErrorBar,
       averageRunDurationMs: r.averageRunDurationMs,
@@ -448,6 +559,78 @@ export const leaderboardScores = query({
 });
 
 /**
+ * Lists the current benchmark and archived score partitions. Historical rows
+ * from before explicit versioning are retained as one labelled legacy archive;
+ * they are never mixed into a versioned leaderboard.
+ */
+export const leaderboardVersions = query({
+  args: {
+    experiment: v.optional(experimentLiteral),
+  },
+  handler: async (ctx, args) => {
+    const currentBenchmark = await getCurrentBenchmark(ctx);
+    const benchmarks = await ctx.db
+      .query("benchmarkVersions")
+      .withIndex("by_effectiveAt")
+      .order("desc")
+      .collect();
+    const scoreRows = await ctx.db
+      .query("modelScores")
+      .withIndex("by_experiment", (q) => q.eq("experiment", args.experiment))
+      .collect();
+    const models = await ctx.db.query("models").collect();
+    const modelSlugs = new Map(models.map((model) => [model._id, model.slug]));
+
+    const versions = benchmarks
+      .filter((benchmark) => benchmark.provenance !== "unminted")
+      .map((benchmark) => {
+        const rows = scoreRows.filter(
+          (row) =>
+            normalizeBenchmarkId(ctx, row.benchmarkVersion) === benchmark._id,
+        );
+        const scoredSlugs = new Set(
+          rows.map((row) => modelSlugs.get(row.modelId)).filter(Boolean),
+        );
+        const curatedModelsScored = benchmark.curatedModels.filter((model) =>
+          scoredSlugs.has(model),
+        ).length;
+        return {
+          version: benchmark.version,
+          evalCount: benchmark.evalCount,
+          mintedAt: benchmark.effectiveAt,
+          provenance: benchmark.provenance,
+          modelCount: rows.length,
+          curatedModelCount: benchmark.curatedModels.length,
+          curatedModelsScored,
+          isCurrent: currentBenchmark?.version === benchmark.version,
+          isLegacy: false,
+        };
+      });
+
+    const legacyRows = scoreRows.filter(
+      (row) =>
+        row.benchmarkVersion === undefined ||
+        normalizeBenchmarkId(ctx, row.benchmarkVersion) === null,
+    );
+    if (legacyRows.length > 0) {
+      versions.push({
+        version: LEGACY_BENCHMARK_VERSION,
+        evalCount: 0,
+        mintedAt: 0,
+        provenance: "reconstructed" as const,
+        modelCount: legacyRows.length,
+        curatedModelCount: 0,
+        curatedModelsScored: 0,
+        isCurrent: currentBenchmark === null,
+        isLegacy: true,
+      });
+    }
+
+    return versions;
+  },
+});
+
+/**
  * Gets historical run data for a specific model, ordered chronologically (oldest first).
  * Computed on-demand from the runs and evals tables.
  * Useful for displaying time-series charts of model performance over time.
@@ -457,6 +640,7 @@ export const leaderboardModelHistory = query({
     modelId: v.optional(v.id("models")),
     model: v.optional(v.string()),
     experiment: v.optional(experimentLiteral),
+    benchmarkVersion: v.optional(v.string()),
     limit: v.optional(v.number()),
   },
   returns: v.array(
@@ -480,25 +664,49 @@ export const leaderboardModelHistory = query({
       return [];
     }
 
-    // Fetch runs for this model, limited to last 60 days, ordered chronologically
-    const sixtyDaysAgo = Date.now() - LEADERBOARD_MAX_AGE_MS;
+    const currentBenchmark = await getCurrentBenchmark(ctx);
+    const requestedVersion =
+      args.benchmarkVersion ??
+      currentBenchmark?.version ??
+      LEGACY_BENCHMARK_VERSION;
+    const benchmark =
+      requestedVersion === LEGACY_BENCHMARK_VERSION
+        ? null
+        : await ctx.db
+            .query("benchmarkVersions")
+            .withIndex("by_version", (q) => q.eq("version", requestedVersion))
+            .unique();
+    if (requestedVersion !== LEGACY_BENCHMARK_VERSION && benchmark === null) {
+      return [];
+    }
+    const storedVersion = benchmark?._id;
+
+    // Query the exact score partition. A wall-clock cutoff would eventually
+    // make archived benchmark charts empty even though their score still
+    // exists, so keep this bounded by count instead.
+    const historyLimit =
+      args.limit !== undefined && args.limit > 0
+        ? Math.min(args.limit, 100)
+        : LEADERBOARD_HISTORY_SIZE;
     let runs = await ctx.db
       .query("runs")
-      .withIndex("by_modelId", (q) =>
-        q.eq("modelId", targetModelId).gte("_creationTime", sixtyDaysAgo))
-      .order("asc")
+      .withIndex("by_modelId_experiment_benchmark", (q) =>
+        q
+          .eq("modelId", targetModelId)
+          .eq("experiment", args.experiment)
+          .eq("benchmarkVersion", storedVersion),
+      )
+      .filter((q) => q.eq(q.field("status.kind"), "completed"))
+      .order("desc")
       .collect();
 
-    // Filter by experiment
-    if (args.experiment !== undefined) {
-      runs = runs.filter((run) => run.experiment === args.experiment);
-    } else {
-      // If no experiment specified, only get runs without experiment tag
-      runs = runs.filter((run) => run.experiment === undefined);
-    }
-
     // Only include completed runs
-    runs = runs.filter((r) => r.status.kind === "completed");
+    runs = runs.filter(
+      (r) =>
+        r.status.kind === "completed" &&
+        r.benchmarkVersion === storedVersion &&
+        hasCompleteBenchmarkPlan(r, benchmark?.evalCount),
+    );
 
     // Fetch evals and filter to only fully-completed runs, computing scores
     type HistoryResult = {
@@ -528,12 +736,7 @@ export const leaderboardModelHistory = query({
     // Re-sort chronologically since async may shuffle order
     results.sort((a, b) => a._creationTime - b._creationTime);
 
-    // Apply limit if provided (take from the end since we want recent data)
-    if (args.limit !== undefined && args.limit > 0) {
-      return results.slice(-args.limit);
-    }
-
-    return results;
+    return results.slice(-historyLimit);
   },
 });
 
@@ -605,4 +808,3 @@ export const getLatestRunTime = query({
     return latestRun?._creationTime ?? null;
   },
 });
-

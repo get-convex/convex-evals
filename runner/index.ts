@@ -21,6 +21,7 @@ import { tmpdir } from "os";
 import { config } from "dotenv";
 
 import {
+  ALL_MODELS,
   MODEL_NAMES,
   type ResolvedModel,
   resolveModelDefaults,
@@ -35,6 +36,7 @@ import { logInfo } from "./logging.js";
 import { Model } from "./models/modelCodegen.js";
 import { convexScorer, walkAnswer } from "./scorer.js";
 import { InfrastructureError, RateLimitAbortError } from "./convexBackend.js";
+import { computeBenchmarkDefinition } from "./benchmark.js";
 import {
   ensureModelFromSlug,
   startRun,
@@ -92,20 +94,8 @@ export function runAnswerValidation(
 
 // ── Default models ────────────────────────────────────────────────────
 
-const DEFAULT_MODEL_NAMES = [
-  "claude-3-5-sonnet-latest",
-  "claude-3-7-sonnet-latest",
-  "claude-sonnet-4-0",
-  "claude-sonnet-4-5",
-  "claude-haiku-4-5",
-  "claude-opus-4-5",
-  "gpt-4o",
-  "o3-mini",
-  "gemini-2.0-flash-lite",
-  "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
-  "gemini-3.1-pro-preview",
-  "grok-3-mini-beta",
-];
+// Keep one source of truth for both scheduled and ad-hoc default runs.
+const DEFAULT_MODEL_NAMES = ALL_MODELS;
 
 // ── Eval discovery ────────────────────────────────────────────────────
 
@@ -160,7 +150,9 @@ const SCORE_FAILURE_REASONS: Record<string, string> = {
 async function main(): Promise<void> {
   const executionMode = parseExecutionMode(process.env.EVALS_EXECUTION_MODE);
   const modelNames = process.env.MODELS
-    ? process.env.MODELS.split(",").map((s) => s.trim()).filter(Boolean)
+    ? process.env.MODELS.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
     : DEFAULT_MODEL_NAMES;
 
   const resolvedModels: Array<{
@@ -173,7 +165,9 @@ async function main(): Promise<void> {
     const resolved = await resolveModel(modelName);
 
     if (!isKnown && !resolved.discovered) {
-      console.error(`Model ${modelName} not supported and not found on OpenRouter`);
+      console.error(
+        `Model ${modelName} not supported and not found on OpenRouter`,
+      );
       process.exit(1);
     }
 
@@ -239,8 +233,7 @@ export async function runEvalsForModel(
     executionMode = "generate",
     convexEvalUrl,
     convexAuthToken,
-  } =
-    config;
+  } = config;
   const modelDisplayName = model.formattedName;
 
   // Set CUSTOM_GUIDELINES_PATH so getGuidelinesContent() in modelCodegen
@@ -262,6 +255,9 @@ export async function runEvalsForModel(
 
   try {
     const evalPaths = discoverEvals();
+    const benchmark = computeBenchmarkDefinition(
+      evalPaths.map(({ evalPath }) => evalPath),
+    );
     const filteredPaths = testFilter
       ? evalPaths.filter(({ category, name }) =>
           testFilter.test(`${category}/${name}`),
@@ -277,9 +273,7 @@ export async function runEvalsForModel(
     const runStartTime = Date.now();
 
     if (convexEvalUrl && convexAuthToken) {
-      const plannedEvals = filteredPaths.map(
-        (e) => `${e.category}/${e.name}`,
-      );
+      const plannedEvals = filteredPaths.map((e) => `${e.category}/${e.name}`);
       const modelId = await ensureModelFromSlug(
         model.name,
         modelDisplayName,
@@ -293,6 +287,7 @@ export async function runEvalsForModel(
           plannedEvals,
           provider,
           config.experiment,
+          benchmark.version,
         );
         if (runId) {
           logInfo(
@@ -314,7 +309,9 @@ export async function runEvalsForModel(
     let modelApiKey: string | null = null;
     if (executionMode === "generate") {
       const apiKeyVar =
-        model.apiKind === "cursor-sdk" ? CURSOR_API_KEY_VAR : OPENROUTER_API_KEY_VAR;
+        model.apiKind === "cursor-sdk"
+          ? CURSOR_API_KEY_VAR
+          : OPENROUTER_API_KEY_VAR;
       const apiKey = process.env[apiKeyVar];
       if (!apiKey) {
         console.error(`${apiKeyVar} is not set`);
@@ -325,7 +322,9 @@ export async function runEvalsForModel(
 
     if (executionMode === "generate" && modelApiKey) {
       if (model.apiKind !== "cursor-sdk") {
-        logInfo(`[preflight] Checking endpoint availability for ${model.name}...`);
+        logInfo(
+          `[preflight] Checking endpoint availability for ${model.name}...`,
+        );
         try {
           await preflightOpenRouterEndpoint(model, modelApiKey);
           logInfo(`[preflight] Endpoint is available for ${model.name}`);
@@ -387,9 +386,11 @@ export async function runEvalsForModel(
             allResults,
             filteredPaths.length,
             tempdir,
-          ).then((wasRateLimited) => {
-            if (wasRateLimited) rateLimitCount++;
-          }).finally(() => inFlight.delete(promise));
+          )
+            .then((wasRateLimited) => {
+              if (wasRateLimited) rateLimitCount++;
+            })
+            .finally(() => inFlight.delete(promise));
           inFlight.add(promise);
         }
         if (inFlight.size > 0) {
@@ -438,8 +439,12 @@ export async function runEvalsForModel(
     // Print summary
     printEvalSummary(modelDisplayName, allResults);
 
-    if (executionMode === "answer" && allResults.some((result) => !result.passed)) {
-      const reason = "[answer_validation] Canonical answers must pass all evals";
+    if (
+      executionMode === "answer" &&
+      allResults.some((result) => !result.passed)
+    ) {
+      const reason =
+        "[answer_validation] Canonical answers must pass all evals";
       if (runId) {
         await completeRun(runId, {
           kind: "failed",
@@ -461,7 +466,9 @@ export async function runEvalsForModel(
           durationMs: Date.now() - runStartTime,
         });
       }
-      console.error(`Run failed: aborted after ${rateLimitCount} rate-limit errors (threshold: ${RATE_LIMIT_ABORT_THRESHOLD})`);
+      console.error(
+        `Run failed: aborted after ${rateLimitCount} rate-limit errors (threshold: ${RATE_LIMIT_ABORT_THRESHOLD})`,
+      );
       throw new RateLimitAbortError(reason);
     }
 
@@ -469,19 +476,32 @@ export async function runEvalsForModel(
     if (runId) {
       const runUsage: LanguageModelUsage = {
         inputTokens: 0,
-        inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+        inputTokenDetails: {
+          noCacheTokens: undefined,
+          cacheReadTokens: undefined,
+          cacheWriteTokens: undefined,
+        },
         outputTokens: 0,
-        outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+        outputTokenDetails: {
+          textTokens: undefined,
+          reasoningTokens: undefined,
+        },
         totalTokens: 0,
       };
       for (const r of allResults) {
         if (r.usage) {
-          if (typeof r.usage.inputTokens === "number") runUsage.inputTokens = (runUsage.inputTokens ?? 0) + r.usage.inputTokens;
-          if (typeof r.usage.outputTokens === "number") runUsage.outputTokens = (runUsage.outputTokens ?? 0) + r.usage.outputTokens;
-          if (typeof r.usage.totalTokens === "number") runUsage.totalTokens = (runUsage.totalTokens ?? 0) + r.usage.totalTokens;
+          if (typeof r.usage.inputTokens === "number")
+            runUsage.inputTokens =
+              (runUsage.inputTokens ?? 0) + r.usage.inputTokens;
+          if (typeof r.usage.outputTokens === "number")
+            runUsage.outputTokens =
+              (runUsage.outputTokens ?? 0) + r.usage.outputTokens;
+          if (typeof r.usage.totalTokens === "number")
+            runUsage.totalTokens =
+              (runUsage.totalTokens ?? 0) + r.usage.totalTokens;
         }
       }
-      
+
       await completeRun(runId, {
         kind: "completed",
         durationMs: Date.now() - runStartTime,
@@ -638,7 +658,14 @@ async function processOneEval(
       output,
     );
 
-    const result = buildEvalResult(category, name, model.name, scores, tempdir, usage);
+    const result = buildEvalResult(
+      category,
+      name,
+      model.name,
+      scores,
+      tempdir,
+      usage,
+    );
     allResults.push(result);
     logProgress(evalPathStr, result, allResults, totalEvals, evalStartTime);
     return false;
@@ -832,7 +859,10 @@ if (isMain) {
   main().catch((e) => {
     // InfrastructureError and RateLimitAbortError already print their message
     // before throwing, so skip the double-print here.
-    if (!(e instanceof InfrastructureError) && !(e instanceof RateLimitAbortError)) {
+    if (
+      !(e instanceof InfrastructureError) &&
+      !(e instanceof RateLimitAbortError)
+    ) {
       console.error(e);
     }
     process.exit(1);

@@ -24,9 +24,34 @@ function isConvexReportingDisabled(): boolean {
   return process.env.DISABLE_CONVEX_REPORTING === "1";
 }
 
+const PRODUCTION_CONVEX_URL = "https://fabulous-panther-525.convex.cloud";
+let warnedAboutLocalProductionReporting = false;
+
+export function canReportEvalResultsTo(
+  url: string,
+  environment: Record<string, string | undefined> = process.env,
+): boolean {
+  const normalizedUrl = url.replace(/\/+$/, "");
+  if (normalizedUrl !== PRODUCTION_CONVEX_URL) return true;
+  return (
+    environment.GITHUB_ACTIONS === "true" &&
+    environment.GITHUB_REF === "refs/heads/main"
+  );
+}
+
 function getConvexEvalUrl(): string | undefined {
   if (isConvexReportingDisabled()) return undefined;
-  return process.env.CONVEX_EVAL_URL;
+  const url = process.env.CONVEX_EVAL_URL;
+  if (url && !canReportEvalResultsTo(url)) {
+    if (!warnedAboutLocalProductionReporting) {
+      logInfo(
+        "Refusing to report a local eval run to the production Convex deployment",
+      );
+      warnedAboutLocalProductionReporting = true;
+    }
+    return undefined;
+  }
+  return url;
 }
 
 function getConvexAuthToken(): string | undefined {
@@ -106,22 +131,26 @@ export async function startRun(
   plannedEvals: string[],
   provider: string,
   experiment?: string,
+  benchmarkVersion?: string,
 ): Promise<string | null> {
   if (!getClient() || !getConvexAuthToken()) {
     logInfo("Skipping startRun: CONVEX_EVAL_URL or CONVEX_AUTH_TOKEN not set");
     return null;
   }
 
-  return (await safeMutate<string>("startRun", api.admin.startRun, {
-    modelId: modelId as Id<"models">,
-    plannedEvals,
-    provider,
-    experiment: (experiment ?? getEvalsExperiment()) as
-      | "no_guidelines"
-      | "web_search"
-      | "web_search_no_guidelines"
-      | undefined,
-  })) ?? null;
+  return (
+    (await safeMutate<string>("startRun", api.admin.startRun, {
+      modelId: modelId as Id<"models">,
+      plannedEvals,
+      provider,
+      benchmarkVersion,
+      experiment: (experiment ?? getEvalsExperiment()) as
+        | "no_guidelines"
+        | "web_search"
+        | "web_search_no_guidelines"
+        | undefined,
+    })) ?? null
+  );
 }
 
 export async function ensureModelFromSlug(
@@ -156,13 +185,17 @@ export async function completeRun(
   runId: string,
   status:
     | { kind: "completed"; durationMs: number; usage?: LanguageModelUsage }
-    | { kind: "failed"; failureReason: string; durationMs: number; usage?: LanguageModelUsage },
+    | {
+        kind: "failed";
+        failureReason: string;
+        durationMs: number;
+        usage?: LanguageModelUsage;
+      },
 ): Promise<boolean> {
-  const result = await safeMutate(
-    "completeRun",
-    api.admin.completeRun,
-    { runId: runId as Id<"runs">, status },
-  );
+  const result = await safeMutate("completeRun", api.admin.completeRun, {
+    runId: runId as Id<"runs">,
+    status,
+  });
   return result !== undefined;
 }
 
@@ -183,14 +216,16 @@ export async function startEval(
   task?: string,
   evalSourceStorageId?: string,
 ): Promise<string | null> {
-  return (await safeMutate<string>("startEval", api.admin.startEval, {
-    runId: runId as Id<"runs">,
-    evalPath,
-    category,
-    name,
-    task,
-    evalSourceStorageId: evalSourceStorageId as Id<"_storage"> | undefined,
-  })) ?? null;
+  return (
+    (await safeMutate<string>("startEval", api.admin.startEval, {
+      runId: runId as Id<"runs">,
+      evalPath,
+      category,
+      name,
+      task,
+      evalSourceStorageId: evalSourceStorageId as Id<"_storage"> | undefined,
+    })) ?? null
+  );
 }
 
 type StepName =
@@ -239,7 +274,10 @@ export async function uploadEvalOutput(
   if (!client || !convexAuthToken) return;
 
   try {
-    const zipPath = await zipDirectory(outputDir, ["node_modules", "_generated"]);
+    const zipPath = await zipDirectory(outputDir, [
+      "node_modules",
+      "_generated",
+    ]);
     if (!zipPath) return;
     try {
       const storageId = await uploadToConvexStorage(zipPath);
@@ -295,7 +333,10 @@ export async function completeEval(
 ): Promise<boolean> {
   let outputStorageId: Id<"_storage"> | undefined;
   if (outputDir) {
-    const zipPath = await zipDirectory(outputDir, ["node_modules", "_generated"]);
+    const zipPath = await zipDirectory(outputDir, [
+      "node_modules",
+      "_generated",
+    ]);
     if (zipPath) {
       try {
         const sid = await uploadToConvexStorage(zipPath);
@@ -310,11 +351,10 @@ export async function completeEval(
     ? { ...status, outputStorageId }
     : status;
 
-  const result = await safeMutate(
-    "completeEval",
-    api.admin.completeEval,
-    { evalId: evalId as Id<"evals">, status: fullStatus },
-  );
+  const result = await safeMutate("completeEval", api.admin.completeEval, {
+    evalId: evalId as Id<"evals">,
+    status: fullStatus,
+  });
   return result !== undefined;
 }
 
@@ -398,7 +438,7 @@ export function printEvalSummary(
     totalTests++;
     totalScore += r.tests_pass_score;
     if (r.passed) totalPassed++;
-    
+
     if (r.usage) {
       runInputTokens += r.usage.inputTokens ?? 0;
       runOutputTokens += r.usage.outputTokens ?? 0;
@@ -416,7 +456,9 @@ export function printEvalSummary(
   );
   logInfo(`Average tests score: ${(averageTestsScore * 100).toFixed(2)}%`);
   if (runInputTokens > 0 || runOutputTokens > 0) {
-    logInfo(`Tokens: ${runInputTokens.toLocaleString()} input, ${runOutputTokens.toLocaleString()} output`);
+    logInfo(
+      `Tokens: ${runInputTokens.toLocaleString()} input, ${runOutputTokens.toLocaleString()} output`,
+    );
   }
 
   for (const [category, cat] of [...stats.entries()].sort()) {
@@ -489,9 +531,7 @@ function collectFilesForZip(
   }
 }
 
-async function uploadToConvexStorage(
-  zipPath: string,
-): Promise<string | null> {
+async function uploadToConvexStorage(zipPath: string): Promise<string | null> {
   const client = getClient();
   const convexAuthToken = getConvexAuthToken();
   if (!client || !convexAuthToken) return null;
@@ -581,11 +621,11 @@ async function registerAsset(
   assetType: "evalSource" | "output",
   storageId: string,
 ): Promise<boolean> {
-  const result = await safeMutate(
-    "registerAsset",
-    api.admin.registerAsset,
-    { hash, assetType, storageId: storageId as Id<"_storage"> },
-  );
+  const result = await safeMutate("registerAsset", api.admin.registerAsset, {
+    hash,
+    assetType,
+    storageId: storageId as Id<"_storage">,
+  });
   if (result !== undefined) evalSourceCache.set(hash, storageId);
   return result !== undefined;
 }

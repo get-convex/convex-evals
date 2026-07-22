@@ -9,7 +9,12 @@ import { mutation, type MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { experimentLiteral, languageModelUsage, stepNameLiteral, stepStatus } from "./schema.js";
+import {
+  experimentLiteral,
+  languageModelUsage,
+  stepNameLiteral,
+  stepStatus,
+} from "./schema.js";
 
 // ── Helper ───────────────────────────────────────────────────────────
 
@@ -34,6 +39,7 @@ export const startRun = mutation({
     provider: v.string(),
     runId: v.optional(v.string()),
     plannedEvals: v.array(v.string()),
+    benchmarkVersion: v.optional(v.string()),
     experiment: v.optional(experimentLiteral),
   },
   returns: v.id("runs"),
@@ -44,12 +50,35 @@ export const startRun = mutation({
   },
 });
 
+export const mintBenchmark = mutation({
+  args: {
+    token: v.string(),
+    version: v.string(),
+    evalCount: v.number(),
+    curatedModels: v.array(v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args): Promise<null> => {
+    await assertValidToken(ctx, args.token);
+    await ctx.runMutation(internal.benchmarkVersions.mint, {
+      version: args.version,
+      evalCount: args.evalCount,
+      curatedModels: args.curatedModels,
+    });
+    return null;
+  },
+});
+
 export const completeRun = mutation({
   args: {
     token: v.string(),
     runId: v.id("runs"),
     status: v.union(
-      v.object({ kind: v.literal("completed"), durationMs: v.number(), usage: v.optional(languageModelUsage) }),
+      v.object({
+        kind: v.literal("completed"),
+        durationMs: v.number(),
+        usage: v.optional(languageModelUsage),
+      }),
       v.object({
         kind: v.literal("failed"),
         failureReason: v.string(),
