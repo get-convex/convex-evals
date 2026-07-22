@@ -434,6 +434,7 @@ describe("recomputeModelScores", () => {
     expect(versions.map((version) => version.version)).toEqual([
       "benchmark-v2",
       "benchmark-v1",
+      "all",
     ]);
     expect(versions[0]).toMatchObject({
       isCurrent: true,
@@ -451,6 +452,83 @@ describe("recomputeModelScores", () => {
     const repeatedMint = await t.query(api.runs.leaderboardVersions, {});
     expect(repeatedMint[0].mintedAt).toBe(originalMintedTime);
     expect(repeatedMint[0].curatedModelCount).toBe(2);
+  });
+
+  it("combines all public benchmark versions with run-weighted statistics", async () => {
+    const t = convexTest(schema, modules);
+
+    vi.setSystemTime(new Date("2026-04-01T00:00:00Z"));
+    await t.mutation(internal.benchmarkVersions.mint, {
+      version: "benchmark-v1",
+      evalCount: 1,
+      curatedModels: ["model-a"],
+    });
+    await createCompletedRun(t, {
+      model: "model-a",
+      benchmarkVersion: "benchmark-v1",
+      evals: [
+        {
+          category: "cat1",
+          name: "eval1",
+          passed: true,
+          costUsd: 1,
+          durationMs: 1000,
+        },
+      ],
+    });
+
+    vi.setSystemTime(new Date("2026-04-02T00:00:00Z"));
+    await t.mutation(internal.benchmarkVersions.mint, {
+      version: "benchmark-v2",
+      evalCount: 1,
+      curatedModels: ["model-a"],
+    });
+    await createCompletedRun(t, {
+      model: "model-a",
+      benchmarkVersion: "benchmark-v2",
+      evals: [
+        {
+          category: "cat1",
+          name: "eval1",
+          passed: false,
+          costUsd: 3,
+          durationMs: 3000,
+        },
+      ],
+    });
+
+    const allScores = await t.query(api.runs.leaderboardScores, {
+      benchmarkVersion: "all",
+    });
+    expect(allScores).toHaveLength(1);
+    expect(allScores[0]).toMatchObject({
+      benchmarkVersion: "all",
+      model: "model-a",
+      runCount: 2,
+      totalScore: 0.5,
+      totalScoreErrorBar: 0.5,
+      averageRunDurationMs: 2000,
+      averageRunDurationMsErrorBar: 1000,
+      averageRunCostUsd: 2,
+      averageRunCostUsdErrorBar: 1,
+      scores: { cat1: 0.5 },
+      scoreErrorBars: { cat1: 0.5 },
+    });
+
+    const allHistory = await t.query(api.runs.leaderboardModelHistory, {
+      model: "model-a",
+      benchmarkVersion: "all",
+    });
+    expect(allHistory.map((entry) => entry.totalScore)).toEqual([1, 0]);
+
+    const versions = await t.query(api.runs.leaderboardVersions, {});
+    expect(versions.find((version) => version.version === "all")).toMatchObject(
+      {
+        benchmarkCount: 2,
+        modelCount: 1,
+        isAll: true,
+      },
+    );
   });
 
   it("uses the current benchmark when the site omits a version", async () => {

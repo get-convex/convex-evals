@@ -12,6 +12,128 @@ import {
   computeRunScores,
 } from "./scoringUtils.js";
 
+const ALL_BENCHMARK_VERSIONS = "all";
+
+type ScoreSummary = {
+  mean: number;
+  stdDev: number;
+  count: number;
+};
+
+type LeaderboardScoreRow = Pick<
+  Doc<"modelScores">,
+  | "modelId"
+  | "totalScore"
+  | "totalScoreErrorBar"
+  | "averageRunDurationMs"
+  | "averageRunDurationMsErrorBar"
+  | "averageRunCostUsd"
+  | "averageRunCostUsdErrorBar"
+  | "scores"
+  | "scoreErrorBars"
+  | "runCount"
+  | "latestRunId"
+  | "latestRunTime"
+>;
+
+/**
+ * Combine population means and standard deviations without loading raw runs.
+ * modelScores stores population standard deviation, so this reconstructs the
+ * same aggregate as pooling its contributing runs directly.
+ */
+function combineSummaries(summaries: ScoreSummary[]): {
+  mean: number;
+  stdDev: number;
+} | null {
+  const usable = summaries.filter((summary) => summary.count > 0);
+  const count = usable.reduce((total, summary) => total + summary.count, 0);
+  if (count === 0) return null;
+
+  const mean =
+    usable.reduce((total, summary) => total + summary.mean * summary.count, 0) /
+    count;
+  const variance =
+    usable.reduce(
+      (total, summary) =>
+        total +
+        summary.count * (summary.stdDev ** 2 + (summary.mean - mean) ** 2),
+      0,
+    ) / count;
+  return { mean, stdDev: Math.sqrt(variance) };
+}
+
+function combineModelScoreRows(
+  rows: Doc<"modelScores">[],
+): LeaderboardScoreRow {
+  const latest = rows.reduce((current, row) =>
+    row.latestRunTime > current.latestRunTime ? row : current,
+  );
+  const totalScore = combineSummaries(
+    rows.map((row) => ({
+      mean: row.totalScore,
+      stdDev: row.totalScoreErrorBar,
+      count: row.runCount,
+    })),
+  )!;
+  const duration = combineSummaries(
+    rows.map((row) => ({
+      mean: row.averageRunDurationMs,
+      stdDev: row.averageRunDurationMsErrorBar,
+      count: row.runCount,
+    })),
+  )!;
+  const cost = combineSummaries(
+    rows.flatMap((row) =>
+      row.averageRunCostUsd === null || row.averageRunCostUsdErrorBar === null
+        ? []
+        : [
+            {
+              mean: row.averageRunCostUsd,
+              stdDev: row.averageRunCostUsdErrorBar,
+              count: row.runCount,
+            },
+          ],
+    ),
+  );
+
+  const categories = new Set(rows.flatMap((row) => Object.keys(row.scores)));
+  const scores: Record<string, number> = {};
+  const scoreErrorBars: Record<string, number> = {};
+  for (const category of categories) {
+    const combined = combineSummaries(
+      rows.flatMap((row) =>
+        row.scores[category] === undefined
+          ? []
+          : [
+              {
+                mean: row.scores[category],
+                stdDev: row.scoreErrorBars[category] ?? 0,
+                count: row.runCount,
+              },
+            ],
+      ),
+    );
+    if (!combined) continue;
+    scores[category] = combined.mean;
+    scoreErrorBars[category] = combined.stdDev;
+  }
+
+  return {
+    modelId: latest.modelId,
+    totalScore: totalScore.mean,
+    totalScoreErrorBar: totalScore.stdDev,
+    averageRunDurationMs: duration.mean,
+    averageRunDurationMsErrorBar: duration.stdDev,
+    averageRunCostUsd: cost?.mean ?? null,
+    averageRunCostUsdErrorBar: cost?.stdDev ?? null,
+    scores,
+    scoreErrorBars,
+    runCount: rows.reduce((total, row) => total + row.runCount, 0),
+    latestRunId: latest.latestRunId,
+    latestRunTime: latest.latestRunTime,
+  };
+}
+
 async function getCurrentBenchmark(
   ctx: Pick<QueryCtx, "db">,
 ): Promise<Doc<"benchmarkVersions"> | null> {
@@ -459,24 +581,54 @@ export const leaderboardScores = query({
     benchmarkVersion: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const benchmark = args.benchmarkVersion
-      ? await ctx.db
-          .query("benchmarkVersions")
-          .withIndex("by_version", (q) =>
-            q.eq("version", args.benchmarkVersion!),
-          )
-          .unique()
-      : await getCurrentBenchmark(ctx);
-    if (!benchmark) return [];
+    let rows: LeaderboardScoreRow[];
+    let returnedVersion: string;
 
-    const rows = await ctx.db
-      .query("modelScores")
-      .withIndex("by_experiment_benchmark", (q) =>
-        q
-          .eq("experiment", args.experiment)
-          .eq("benchmarkVersion", benchmark._id),
-      )
-      .collect();
+    if (args.benchmarkVersion === ALL_BENCHMARK_VERSIONS) {
+      const publicBenchmarks = (
+        await ctx.db.query("benchmarkVersions").collect()
+      ).filter((benchmark) => benchmark.provenance !== "unminted");
+      const publicIds = new Set(
+        publicBenchmarks.map((benchmark) => benchmark._id),
+      );
+      const scoreRows = (
+        await ctx.db
+          .query("modelScores")
+          .withIndex("by_experiment", (q) =>
+            q.eq("experiment", args.experiment),
+          )
+          .collect()
+      ).filter((row) => publicIds.has(row.benchmarkVersion));
+
+      const byModel = new Map<Id<"models">, Doc<"modelScores">[]>();
+      for (const row of scoreRows) {
+        const modelRows = byModel.get(row.modelId) ?? [];
+        modelRows.push(row);
+        byModel.set(row.modelId, modelRows);
+      }
+      rows = [...byModel.values()].map(combineModelScoreRows);
+      returnedVersion = ALL_BENCHMARK_VERSIONS;
+    } else {
+      const benchmark = args.benchmarkVersion
+        ? await ctx.db
+            .query("benchmarkVersions")
+            .withIndex("by_version", (q) =>
+              q.eq("version", args.benchmarkVersion!),
+            )
+            .unique()
+        : await getCurrentBenchmark(ctx);
+      if (!benchmark) return [];
+
+      rows = await ctx.db
+        .query("modelScores")
+        .withIndex("by_experiment_benchmark", (q) =>
+          q
+            .eq("experiment", args.experiment)
+            .eq("benchmarkVersion", benchmark._id),
+        )
+        .collect();
+      returnedVersion = benchmark.version;
+    }
     const models = await ctx.db.query("models").collect();
     const modelMap = new Map(models.map((m) => [m._id, m] as const));
 
@@ -493,7 +645,7 @@ export const leaderboardScores = query({
       formattedName: modelMap.get(r.modelId)?.formattedName ?? "Unknown model",
       openRouterFirstSeenAt:
         modelMap.get(r.modelId)?.openRouterFirstSeenAt ?? 0,
-      benchmarkVersion: benchmark.version,
+      benchmarkVersion: returnedVersion,
       totalScore: r.totalScore,
       totalScoreErrorBar: r.totalScoreErrorBar,
       averageRunDurationMs: r.averageRunDurationMs,
@@ -527,31 +679,56 @@ export const leaderboardVersions = query({
       .collect();
     const models = await ctx.db.query("models").collect();
     const modelSlugs = new Map(models.map((model) => [model._id, model.slug]));
+    const publicBenchmarks = benchmarks.filter(
+      (benchmark) => benchmark.provenance !== "unminted",
+    );
 
-    const versions = benchmarks
-      .filter((benchmark) => benchmark.provenance !== "unminted")
-      .map((benchmark) => {
-        const rows = scoreRows.filter(
-          (row) => row.benchmarkVersion === benchmark._id,
-        );
-        const scoredSlugs = new Set(
-          rows.map((row) => modelSlugs.get(row.modelId)).filter(Boolean),
-        );
-        const curatedModelsScored = benchmark.curatedModels.filter((model) =>
-          scoredSlugs.has(model),
-        ).length;
-        return {
-          version: benchmark.version,
-          evalCount: benchmark.evalCount,
-          mintedAt: benchmark.effectiveAt,
-          provenance: benchmark.provenance,
-          modelCount: rows.length,
-          curatedModelCount: benchmark.curatedModels.length,
-          curatedModelsScored,
-          isCurrent: currentBenchmark?.version === benchmark.version,
-          isLegacy: false,
-        };
+    const versions = publicBenchmarks.map((benchmark) => {
+      const rows = scoreRows.filter(
+        (row) => row.benchmarkVersion === benchmark._id,
+      );
+      const scoredSlugs = new Set(
+        rows.map((row) => modelSlugs.get(row.modelId)).filter(Boolean),
+      );
+      const curatedModelsScored = benchmark.curatedModels.filter((model) =>
+        scoredSlugs.has(model),
+      ).length;
+      return {
+        version: benchmark.version,
+        evalCount: benchmark.evalCount,
+        benchmarkCount: 1,
+        mintedAt: benchmark.effectiveAt,
+        provenance: benchmark.provenance,
+        modelCount: rows.length,
+        curatedModelCount: benchmark.curatedModels.length,
+        curatedModelsScored,
+        isCurrent: currentBenchmark?.version === benchmark.version,
+        isLegacy: false,
+        isAll: false,
+      };
+    });
+
+    if (publicBenchmarks.length > 0) {
+      const publicIds = new Set(
+        publicBenchmarks.map((benchmark) => benchmark._id),
+      );
+      const allRows = scoreRows.filter((row) =>
+        publicIds.has(row.benchmarkVersion),
+      );
+      versions.push({
+        version: ALL_BENCHMARK_VERSIONS,
+        evalCount: 0,
+        benchmarkCount: publicBenchmarks.length,
+        mintedAt: 0,
+        provenance: "reconstructed",
+        modelCount: new Set(allRows.map((row) => row.modelId)).size,
+        curatedModelCount: 0,
+        curatedModelsScored: 0,
+        isCurrent: false,
+        isLegacy: false,
+        isAll: true,
       });
+    }
 
     return versions;
   },
@@ -591,16 +768,6 @@ export const leaderboardModelHistory = query({
       return [];
     }
 
-    const benchmark = args.benchmarkVersion
-      ? await ctx.db
-          .query("benchmarkVersions")
-          .withIndex("by_version", (q) =>
-            q.eq("version", args.benchmarkVersion!),
-          )
-          .unique()
-      : await getCurrentBenchmark(ctx);
-    if (!benchmark) return [];
-
     // Query the exact score partition. A wall-clock cutoff would eventually
     // make archived benchmark charts empty even though their score still
     // exists, so keep this bounded by count instead.
@@ -608,25 +775,56 @@ export const leaderboardModelHistory = query({
       args.limit !== undefined && args.limit > 0
         ? Math.min(args.limit, 100)
         : LEADERBOARD_HISTORY_SIZE;
-    let runs = await ctx.db
-      .query("runs")
-      .withIndex("by_modelId_experiment_benchmark", (q) =>
-        q
-          .eq("modelId", targetModelId)
-          .eq("experiment", args.experiment)
-          .eq("benchmarkVersion", benchmark._id),
-      )
-      .filter((q) => q.eq(q.field("status.kind"), "completed"))
-      .order("desc")
-      .collect();
+    let runs: Doc<"runs">[];
+    if (args.benchmarkVersion === ALL_BENCHMARK_VERSIONS) {
+      const publicBenchmarks = (
+        await ctx.db.query("benchmarkVersions").collect()
+      ).filter((benchmark) => benchmark.provenance !== "unminted");
+      const benchmarkById = new Map(
+        publicBenchmarks.map((benchmark) => [benchmark._id, benchmark]),
+      );
+      runs = await ctx.db
+        .query("runs")
+        .withIndex("by_modelId", (q) => q.eq("modelId", targetModelId))
+        .order("desc")
+        .collect();
+      runs = runs.filter((run) => {
+        const benchmark = benchmarkById.get(run.benchmarkVersion);
+        return (
+          run.experiment === args.experiment &&
+          run.status.kind === "completed" &&
+          benchmark !== undefined &&
+          hasCompleteBenchmarkPlan(run, benchmark.evalCount)
+        );
+      });
+    } else {
+      const benchmark = args.benchmarkVersion
+        ? await ctx.db
+            .query("benchmarkVersions")
+            .withIndex("by_version", (q) =>
+              q.eq("version", args.benchmarkVersion!),
+            )
+            .unique()
+        : await getCurrentBenchmark(ctx);
+      if (!benchmark) return [];
 
-    // Only include completed runs
-    runs = runs.filter(
-      (r) =>
-        r.status.kind === "completed" &&
-        r.benchmarkVersion === benchmark._id &&
-        hasCompleteBenchmarkPlan(r, benchmark.evalCount),
-    );
+      runs = await ctx.db
+        .query("runs")
+        .withIndex("by_modelId_experiment_benchmark", (q) =>
+          q
+            .eq("modelId", targetModelId)
+            .eq("experiment", args.experiment)
+            .eq("benchmarkVersion", benchmark._id),
+        )
+        .filter((q) => q.eq(q.field("status.kind"), "completed"))
+        .order("desc")
+        .collect();
+      runs = runs.filter(
+        (run) =>
+          run.status.kind === "completed" &&
+          hasCompleteBenchmarkPlan(run, benchmark.evalCount),
+      );
+    }
 
     // Fetch evals and filter to only fully-completed runs, computing scores
     type HistoryResult = {
