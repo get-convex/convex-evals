@@ -11,6 +11,14 @@ on:
         description: "Regex to filter evals (e.g. '000-fundamentals', '000-fundamentals/000')"
         required: false
         default: ""
+      run_guidelines:
+        description: "Run the default guidelines experiment"
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
       run_no_guidelines:
         description: "Also run the no_guidelines experiment"
         required: false
@@ -59,6 +67,7 @@ jobs:
           echo "TEST_FILTER=${{ inputs.test_filter }}" >> $GITHUB_ENV
 
       - name: Run evaluations
+        if: ${{ inputs.run_guidelines == 'true' }}
         env:
           OUTPUT_TEMPDIR: /tmp/convex-evals
         run: bun run runner/index.ts
