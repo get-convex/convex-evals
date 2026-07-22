@@ -454,6 +454,88 @@ describe("recomputeModelScores", () => {
     expect(repeatedMint[0].curatedModelCount).toBe(2);
   });
 
+  it("backfills explicitly selected completed runs after a benchmark is minted", async () => {
+    const t = convexTest(schema, modules);
+
+    const runId = await createCompletedRun(t, {
+      model: "model-a",
+      benchmarkVersion: "not-yet-minted-suite-hash",
+      evals: [{ category: "cat1", name: "eval1", passed: true }],
+    });
+    await t.mutation(internal.benchmarkVersions.mint, {
+      version: "new-benchmark",
+      evalCount: 1,
+      curatedModels: ["model-a"],
+    });
+
+    expect(await t.query(api.runs.leaderboardScores, {})).toEqual([]);
+
+    await expect(
+      t.mutation(internal.benchmarkVersions.backfillCompletedRunsToBenchmark, {
+        version: "new-benchmark",
+        runIds: [runId],
+      }),
+    ).resolves.toEqual({
+      updated: 1,
+      alreadyAssigned: 0,
+      scoreGroupsQueued: 1,
+    });
+    vi.runAllTimers();
+    await t.finishInProgressScheduledFunctions();
+
+    const results = await t.query(api.runs.leaderboardScores, {});
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      model: "model-a",
+      benchmarkVersion: "new-benchmark",
+      runCount: 1,
+      totalScore: 1,
+    });
+
+    await expect(
+      t.mutation(internal.benchmarkVersions.backfillCompletedRunsToBenchmark, {
+        version: "new-benchmark",
+        runIds: [runId],
+      }),
+    ).resolves.toEqual({
+      updated: 0,
+      alreadyAssigned: 1,
+      scoreGroupsQueued: 1,
+    });
+  });
+
+  it("refuses to backfill a failed run", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.mutation(internal.benchmarkVersions.mint, {
+      version: "new-benchmark",
+      evalCount: 1,
+      curatedModels: ["model-a"],
+    });
+    const runId = await t.mutation(internal.runs.createRun, {
+      model: "model-a",
+      formattedName: "Model A",
+      provider: "test",
+      plannedEvals: ["cat1/eval1"],
+      benchmarkVersion: "not-yet-minted-suite-hash",
+    });
+    await t.mutation(internal.runs.completeRun, {
+      runId,
+      status: {
+        kind: "failed",
+        failureReason: "rate limited",
+        durationMs: 1000,
+      },
+    });
+
+    await expect(
+      t.mutation(internal.benchmarkVersions.backfillCompletedRunsToBenchmark, {
+        version: "new-benchmark",
+        runIds: [runId],
+      }),
+    ).rejects.toThrow(`Run ${runId} is not completed`);
+  });
+
   it("combines all public benchmark versions with run-weighted statistics", async () => {
     const t = convexTest(schema, modules);
 

@@ -1,3 +1,4 @@
+import { internal } from "./_generated/api";
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -127,5 +128,113 @@ export const mint = internalMutation({
     }
 
     return null;
+  },
+});
+
+/**
+ * Move explicitly selected completed full-suite runs out of the non-public
+ * unminted bucket after their exact benchmark hash has been manually minted.
+ *
+ * This is deliberately ID-driven rather than date-driven. A date range could
+ * silently absorb unrelated experiments or partial runs that happened to use
+ * the same temporary bucket.
+ */
+export const backfillCompletedRunsToBenchmark = internalMutation({
+  args: {
+    version: v.string(),
+    runIds: v.array(v.id("runs")),
+  },
+  returns: v.object({
+    updated: v.number(),
+    alreadyAssigned: v.number(),
+    scoreGroupsQueued: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const target = await ctx.db
+      .query("benchmarkVersions")
+      .withIndex("by_version", (q) => q.eq("version", args.version))
+      .unique();
+    if (!target || target.provenance === "unminted") {
+      throw new Error(`Benchmark ${args.version} has not been minted`);
+    }
+
+    const unminted = await ctx.db
+      .query("benchmarkVersions")
+      .withIndex("by_version", (q) => q.eq("version", "unminted"))
+      .unique();
+    if (!unminted) throw new Error("Missing unminted benchmark sentinel");
+
+    const uniqueRunIds = new Set(args.runIds.map(String));
+    if (uniqueRunIds.size !== args.runIds.length) {
+      throw new Error("Run IDs must be unique");
+    }
+
+    let updated = 0;
+    let alreadyAssigned = 0;
+    const scoreGroups = new Map<
+      string,
+      { modelId: Id<"models">; experiment: Doc<"runs">["experiment"] }
+    >();
+
+    for (const runId of args.runIds) {
+      const run = await ctx.db.get("runs", runId);
+      if (!run) throw new Error(`Run ${runId} does not exist`);
+      if (run.status.kind !== "completed") {
+        throw new Error(`Run ${runId} is not completed`);
+      }
+      if (run.plannedEvals.length !== target.evalCount) {
+        throw new Error(
+          `Run ${runId} planned ${run.plannedEvals.length} evals, expected ${target.evalCount}`,
+        );
+      }
+
+      const model = await ctx.db.get("models", run.modelId);
+      if (!model || !target.curatedModels.includes(model.slug)) {
+        throw new Error(`Run ${runId} is not for a curated benchmark model`);
+      }
+
+      const groupKey = `${run.modelId}:${run.experiment ?? "default"}`;
+      if (scoreGroups.has(groupKey)) {
+        throw new Error(
+          `Only one run per model and experiment may be backfilled at once (${groupKey})`,
+        );
+      }
+      scoreGroups.set(groupKey, {
+        modelId: run.modelId,
+        experiment: run.experiment,
+      });
+
+      if (run.benchmarkVersion === target._id) {
+        alreadyAssigned += 1;
+        continue;
+      }
+      if (run.benchmarkVersion !== unminted._id) {
+        throw new Error(`Run ${runId} is not in the unminted benchmark`);
+      }
+
+      await ctx.db.patch("runs", runId, { benchmarkVersion: target._id });
+      updated += 1;
+    }
+
+    for (const group of scoreGroups.values()) {
+      // Recompute both partitions so retrying this operation is idempotent and
+      // any stale derived row in the unminted bucket is also removed.
+      for (const benchmarkVersion of [unminted._id, target._id]) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.modelScores.recomputeModelScores,
+          {
+            ...group,
+            benchmarkVersion,
+          },
+        );
+      }
+    }
+
+    return {
+      updated,
+      alreadyAssigned,
+      scoreGroupsQueued: scoreGroups.size,
+    };
   },
 });

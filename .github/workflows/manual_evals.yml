@@ -27,6 +27,15 @@ on:
         options:
           - "true"
           - "false"
+      max_concurrency:
+        description: "Maximum concurrent model requests per runner"
+        required: false
+        default: "4"
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "4"
 
 jobs:
   run-evals:
@@ -37,6 +46,8 @@ jobs:
       ENVIRONMENT: ci
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+      # The runner uses this limit for every provider, including Cursor.
+      OPENROUTER_CONCURRENCY: ${{ inputs.max_concurrency }}
 
     steps:
       - uses: actions/checkout@v4
