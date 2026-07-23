@@ -15,7 +15,10 @@ import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { backfillCompletedRunsToBenchmark } from "./benchmarkVersions";
+import {
+  backfillCompletedRunsToBenchmark,
+  consolidateCompletedBenchmarkRuns,
+} from "./benchmarkVersions";
 import schema from "./schema";
 import { modules } from "./test.setup";
 
@@ -505,6 +508,90 @@ describe("recomputeModelScores", () => {
     ).resolves.toEqual({
       updated: 0,
       alreadyAssigned: 1,
+      scoreGroupsQueued: 1,
+    });
+  });
+
+  it("consolidates multiple historical runs into the matching minted benchmark", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("benchmarkVersions", {
+        version: "reconstructed-suite",
+        effectiveAt: 1,
+        evalCount: 1,
+        curatedModels: [],
+        provenance: "reconstructed",
+      });
+    });
+    await t.mutation(internal.benchmarkVersions.mint, {
+      version: "minted-suite",
+      evalCount: 1,
+      curatedModels: ["model-a"],
+    });
+
+    const historicalPass = await createCompletedRun(t, {
+      model: "model-a",
+      benchmarkVersion: "reconstructed-suite",
+      evals: [{ category: "cat1", name: "eval1", passed: true }],
+    });
+    const historicalFail = await createCompletedRun(t, {
+      model: "model-a",
+      benchmarkVersion: "reconstructed-suite",
+      evals: [{ category: "cat1", name: "eval1", passed: false }],
+    });
+    await createCompletedRun(t, {
+      model: "model-a",
+      benchmarkVersion: "minted-suite",
+      evals: [{ category: "cat1", name: "eval1", passed: true }],
+    });
+
+    await expect(
+      t.run(async (ctx) =>
+        consolidateCompletedBenchmarkRuns(ctx, {
+          sourceVersion: "reconstructed-suite",
+          targetVersion: "minted-suite",
+          runIds: [historicalPass, historicalFail],
+        }),
+      ),
+    ).resolves.toEqual({
+      updated: 2,
+      alreadyAssigned: 0,
+      scoreGroupsQueued: 1,
+    });
+    vi.runAllTimers();
+    await t.finishInProgressScheduledFunctions();
+
+    const combined = await t.query(api.runs.leaderboardScores, {
+      benchmarkVersion: "minted-suite",
+    });
+    expect(combined).toHaveLength(1);
+    expect(combined[0]).toMatchObject({
+      runCount: 3,
+      totalScore: 2 / 3,
+    });
+    expect(
+      await t.query(api.runs.leaderboardScores, {
+        benchmarkVersion: "reconstructed-suite",
+      }),
+    ).toEqual([]);
+    expect(
+      (await t.query(api.runs.leaderboardVersions, {})).map(
+        (version) => version.version,
+      ),
+    ).toEqual(["minted-suite", "all"]);
+
+    await expect(
+      t.run(async (ctx) =>
+        consolidateCompletedBenchmarkRuns(ctx, {
+          sourceVersion: "reconstructed-suite",
+          targetVersion: "minted-suite",
+          runIds: [historicalPass, historicalFail],
+        }),
+      ),
+    ).resolves.toEqual({
+      updated: 0,
+      alreadyAssigned: 2,
       scoreGroupsQueued: 1,
     });
   });
