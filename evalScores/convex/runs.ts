@@ -688,7 +688,8 @@ export const leaderboardVersions = query({
     const publicBenchmarks = benchmarks.filter(
       (benchmark) =>
         benchmark.provenance !== "unminted" &&
-        scoredBenchmarkIds.has(benchmark._id),
+        (benchmark.provenance !== "reconstructed" ||
+          scoredBenchmarkIds.has(benchmark._id)),
     );
 
     const versions = publicBenchmarks.map((benchmark) => {

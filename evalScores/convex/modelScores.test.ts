@@ -458,6 +458,25 @@ describe("recomputeModelScores", () => {
     expect(repeatedMint[0].curatedModelCount).toBe(2);
   });
 
+  it("keeps a newly minted benchmark visible before its first score", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.mutation(internal.benchmarkVersions.mint, {
+      version: "new-empty-benchmark",
+      evalCount: 2,
+      curatedModels: ["model-a"],
+    });
+
+    expect(await t.query(api.runs.leaderboardVersions, {})).toEqual([
+      expect.objectContaining({
+        version: "new-empty-benchmark",
+        modelCount: 0,
+        isCurrent: true,
+      }),
+      expect.objectContaining({ version: "all", benchmarkCount: 1 }),
+    ]);
+  });
+
   it("backfills explicitly selected completed runs after a benchmark is minted", async () => {
     const t = convexTest(schema, modules);
 
