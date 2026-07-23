@@ -145,6 +145,112 @@ type BackfillResult = {
   scoreGroupsQueued: number;
 };
 
+type ConsolidationResult = BackfillResult;
+
+/**
+ * Move an exact, audited set of historical runs into the full-content version
+ * that represents the same suite. Unlike the original pre-mint backfill, this
+ * deliberately allows multiple runs per model and models no longer curated.
+ * Those runs are still valid observations of this benchmark.
+ */
+export async function consolidateCompletedBenchmarkRuns(
+  ctx: MutationCtx,
+  args: {
+    sourceVersion: string;
+    targetVersion: string;
+    runIds: Id<"runs">[];
+  },
+): Promise<ConsolidationResult> {
+  const [source, target] = await Promise.all(
+    [args.sourceVersion, args.targetVersion].map((version) =>
+      ctx.db
+        .query("benchmarkVersions")
+        .withIndex("by_version", (q) => q.eq("version", version))
+        .unique(),
+    ),
+  );
+  if (!source || source.provenance !== "reconstructed") {
+    throw new Error(`Benchmark ${args.sourceVersion} is not reconstructed`);
+  }
+  if (!target || target.provenance !== "minted") {
+    throw new Error(`Benchmark ${args.targetVersion} is not minted`);
+  }
+  if (source.evalCount !== target.evalCount) {
+    throw new Error(
+      `Benchmark eval counts differ (${source.evalCount} !== ${target.evalCount})`,
+    );
+  }
+
+  const uniqueRunIds = new Set(args.runIds.map(String));
+  if (uniqueRunIds.size !== args.runIds.length) {
+    throw new Error("Run IDs must be unique");
+  }
+
+  let updated = 0;
+  let alreadyAssigned = 0;
+  const scoreGroups = new Map<
+    string,
+    { modelId: Id<"models">; experiment: Doc<"runs">["experiment"] }
+  >();
+
+  // Validate the complete allowlist before writing anything. Convex mutations
+  // are atomic, but doing this first also makes the operator failure clearer.
+  const runs = await Promise.all(
+    args.runIds.map(async (runId) => {
+      const run = await ctx.db.get("runs", runId);
+      if (!run) throw new Error(`Run ${runId} does not exist`);
+      if (run.status.kind !== "completed") {
+        throw new Error(`Run ${runId} is not completed`);
+      }
+      if (run.plannedEvals.length !== target.evalCount) {
+        throw new Error(
+          `Run ${runId} planned ${run.plannedEvals.length} evals, expected ${target.evalCount}`,
+        );
+      }
+      if (
+        run.benchmarkVersion !== source._id &&
+        run.benchmarkVersion !== target._id
+      ) {
+        throw new Error(
+          `Run ${runId} is in neither the source nor target benchmark`,
+        );
+      }
+      return run;
+    }),
+  );
+
+  for (const [index, run] of runs.entries()) {
+    scoreGroups.set(`${run.modelId}:${run.experiment ?? "default"}`, {
+      modelId: run.modelId,
+      experiment: run.experiment,
+    });
+    if (run.benchmarkVersion === target._id) {
+      alreadyAssigned += 1;
+    } else {
+      await ctx.db.patch("runs", args.runIds[index], {
+        benchmarkVersion: target._id,
+      });
+      updated += 1;
+    }
+  }
+
+  for (const group of scoreGroups.values()) {
+    for (const benchmarkVersion of [source._id, target._id]) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.modelScores.recomputeModelScores,
+        { ...group, benchmarkVersion },
+      );
+    }
+  }
+
+  return {
+    updated,
+    alreadyAssigned,
+    scoreGroupsQueued: scoreGroups.size,
+  };
+}
+
 /** Plain helper so the guarded operation can be exercised with convex-test. */
 export async function backfillCompletedRunsToBenchmark(
   ctx: MutationCtx,
@@ -283,6 +389,60 @@ export const backfillCurrentManualRunsToBenchmark = internalMutation({
     return await backfillCompletedRunsToBenchmark(ctx, {
       version: CURRENT_MANUAL_BACKFILL_VERSION,
       runIds: CURRENT_MANUAL_BACKFILL_RUN_IDS,
+    });
+  },
+});
+
+const JULY_20_RECONSTRUCTED_VERSION = "reconstructed-9e095e59f6d8";
+
+// Audited from production leaderboard histories. All 28 runs were completed
+// after the 109-eval suite landed at d36327c and before any eval, guideline,
+// system-prompt, or protocol input changed. They therefore represent the same
+// suite as CURRENT_MANUAL_BACKFILL_VERSION despite predating full-content IDs.
+const JULY_20_RECONSTRUCTED_RUN_IDS = [
+  "jn7bqz6xc617dnkgg04czah4hh8axhbv",
+  "jn705x3qb9a4fwyd8dzmacwtq58ax477",
+  "jn71rqtkzpp1z1wz8pkrcbg94n8awtt2",
+  "jn7frsch2mt3emyc4gcq4y8ey58ax6dt",
+  "jn76t8k2tg8h2gdb0z4bftv5398ax93b",
+  "jn769zm219qwwxxprdv1qde24x8awaya",
+  "jn7ahtbsyhg290prttfbcseqm58axh2n",
+  "jn73kpfnx0fmkwc186kzdmccyx8axq3w",
+  "jn73xdcx5geytf71g24qesvecd8ayzbx",
+  "jn74tmyxfzw1242gj1b9p3fjxh8azct1",
+  "jn736003hysktzxy83xm7j4efx8ay9t7",
+  "jn76meza38rcp3p9qac0hnn5xh8ay7ke",
+  "jn7ezxy8k86djdvh4rybq7ktv18azh70",
+  "jn7dqp2ygg52v9t4hyp6y4vab98ay6jk",
+  "jn7dek0yf2sb7e76xxebz8jhj18ayavt",
+  "jn78t9ebb70fb09xvxaadyadcx8azcdn",
+  "jn7at1xb2wt35j0kx1ddwrexq58azc1m",
+  "jn7f0gy6tey28b8f6zhw4hnhdd8ay27g",
+  "jn78m9sap2z497gh8qa77am77s8ay6c3",
+  "jn765k2r4v0n8pr56qwkmhd9z98aymza",
+  "jn75v4jbcqvvkmcyb0xdng6h6h8azmf1",
+  "jn71sw7ce90hdtz5mg54k1gw498aybj2",
+  "jn7b94apcx5q1cdq1my8t2z8tn8az982",
+  "jn7azfx57c1684cy87nrpzbbqx8az8ya",
+  "jn716ey8s1frh9rgeeg6shfvwx8az10g",
+  "jn77heb5hv2hej9bdf5wg679sx8ay95y",
+  "jn77dzc8zfratfdn8hd1k740858b0z63",
+  "jn7bzrr4he51dr4rnxrncesw6x8b0m2d",
+] as Id<"runs">[];
+
+/** One-off, idempotent consolidation of the duplicate 109-eval partitions. */
+export const consolidateJuly20Benchmark = internalMutation({
+  args: {},
+  returns: v.object({
+    updated: v.number(),
+    alreadyAssigned: v.number(),
+    scoreGroupsQueued: v.number(),
+  }),
+  handler: async (ctx) => {
+    return await consolidateCompletedBenchmarkRuns(ctx, {
+      sourceVersion: JULY_20_RECONSTRUCTED_VERSION,
+      targetVersion: CURRENT_MANUAL_BACKFILL_VERSION,
+      runIds: JULY_20_RECONSTRUCTED_RUN_IDS,
     });
   },
 });

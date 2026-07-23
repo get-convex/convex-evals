@@ -679,8 +679,17 @@ export const leaderboardVersions = query({
       .collect();
     const models = await ctx.db.query("models").collect();
     const modelSlugs = new Map(models.map((model) => [model._id, model.slug]));
+    // A reconstructed partition can become empty after its runs are proven to
+    // belong to a later full-content benchmark. Do not leave an empty duplicate
+    // in the public selector just because its provenance record remains.
+    const scoredBenchmarkIds = new Set(
+      scoreRows.map((row) => row.benchmarkVersion),
+    );
     const publicBenchmarks = benchmarks.filter(
-      (benchmark) => benchmark.provenance !== "unminted",
+      (benchmark) =>
+        benchmark.provenance !== "unminted" &&
+        (benchmark.provenance !== "reconstructed" ||
+          scoredBenchmarkIds.has(benchmark._id)),
     );
 
     const versions = publicBenchmarks.map((benchmark) => {
