@@ -38,6 +38,7 @@ describe("ALL_MODELS", () => {
     expect(ALL_MODELS).toContain("deepseek/deepseek-v4-pro");
     expect(ALL_MODELS).toContain("moonshotai/kimi-k3");
     expect(ALL_MODELS).toContain("poolside/laguna-s-2.1");
+    expect(ALL_MODELS).toContain("x-ai/grok-4.6");
     expect(ALL_MODELS).toContain("x-ai/grok-4.5");
   });
 });

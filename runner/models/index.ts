@@ -41,6 +41,7 @@ export const ALL_MODELS: string[] = [
   "deepseek/deepseek-v4-pro",
   "poolside/laguna-s-2.1",
   "moonshotai/kimi-k3",
+  "x-ai/grok-4.6",
   "x-ai/grok-4.5",
 ];
 
