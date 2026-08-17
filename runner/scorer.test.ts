@@ -15,6 +15,7 @@ import {
   getTypecheckTargets,
   isInfrastructureStepFailure,
   retryInfrastructureOperation,
+  runCommandWithTimeout,
   sanitizeModelTsconfigTypes,
   walkAnswer,
   writeFilesystem,
@@ -504,6 +505,22 @@ describe("infrastructure operation retries", () => {
       ),
     ).rejects.toThrow("not-a-real-package");
     expect(attempts).toBe(1);
+  });
+
+  it("does not wait on pipes inherited by a timed-out child process", async () => {
+    if (process.platform === "win32") return;
+    const startedAt = Date.now();
+
+    // eslint-disable-next-line @typescript-eslint/await-thenable
+    await expect(
+      runCommandWithTimeout(
+        ["sh", "-c", "sleep 1000 & wait"],
+        tmpdir(),
+        50,
+        "test child",
+      ),
+    ).rejects.toThrow("test child timed out after 0.05s");
+    expect(Date.now() - startedAt).toBeLessThan(1_000);
   });
 });
 
