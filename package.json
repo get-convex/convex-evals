@@ -42,7 +42,7 @@
     "convex": "^1.41.0",
     "dotenv": "^17.2.1",
     "get-port": "^7.1.0",
-    "gpt-tokenizer": "^3.4.0",
+    "gpt-tokenizer": "^4.0.0",
     "jszip": "^3.10.1",
     "markdown-it": "^14.1.0",
     "openai": "^6.18.0",
