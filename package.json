@@ -44,7 +44,7 @@
     "get-port": "^7.1.0",
     "gpt-tokenizer": "^3.4.0",
     "jszip": "^3.10.1",
-    "markdown-it": "^14.1.0",
+    "markdown-it": "^15.0.0",
     "openai": "^6.18.0",
     "prettier": "^3.4.2",
     "typescript-eslint": "^8.23.0",
