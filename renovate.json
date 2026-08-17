@@ -37,6 +37,22 @@
       "enabled": false
     },
     {
+      "description": "Disable TypeScript major updates until the compiler API and typescript-eslint support them",
+      "matchPackageNames": ["typescript"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "Keep Node types aligned with the Node 24 runtime used by CI and releases",
+      "matchPackageNames": ["@types/node"],
+      "allowedVersions": "24.x"
+    },
+    {
+      "description": "Presence is pinned by a benchmark eval and must be upgraded deliberately with that eval",
+      "matchPackageNames": ["@convex-dev/presence"],
+      "enabled": false
+    },
+    {
       "description": "Ignore rymndhng/release-on-push-action - pinned to @master intentionally",
       "matchPackageNames": ["rymndhng/release-on-push-action"],
       "enabled": false
