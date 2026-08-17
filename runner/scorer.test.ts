@@ -14,6 +14,7 @@ import {
   formatDeployFailure,
   getTypecheckTargets,
   isInfrastructureStepFailure,
+  retryInfrastructureOperation,
   sanitizeModelTsconfigTypes,
   walkAnswer,
   writeFilesystem,
@@ -465,6 +466,44 @@ describe("infrastructure step classification", () => {
         "Error: Failed to typecheck code:\nconvex/schema.ts(4,1): error TS1005: ',' expected.",
       ),
     ).toBe(false);
+  });
+});
+
+describe("infrastructure operation retries", () => {
+  it("retries a transient timeout once", async () => {
+    let attempts = 0;
+    const delays: number[] = [];
+
+    const result = await retryInfrastructureOperation(
+      async () => {
+        attempts++;
+        if (attempts === 1) throw new Error("bun install timed out after 120s");
+        return "installed";
+      },
+      async (ms) => {
+        delays.push(ms);
+      },
+    );
+
+    expect(result).toBe("installed");
+    expect(attempts).toBe(2);
+    expect(delays).toEqual([1_000]);
+  });
+
+  it("does not retry a deterministic package resolution failure", async () => {
+    let attempts = 0;
+
+    // eslint-disable-next-line @typescript-eslint/await-thenable
+    await expect(
+      retryInfrastructureOperation(
+        async () => {
+          attempts++;
+          throw new Error('package "not-a-real-package" not found');
+        },
+        async () => {},
+      ),
+    ).rejects.toThrow("not-a-real-package");
+    expect(attempts).toBe(1);
   });
 });
 

@@ -171,33 +171,51 @@ interface GitHubRelease {
 
 let cachedReleases: GitHubRelease[] | null = null;
 
-async function fetchConvexReleases(): Promise<GitHubRelease[]> {
-  if (cachedReleases) return cachedReleases;
+const RELEASES_URL =
+  "https://api.github.com/repos/get-convex/convex-backend/releases?per_page=50";
+const RELEASE_FETCH_MAX_ATTEMPTS = 5;
+const RELEASE_FETCH_TIMEOUT_MS = 30_000;
+const RELEASE_FETCH_BASE_DELAY_MS = 5_000;
 
-  const MAX_RETRIES = 3;
-  const RETRY_DELAY_MS = 5000;
+export async function fetchConvexReleasesWithRetry(
+  fetchImpl: typeof fetch = fetch,
+  sleep: (ms: number) => Promise<unknown> = Bun.sleep,
+): Promise<GitHubRelease[]> {
+  let lastFailure = "unknown error";
 
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    const resp = await fetch(
-      "https://api.github.com/repos/get-convex/convex-backend/releases?per_page=50",
-    );
-    if (resp.ok) {
-      cachedReleases = (await resp.json()) as GitHubRelease[];
-      return cachedReleases;
+  for (let attempt = 1; attempt <= RELEASE_FETCH_MAX_ATTEMPTS; attempt++) {
+    try {
+      const resp = await fetchImpl(RELEASES_URL, {
+        signal: AbortSignal.timeout(RELEASE_FETCH_TIMEOUT_MS),
+      });
+      if (resp.ok) {
+        return (await resp.json()) as GitHubRelease[];
+      }
+      lastFailure = `HTTP ${resp.status}`;
+    } catch (error) {
+      lastFailure = String(error);
     }
-    if (attempt < MAX_RETRIES) {
+
+    if (attempt < RELEASE_FETCH_MAX_ATTEMPTS) {
+      // A short GitHub outage should not invalidate an entire evaluation run.
+      const delayMs = RELEASE_FETCH_BASE_DELAY_MS * 2 ** (attempt - 1);
       logInfo(
-        `[backend] Failed to fetch releases (${resp.status}), retrying in ${RETRY_DELAY_MS / 1000}s (attempt ${attempt}/${MAX_RETRIES})...`,
+        `[backend] Failed to fetch releases (${lastFailure}), retrying in ${delayMs / 1000}s (attempt ${attempt}/${RELEASE_FETCH_MAX_ATTEMPTS})...`,
       );
-      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
-    } else {
-      throw new InfrastructureError(
-        `Failed to fetch releases after ${MAX_RETRIES} attempts: ${resp.status}`,
-      );
+      await sleep(delayMs);
     }
   }
-  // unreachable
-  throw new InfrastructureError("Failed to fetch releases");
+
+  throw new InfrastructureError(
+    `Failed to fetch releases after ${RELEASE_FETCH_MAX_ATTEMPTS} attempts: ${lastFailure}`,
+  );
+}
+
+async function fetchConvexReleases(): Promise<GitHubRelease[]> {
+  if (!cachedReleases) {
+    cachedReleases = await fetchConvexReleasesWithRetry();
+  }
+  return cachedReleases;
 }
 
 // Serialize concurrent download requests so only one download happens at a time

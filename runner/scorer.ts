@@ -88,6 +88,20 @@ async function withTimeout<T>(
   }
 }
 
+export async function retryInfrastructureOperation<T>(
+  operation: () => Promise<T>,
+  sleep: (ms: number) => Promise<unknown> = Bun.sleep,
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (!isEnvironmentFailure(String(error).toLowerCase())) throw error;
+    logInfo(`[infrastructure] ${String(error)}; retrying once in 1s`);
+    await sleep(1_000);
+    return await operation();
+  }
+}
+
 // ── Types ─────────────────────────────────────────────────────────────
 
 export interface ScoreResult {
@@ -968,17 +982,51 @@ export function formatDeployFailure(
 async function installDependencies(
   projectDir: string,
 ): Promise<Array<{ cmd: string; stdout: string }>> {
-  const result = await withTimeout(
-    $`bun install`.cwd(projectDir).nothrow().quiet(),
-    TIMEOUTS.bunInstall,
-    "bun install",
-  );
-  if (result.exitCode !== 0) {
-    throw new Error(
-      `Failed to install dependencies:\n${combinedOutput(result)}`,
-    );
-  }
-  return [{ cmd: "bun install", stdout: combinedOutput(result) }];
+  return retryInfrastructureOperation(async () => {
+    const proc = Bun.spawn(["bun", "install"], {
+      cwd: projectDir,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const stdoutPromise = new Response(proc.stdout).text();
+    const stderrPromise = new Response(proc.stderr).text();
+
+    let timer: ReturnType<typeof setTimeout>;
+    try {
+      const exitCode = await Promise.race([
+        proc.exited,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            reject(
+              new Error(
+                `bun install timed out after ${TIMEOUTS.bunInstall / 1000}s`,
+              ),
+            );
+          }, TIMEOUTS.bunInstall);
+        }),
+      ]);
+      const [stdout, stderr] = await Promise.all([
+        stdoutPromise,
+        stderrPromise,
+      ]);
+      const output = [stdout, stderr].filter(Boolean).join("\n");
+      if (exitCode !== 0) {
+        throw new Error(`Failed to install dependencies:\n${output}`);
+      }
+      return [{ cmd: "bun install", stdout: output }];
+    } catch (error) {
+      // Promise.race does not stop a child process. Kill it before retrying so
+      // two installers never mutate the same generated project concurrently.
+      if (proc.exitCode === null) {
+        proc.kill("SIGKILL");
+        await proc.exited;
+      }
+      await Promise.all([stdoutPromise, stderrPromise]);
+      throw error;
+    } finally {
+      clearTimeout(timer!);
+    }
+  });
 }
 
 async function deploy(

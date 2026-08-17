@@ -1,15 +1,56 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, writeFileSync, existsSync, readFileSync, mkdirSync } from "fs";
+import {
+  mkdtempSync,
+  writeFileSync,
+  existsSync,
+  readFileSync,
+  mkdirSync,
+} from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { rmSync } from "fs";
 import JSZip from "jszip";
-import { ADMIN_KEY } from "./convexBackend.js";
+import { ADMIN_KEY, fetchConvexReleasesWithRetry } from "./convexBackend.js";
 
 describe("ADMIN_KEY", () => {
   it("is a non-empty hex string", () => {
     expect(ADMIN_KEY).toBeTruthy();
     expect(ADMIN_KEY).toMatch(/^[0-9a-f]+$/);
+  });
+});
+
+describe("release fetch retries", () => {
+  it("backs off through transient 504s and returns the recovered response", async () => {
+    const statuses = [504, 504, 200];
+    const delays: number[] = [];
+    const releases = [{ tag_name: "v1", assets: [] }];
+    const fetchImpl = (async () => {
+      const status = statuses.shift()!;
+      return new Response(status === 200 ? JSON.stringify(releases) : null, {
+        status,
+      });
+    }) as unknown as typeof fetch;
+
+    const result = await fetchConvexReleasesWithRetry(fetchImpl, async (ms) => {
+      delays.push(ms);
+    });
+
+    expect(result).toEqual(releases);
+    expect(delays).toEqual([5_000, 10_000]);
+  });
+
+  it("stops after five failed attempts", async () => {
+    let attempts = 0;
+    const fetchImpl = (async () => {
+      attempts++;
+      return new Response(null, { status: 504 });
+    }) as unknown as typeof fetch;
+
+    // eslint-disable-next-line @typescript-eslint/await-thenable
+    await expect(
+      fetchConvexReleasesWithRetry(fetchImpl, async () => {}),
+    ).rejects.toThrow("after 5 attempts: HTTP 504");
+    expect(attempts).toBe(5);
   });
 });
 
