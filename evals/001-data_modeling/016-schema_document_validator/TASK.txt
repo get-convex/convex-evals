@@ -50,4 +50,4 @@ Create `convex/shapes.ts` with:
 
 Requirements:
 - The `snapshot` argument must be validated as a complete `shapes` document: accept exactly the documents `getShape` returns and reject anything else (a missing or extra field, a wrong field type, an `_id` from another table, a missing `_creationTime`).
-- Define each shape field's validator exactly once, in the schema. Derive the document validator for `snapshot` from the schema instead of writing the shape fields or the system fields again.
+- Define each shape field's validator exactly once, in the schema, and derive the whole-document validator for `snapshot` from the schema. Do not build it yourself by re-declaring the shape fields, by spreading or extending the table validator or its union members, or by declaring `_id` or `_creationTime` validators.

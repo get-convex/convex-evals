@@ -4,9 +4,10 @@ import {
   cloudUrl,
   compareFunctionSpec,
   getLatestOutputProjectDir,
-  responseClient,
+  pollUntil,
   siteUrl,
 } from "../../../grader";
+import { ConvexHttpClient } from "convex/browser";
 import { anyApi } from "convex/server";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -39,11 +40,26 @@ async function updateEnvVar(name: string, value: string | null) {
   }
 }
 
+/** Each read is a fresh HTTP request: no client-side subscription cache to serve a stale value. */
 async function getDeploymentInfo(): Promise<DeploymentInfo> {
-  return (await responseClient.query(
+  const client = new ConvexHttpClient(cloudUrl);
+  return (await client.query(
     anyApi.deployment.getDeploymentInfo,
     {},
   )) as DeploymentInfo;
+}
+
+/** Env var updates commit before the admin endpoint responds, but poll briefly rather than assume. */
+async function waitForAppName(expected: string | null): Promise<DeploymentInfo> {
+  let latest: DeploymentInfo | null = null;
+  await pollUntil(
+    async () => {
+      latest = await getDeploymentInfo();
+      return latest.appName === expected;
+    },
+    { timeoutMs: 10_000, intervalMs: 250 },
+  ).catch(() => undefined);
+  return latest ?? (await getDeploymentInfo());
 }
 
 /** Compare every component of the URL, not just the port: scheme, loopback host, port, root path, no query/hash. */
@@ -62,7 +78,7 @@ function expectSameDeploymentUrl(actual: string, expected: string, label: string
 }
 
 afterAll(async () => {
-  await updateEnvVar("PUBLIC_APP_NAME", null).catch(() => undefined);
+  await updateEnvVar("PUBLIC_APP_NAME", null);
 });
 
 test("compare function spec", async ({ skip }) => {
@@ -71,7 +87,7 @@ test("compare function spec", async ({ skip }) => {
 
 test("returns this deployment's site and cloud URLs and null when the app name is unset", async () => {
   await updateEnvVar("PUBLIC_APP_NAME", null);
-  const info = await getDeploymentInfo();
+  const info = await waitForAppName(null);
   expectSameDeploymentUrl(info.siteUrl, siteUrl, "siteUrl");
   expectSameDeploymentUrl(info.cloudUrl, cloudUrl, "cloudUrl");
   expect(info.appName).toBeNull();
@@ -81,13 +97,13 @@ test("returns this deployment's site and cloud URLs and null when the app name i
 test("returns the configured app name once PUBLIC_APP_NAME is set", async () => {
   await updateEnvVar("PUBLIC_APP_NAME", APP_NAME);
   try {
-    const info = await getDeploymentInfo();
+    const info = await waitForAppName(APP_NAME);
     expect(info.appName).toBe(APP_NAME);
     expectSameDeploymentUrl(info.siteUrl, siteUrl, "siteUrl");
   } finally {
     await updateEnvVar("PUBLIC_APP_NAME", null);
   }
-  const reset = await getDeploymentInfo();
+  const reset = await waitForAppName(null);
   expect(reset.appName).toBeNull();
 });
 
@@ -154,7 +170,7 @@ test("getDeploymentInfo reads every value from the generated env object and noth
         ts.isIdentifier(node) &&
         node.text === "process" &&
         !(ts.isPropertyAccessExpression(node.parent) && node.parent.name === node) &&
-        !ts.isPropertyAssignment(node.parent) &&
+        !(ts.isPropertyAssignment(node.parent) && node.parent.name === node) &&
         !ts.isImportSpecifier(node.parent);
       const isGlobalThisProcess =
         (ts.isPropertyAccessExpression(node) &&
@@ -372,13 +388,18 @@ function analyzeDeploymentModule(file: ts.SourceFile): {
             p.name !== undefined &&
             p.name.getText() === "handler",
         );
-        const body = handler === undefined
-          ? undefined
-          : ts.isMethodDeclaration(handler)
+        const handlerShorthand = config.properties.find(
+          (p) => ts.isShorthandPropertyAssignment(p) && p.name.text === "handler",
+        );
+        const body = handler !== undefined
+          ? ts.isMethodDeclaration(handler)
             ? handler.body
             : ts.isPropertyAssignment(handler)
               ? unwrap(handler.initializer)
-              : undefined;
+              : undefined
+          : handlerShorthand !== undefined && constants.has("handler")
+            ? unwrap(constants.get("handler")!)
+            : undefined;
         const resolveReturned = (expression: ts.Expression, seen = new Set<string>()): ts.ObjectLiteralExpression | null => {
           const expr = unwrap(expression);
           if (ts.isObjectLiteralExpression(expr)) return expr;

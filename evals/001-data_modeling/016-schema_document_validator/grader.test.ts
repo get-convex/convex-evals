@@ -243,21 +243,26 @@ test("the snapshot validator is derived from the schema, not written by hand", (
     getLatestOutputProjectDir(CATEGORY, EVAL_NAME),
     "convex",
   );
-  const sources = collectSources(convexDir);
-  expect(sources.length, "no convex sources found").toBeGreaterThan(0);
-  const bindings = collectBindings(sources);
+  const project = loadProject(convexDir);
+  expect(project.size, "no convex sources found").toBeGreaterThan(0);
 
-  const restoreBinding = (bindings.get("restoreShape") ?? []).find(
-    (b): b is ConstBinding => b.kind === "const",
+  const shapesModule = project.get("shapes.ts");
+  expect(shapesModule, "convex/shapes.ts must exist").toBeDefined();
+  const restoreInit = shapesModule!.consts.get("restoreShape");
+  expect(
+    restoreInit,
+    "restoreShape must be a top-level const in convex/shapes.ts",
+  ).toBeDefined();
+  const snapshotExpr = findSnapshotArgExpression(
+    { expr: restoreInit!, file: "shapes.ts" },
+    project,
   );
-  expect(restoreBinding, "restoreShape must be a top-level const").toBeDefined();
-  const snapshotExpr = findSnapshotArgExpression(restoreBinding!.init, bindings);
   expect(
     snapshotExpr,
     "restoreShape must declare `args: { snapshot: ... }`",
   ).not.toBeNull();
 
-  const derivation = describeDerivation(snapshotExpr!, bindings, new Set());
+  const derivation = describeDerivation(snapshotExpr!, project, new Set());
   expect(
     derivation,
     "the snapshot validator must be derived from the schema's shapes table (a whole-document validator), not a hand-written or duplicated v.object/v.union",
@@ -267,7 +272,7 @@ test("the snapshot validator is derived from the schema, not written by hand", (
   // authored sources (destructuring `_creationTime` out of the snapshot is a
   // binding pattern, not a property assignment, and stays allowed).
   const handWritten: string[] = [];
-  for (const file of sources) {
+  for (const module of project.values()) {
     const visit = (node: ts.Node) => {
       if (
         ts.isPropertyAssignment(node) &&
@@ -276,11 +281,11 @@ test("the snapshot validator is derived from the schema, not written by hand", (
         ts.isCallExpression(node.initializer) &&
         node.initializer.expression.getText().startsWith("v.")
       ) {
-        handWritten.push(`${file.fileName}: ${node.getText()}`);
+        handWritten.push(`${module.file}: ${node.getText()}`);
       }
       ts.forEachChild(node, visit);
     };
-    visit(file);
+    visit(module.source);
   }
   expect(
     handWritten,
@@ -288,22 +293,27 @@ test("the snapshot validator is derived from the schema, not written by hand", (
   ).toEqual([]);
 });
 
-// ── helpers ──────────────────────────────────────────────────────────
+// ── helpers: a tiny per-module symbol resolver ────────────────────────
 
 type ImportBinding = {
-  kind: "import";
   specifier: string;
   /** "default", "*" for namespace imports, or the exported name. */
   importedName: string;
 };
-type ConstBinding = { kind: "const"; init: ts.Expression; file: string };
-type Binding = ImportBinding | ConstBinding;
-type Bindings = Map<string, Binding[]>;
-/** Pseudo-name under which each file's `export default <expr>` is recorded. */
-const DEFAULT_EXPORT = "\u0000default";
+type Module = {
+  file: string;
+  source: ts.SourceFile;
+  consts: Map<string, ts.Expression>;
+  imports: Map<string, ImportBinding>;
+  defaultExport: ts.Expression | null;
+};
+type Project = Map<string, Module>;
+/** A located expression, or a symbol imported from an npm package. */
+type Located = { expr: ts.Expression; file: string };
+type Resolved = Located | { pkg: string; name: string };
 
-function collectSources(convexDir: string): ts.SourceFile[] {
-  const files: ts.SourceFile[] = [];
+function loadProject(convexDir: string): Project {
+  const project: Project = new Map();
   const walk = (dir: string) => {
     for (const entry of readdirSync(dir)) {
       if (entry === "_generated" || entry === "node_modules") continue;
@@ -311,85 +321,183 @@ function collectSources(convexDir: string): ts.SourceFile[] {
       if (statSync(full).isDirectory()) {
         walk(full);
       } else if (entry.endsWith(".ts") && !entry.endsWith(".d.ts")) {
-        files.push(
-          ts.createSourceFile(
-            relative(convexDir, full),
-            readFileSync(full, "utf8"),
-            ts.ScriptTarget.Latest,
-            true,
-            ts.ScriptKind.TS,
-          ),
+        const file = relative(convexDir, full).replace(/\\/g, "/");
+        const source = ts.createSourceFile(
+          file,
+          readFileSync(full, "utf8"),
+          ts.ScriptTarget.Latest,
+          true,
+          ts.ScriptKind.TS,
         );
+        project.set(file, indexModule(file, source));
       }
     }
   };
   walk(convexDir);
-  return files;
+  return project;
 }
 
-/** Every top-level-ish const initializer and import binding across the project, by local name. */
-function collectBindings(sources: ts.SourceFile[]): Bindings {
-  const bindings: Bindings = new Map();
-  const add = (name: string, binding: Binding) => {
-    const list = bindings.get(name) ?? [];
-    list.push(binding);
-    bindings.set(name, list);
+function indexModule(file: string, source: ts.SourceFile): Module {
+  const module: Module = {
+    file,
+    source,
+    consts: new Map(),
+    imports: new Map(),
+    defaultExport: null,
   };
-  for (const file of sources) {
-    const visit = (node: ts.Node) => {
-      if (
-        ts.isVariableDeclaration(node) &&
-        ts.isIdentifier(node.name) &&
-        node.initializer !== undefined
-      ) {
-        add(node.name.text, {
-          kind: "const",
-          init: node.initializer,
-          file: file.fileName,
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer !== undefined
+    ) {
+      module.consts.set(node.name.text, node.initializer);
+    }
+    if (ts.isExportAssignment(node) && !node.isExportEquals) {
+      module.defaultExport = node.expression;
+    }
+    if (
+      ts.isImportDeclaration(node) &&
+      ts.isStringLiteral(node.moduleSpecifier) &&
+      node.importClause !== undefined
+    ) {
+      const specifier = node.moduleSpecifier.text;
+      const clause = node.importClause;
+      if (clause.name !== undefined) {
+        module.imports.set(clause.name.text, {
+          specifier,
+          importedName: "default",
         });
       }
-      // `export default defineSchema({...})` is an ExportAssignment, not a
-      // variable; record it so the schema's table registrations are visible.
-      if (ts.isExportAssignment(node) && !node.isExportEquals) {
-        add(DEFAULT_EXPORT, {
-          kind: "const",
-          init: node.expression,
-          file: file.fileName,
-        });
+      const named = clause.namedBindings;
+      if (named !== undefined && ts.isNamespaceImport(named)) {
+        module.imports.set(named.name.text, { specifier, importedName: "*" });
       }
-      if (
-        ts.isImportDeclaration(node) &&
-        ts.isStringLiteral(node.moduleSpecifier) &&
-        node.importClause !== undefined
-      ) {
-        const specifier = node.moduleSpecifier.text;
-        const clause = node.importClause;
-        if (clause.name !== undefined) {
-          add(clause.name.text, {
-            kind: "import",
+      if (named !== undefined && ts.isNamedImports(named)) {
+        for (const element of named.elements) {
+          module.imports.set(element.name.text, {
             specifier,
-            importedName: "default",
+            importedName: (element.propertyName ?? element.name).text,
           });
         }
-        const named = clause.namedBindings;
-        if (named !== undefined && ts.isNamespaceImport(named)) {
-          add(named.name.text, { kind: "import", specifier, importedName: "*" });
-        }
-        if (named !== undefined && ts.isNamedImports(named)) {
-          for (const element of named.elements) {
-            add(element.name.text, {
-              kind: "import",
-              specifier,
-              importedName: (element.propertyName ?? element.name).text,
-            });
-          }
-        }
       }
-      ts.forEachChild(node, visit);
-    };
-    visit(file);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return module;
+}
+
+/** Map a relative import specifier to a project file, or null for packages. */
+function resolveSpecifier(
+  specifier: string,
+  fromFile: string,
+  project: Project,
+): string | null {
+  if (!specifier.startsWith(".")) return null;
+  const base = fromFile.includes("/")
+    ? fromFile.slice(0, fromFile.lastIndexOf("/") + 1)
+    : "";
+  const parts: string[] = [];
+  for (const segment of (base + specifier).split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") parts.pop();
+    else parts.push(segment);
   }
-  return bindings;
+  const path = parts.join("/").replace(/\.(js|ts)$/, "");
+  for (const candidate of [`${path}.ts`, `${path}/index.ts`]) {
+    if (project.has(candidate)) return candidate;
+  }
+  return null;
+}
+
+/** Resolve a local identifier in `file` to the expression(s) it names, following imports across modules. */
+function resolveName(
+  name: string,
+  file: string,
+  project: Project,
+  seen: Set<string>,
+): Resolved[] {
+  const key = `${file}::${name}`;
+  if (seen.has(key)) return [];
+  seen.add(key);
+  const module = project.get(file);
+  if (module === undefined) return [];
+  const results: Resolved[] = [];
+  const local = module.consts.get(name);
+  if (local !== undefined) results.push({ expr: local, file });
+  const imported = module.imports.get(name);
+  if (imported !== undefined) {
+    const target = resolveSpecifier(imported.specifier, file, project);
+    if (target === null) {
+      results.push({ pkg: imported.specifier, name: imported.importedName });
+    } else if (imported.importedName === "default") {
+      const targetModule = project.get(target)!;
+      if (targetModule.defaultExport !== null) {
+        results.push(...resolveExpression(targetModule.defaultExport, target, project, seen));
+      }
+    } else if (imported.importedName !== "*") {
+      results.push(...resolveName(imported.importedName, target, project, seen));
+    }
+  }
+  return results;
+}
+
+/** Follow an expression through identifiers (and `ns.member` on namespace imports) until it is a concrete expression or package symbol. */
+function resolveExpression(
+  expression: ts.Expression,
+  file: string,
+  project: Project,
+  seen: Set<string>,
+): Resolved[] {
+  const expr = unwrap(expression);
+  if (ts.isIdentifier(expr)) {
+    const resolved = resolveName(expr.text, file, project, seen);
+    const out: Resolved[] = [];
+    for (const r of resolved) {
+      if ("expr" in r && ts.isIdentifier(unwrap(r.expr))) {
+        out.push(...resolveExpression(r.expr, r.file, project, seen));
+      } else {
+        out.push(r);
+      }
+    }
+    return out;
+  }
+  const namespaced = namespaceMember(expr, file, project);
+  if (namespaced !== null) {
+    if (namespaced.target === null) {
+      return [{ pkg: namespaced.specifier, name: namespaced.member }];
+    }
+    if (namespaced.member === "default") {
+      const targetModule = project.get(namespaced.target)!;
+      return targetModule.defaultExport === null
+        ? []
+        : resolveExpression(targetModule.defaultExport, namespaced.target, project, seen);
+    }
+    return resolveName(namespaced.member, namespaced.target, project, seen);
+  }
+  return [{ expr, file }];
+}
+
+/** `ns.member` where `ns` is a namespace import in this module. */
+function namespaceMember(
+  expression: ts.Expression,
+  file: string,
+  project: Project,
+): { specifier: string; target: string | null; member: string } | null {
+  if (
+    !ts.isPropertyAccessExpression(expression) ||
+    !ts.isIdentifier(expression.expression)
+  ) {
+    return null;
+  }
+  const binding = project.get(file)?.imports.get(expression.expression.text);
+  if (binding === undefined || binding.importedName !== "*") return null;
+  return {
+    specifier: binding.specifier,
+    target: resolveSpecifier(binding.specifier, file, project),
+    member: expression.name.text,
+  };
 }
 
 function unwrap(expression: ts.Expression): ts.Expression {
@@ -428,259 +536,136 @@ function propertyNamed(
   return null;
 }
 
-const isSchemaSpecifier = (specifier: string) =>
-  /(^|\/)schema(\.js|\.ts)?$/.test(specifier);
-
 const isStringArg = (arg: ts.Expression | undefined, value: string) =>
   arg !== undefined &&
   (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)) &&
   arg.text === value;
 
-/** Resolve a local identifier to its const initializer(s), following import aliases by name. */
-function constInits(
-  name: string,
-  bindings: Bindings,
-  seen: Set<string>,
-): ts.Expression[] {
-  if (seen.has(`const:${name}`)) return [];
-  seen.add(`const:${name}`);
-  const inits: ts.Expression[] = [];
-  for (const binding of bindings.get(name) ?? []) {
-    if (binding.kind === "const") inits.push(binding.init);
-    else if (
-      binding.kind === "import" &&
-      binding.importedName !== "default" &&
-      binding.importedName !== "*" &&
-      binding.importedName !== name
-    ) {
-      inits.push(...constInits(binding.importedName, bindings, seen));
-    }
-  }
-  return inits;
-}
-
-const SCHEMA_FILE = /^schema\.ts$/;
+const SCHEMA_FILE = "schema.ts";
 
 /**
- * The schema's identity: the expression `convex/schema.ts` default-exports
- * (`export default defineSchema({...})` or `export default schema` where
- * `schema` is a const in that file). Any other defineSchema(...) value is a
- * duplicate and does not count.
+ * The schema's identity: the concrete expression `convex/schema.ts`
+ * default-exports (`export default defineSchema({...})`, or the const it
+ * exports by name). Any other defineSchema(...) value is a duplicate.
  */
-function canonicalSchema(bindings: Bindings): {
-  init: ts.Expression | null;
-  names: Set<string>;
-} {
-  const names = new Set<string>();
-  let init: ts.Expression | null = null;
-  for (const binding of bindings.get(DEFAULT_EXPORT) ?? []) {
-    if (binding.kind !== "const" || !SCHEMA_FILE.test(binding.file)) continue;
-    const expr = unwrap(binding.init);
-    if (ts.isIdentifier(expr)) {
-      names.add(expr.text);
-      for (const target of bindings.get(expr.text) ?? []) {
-        if (target.kind === "const" && SCHEMA_FILE.test(target.file)) {
-          init = unwrap(target.init);
-        }
-      }
-    } else {
-      init = expr;
-    }
-  }
-  return { init, names };
+function canonicalSchema(project: Project): Located | null {
+  const module = project.get(SCHEMA_FILE);
+  if (module === undefined || module.defaultExport === null) return null;
+  const resolved = resolveExpression(module.defaultExport, SCHEMA_FILE, project, new Set());
+  const located = resolved.find((r): r is Located => "expr" in r);
+  return located ?? null;
 }
 
-/** True when the expression is the app schema: the default export of convex/schema.ts (imported, or referenced by name inside schema.ts). */
-function isSchemaValue(
-  expression: ts.Expression,
-  bindings: Bindings,
-  seen: Set<string>,
-): boolean {
-  const expr = unwrap(expression);
-  const canonical = canonicalSchema(bindings);
-  if (canonical.init !== null && expr === canonical.init) return true;
-  if (
-    ts.isPropertyAccessExpression(expr) &&
-    expr.name.text === "default" &&
-    ts.isIdentifier(expr.expression)
-  ) {
-    return (bindings.get(expr.expression.text) ?? []).some(
-      (b) =>
-        b.kind === "import" &&
-        b.importedName === "*" &&
-        isSchemaSpecifier(b.specifier),
-    );
-  }
-  if (!ts.isIdentifier(expr)) return false;
-  if (seen.has(`schema:${expr.text}`)) return false;
-  seen.add(`schema:${expr.text}`);
-  for (const binding of bindings.get(expr.text) ?? []) {
-    if (
-      binding.kind === "import" &&
-      binding.importedName === "default" &&
-      isSchemaSpecifier(binding.specifier)
-    ) {
-      return true;
-    }
-    if (binding.kind === "const") {
-      // The schema const inside schema.ts itself.
-      if (SCHEMA_FILE.test(binding.file) && canonical.names.has(expr.text)) {
-        return true;
-      }
-      // An alias (`const s = schema`), but never a fresh defineSchema(...) call.
-      const init = unwrap(binding.init);
-      if (!ts.isCallExpression(init) && isSchemaValue(init, bindings, seen)) {
-        return true;
-      }
-    }
-  }
-  return false;
+/** True when the expression is the app schema (by identity of the default-exported value). */
+function isSchemaValue(expression: ts.Expression, file: string, project: Project): boolean {
+  const canonical = canonicalSchema(project);
+  if (canonical === null) return false;
+  return resolveExpression(expression, file, project, new Set()).some(
+    (r) => "expr" in r && unwrap(r.expr) === unwrap(canonical.expr),
+  );
 }
 
-/** The identifier the canonical schema's defineSchema literal uses for the `shapes` table, if it is not inline. */
-function schemaShapesTableName(bindings: Bindings): string | null {
-  const { init } = canonicalSchema(bindings);
-  if (init === null || !ts.isCallExpression(init) || init.arguments.length === 0) {
-    return null;
-  }
-  const callee = init.expression;
-  const isDefineSchema =
-    (ts.isIdentifier(callee) && callee.text === "defineSchema") ||
-    (ts.isPropertyAccessExpression(callee) &&
-      callee.name.text === "defineSchema");
-  if (!isDefineSchema) return null;
+/** The concrete TableDefinition expression the canonical schema registers under `shapes`. */
+function canonicalShapesTable(project: Project): Located | null {
+  const canonical = canonicalSchema(project);
+  if (canonical === null) return null;
+  const init = unwrap(canonical.expr);
+  if (!ts.isCallExpression(init) || init.arguments.length === 0) return null;
   const tables = unwrap(init.arguments[0]);
   if (!ts.isObjectLiteralExpression(tables)) return null;
   const shapes = propertyNamed(tables, "shapes");
-  if (shapes !== null && ts.isIdentifier(unwrap(shapes))) {
-    return (unwrap(shapes) as ts.Identifier).text;
+  if (shapes === null) return null;
+  const resolved = resolveExpression(shapes, canonical.file, project, new Set());
+  return resolved.find((r): r is Located => "expr" in r) ?? null;
+}
+
+/** True when the expression is the schema's own shapes TableDefinition (not a duplicate). */
+function isShapesTableValue(expression: ts.Expression, file: string, project: Project): boolean {
+  const expr = unwrap(expression);
+  // schema.tables.shapes / schema.tables["shapes"]
+  const tablesReceiver = (): ts.Expression | null => {
+    if (
+      ts.isPropertyAccessExpression(expr) &&
+      expr.name.text === "shapes" &&
+      ts.isPropertyAccessExpression(expr.expression) &&
+      expr.expression.name.text === "tables"
+    ) {
+      return expr.expression.expression;
+    }
+    if (
+      ts.isElementAccessExpression(expr) &&
+      isStringArg(expr.argumentExpression, "shapes") &&
+      ts.isPropertyAccessExpression(expr.expression) &&
+      expr.expression.name.text === "tables"
+    ) {
+      return expr.expression.expression;
+    }
+    return null;
+  };
+  const receiver = tablesReceiver();
+  if (receiver !== null) return isSchemaValue(receiver, file, project);
+  // The very table definition the schema registers (shared module or local const).
+  const registered = canonicalShapesTable(project);
+  if (registered === null) return false;
+  return resolveExpression(expr, file, project, new Set()).some(
+    (r) => "expr" in r && unwrap(r.expr) === unwrap(registered.expr),
+  );
+}
+
+/** Whether a callee expression is `exportedName` from an npm `specifier` (named, aliased, or namespace import). */
+function isPackageSymbol(
+  callee: ts.Expression,
+  file: string,
+  project: Project,
+  specifier: RegExp,
+  exportedName: string,
+): boolean {
+  return resolveExpression(callee, file, project, new Set()).some(
+    (r) => "pkg" in r && specifier.test(r.pkg) && r.name === exportedName,
+  );
+}
+
+/** Locate the `snapshot` validator expression consumed by `mutation({ args: ... })`. */
+function findSnapshotArgExpression(registration: Located, project: Project): ts.Expression | null {
+  const call = unwrap(registration.expr);
+  if (!ts.isCallExpression(call) || call.arguments.length === 0) return null;
+  const configs = resolveExpression(call.arguments[0], registration.file, project, new Set());
+  for (const config of configs) {
+    if (!("expr" in config)) continue;
+    const literal = unwrap(config.expr);
+    if (!ts.isObjectLiteralExpression(literal)) continue;
+    const argsExpr = propertyNamed(literal, "args");
+    if (argsExpr === null) continue;
+    const argsObject = resolveArgsObject({ expr: argsExpr, file: config.file }, project, new Set());
+    if (argsObject === null) continue;
+    return propertyNamed(argsObject, "snapshot");
   }
   return null;
 }
 
-/** True when the expression is the schema's own shapes TableDefinition (not a duplicate). */
-function isShapesTableValue(
-  expression: ts.Expression,
-  bindings: Bindings,
-  seen: Set<string>,
-): boolean {
-  const expr = unwrap(expression);
-  // schema.tables.shapes / schema.tables["shapes"]
-  if (
-    ts.isPropertyAccessExpression(expr) &&
-    expr.name.text === "shapes" &&
-    ts.isPropertyAccessExpression(expr.expression) &&
-    expr.expression.name.text === "tables"
-  ) {
-    return isSchemaValue(expr.expression.expression, bindings, seen);
-  }
-  if (
-    ts.isElementAccessExpression(expr) &&
-    isStringArg(expr.argumentExpression, "shapes") &&
-    ts.isPropertyAccessExpression(expr.expression) &&
-    expr.expression.name.text === "tables"
-  ) {
-    return isSchemaValue(expr.expression.expression, bindings, seen);
-  }
-  // A named table definition that the schema itself registers under `shapes`.
-  if (ts.isIdentifier(expr)) {
-    const registered = schemaShapesTableName(bindings);
-    if (registered === null) return false;
-    const resolvesToRegistered = (name: string): boolean => {
-      if (name === registered) return true;
-      return (bindings.get(name) ?? []).some(
-        (b) =>
-          b.kind === "import" &&
-          b.importedName !== "default" &&
-          b.importedName !== "*" &&
-          b.importedName === registered,
-      );
-    };
-    if (!resolvesToRegistered(expr.text)) return false;
-    return constInits(expr.text, bindings, seen).some((init) =>
-      isDefineTableChain(init),
-    );
-  }
-  return false;
-}
-
-/** Whether a local callee name is bound to `exportedName` imported from `specifier`. */
-function isImportedAs(
-  name: string,
-  bindings: Bindings,
-  specifier: RegExp,
-  exportedName: string,
-): boolean {
-  return (bindings.get(name) ?? []).some(
-    (b) =>
-      b.kind === "import" &&
-      specifier.test(b.specifier) &&
-      b.importedName === exportedName,
-  );
-}
-
-/** True for `defineTable(...)`, optionally followed by `.index(...)`/`.searchIndex(...)`/`.vectorIndex(...)` chains. */
-function isDefineTableChain(expression: ts.Expression): boolean {
-  let current: ts.Expression = unwrap(expression);
-  while (ts.isCallExpression(current)) {
-    const callee = current.expression;
-    if (ts.isIdentifier(callee)) return callee.text === "defineTable";
-    if (ts.isPropertyAccessExpression(callee)) {
-      if (callee.name.text === "defineTable") return true;
-      current = unwrap(callee.expression);
-      continue;
-    }
-    return false;
-  }
-  return false;
-}
-
-/** Locate the `snapshot` validator expression consumed by `mutation({ args: ... })`. */
-function findSnapshotArgExpression(
-  registration: ts.Expression,
-  bindings: Bindings,
-): ts.Expression | null {
-  const call = unwrap(registration);
-  if (!ts.isCallExpression(call) || call.arguments.length === 0) return null;
-  let config = unwrap(call.arguments[0]);
-  if (ts.isIdentifier(config)) {
-    const inits = constInits(config.text, bindings, new Set());
-    if (inits.length === 0) return null;
-    config = unwrap(inits[0]);
-  }
-  if (!ts.isObjectLiteralExpression(config)) return null;
-  const argsExpr = propertyNamed(config, "args");
-  if (argsExpr === null) return null;
-  const argsObject = resolveArgsObject(argsExpr, bindings, new Set());
-  if (argsObject === null) return null;
-  return propertyNamed(argsObject, "snapshot");
-}
-
-/** Resolve `args` to its property-validator object literal: `{...}`, `v.object({...})`, `x.fields`, or a named const of those. */
+/** Resolve `args` to its property-validator object literal: `{...}`, `v.object({...})`, `x.fields`, or a const of those. */
 function resolveArgsObject(
-  expression: ts.Expression,
-  bindings: Bindings,
+  located: Located,
+  project: Project,
   seen: Set<string>,
 ): ts.ObjectLiteralExpression | null {
-  const expr = unwrap(expression);
-  if (ts.isObjectLiteralExpression(expr)) return expr;
-  if (ts.isIdentifier(expr)) {
-    for (const init of constInits(expr.text, bindings, seen)) {
-      const resolved = resolveArgsObject(init, bindings, seen);
-      if (resolved !== null) return resolved;
+  for (const r of resolveExpression(located.expr, located.file, project, seen)) {
+    if (!("expr" in r)) continue;
+    const expr = unwrap(r.expr);
+    if (ts.isObjectLiteralExpression(expr)) return expr;
+    if (
+      ts.isCallExpression(expr) &&
+      ts.isPropertyAccessExpression(expr.expression) &&
+      expr.expression.name.text === "object" &&
+      expr.arguments.length > 0
+    ) {
+      const inner = resolveArgsObject({ expr: expr.arguments[0], file: r.file }, project, seen);
+      if (inner !== null) return inner;
     }
-    return null;
-  }
-  if (
-    ts.isCallExpression(expr) &&
-    ts.isPropertyAccessExpression(expr.expression) &&
-    expr.expression.name.text === "object" &&
-    expr.arguments.length > 0
-  ) {
-    return resolveArgsObject(expr.arguments[0], bindings, seen);
-  }
-  if (ts.isPropertyAccessExpression(expr) && expr.name.text === "fields") {
-    return resolveArgsObject(expr.expression, bindings, seen);
+    if (ts.isPropertyAccessExpression(expr) && expr.name.text === "fields") {
+      const inner = resolveArgsObject({ expr: expr.expression, file: r.file }, project, seen);
+      if (inner !== null) return inner;
+    }
   }
   return null;
 }
@@ -688,52 +673,43 @@ function resolveArgsObject(
 /**
  * Follow the consumed expression through consts/imports/wrappers until it
  * reaches a whole-document validator derived from the schema's shapes table:
- *   - `<schema>.doc("shapes")`                    (SchemaDefinition.doc, Convex 1.44)
+ *   - `<schema>.doc("shapes")`                          (SchemaDefinition.doc, Convex 1.44)
  *   - `docValidator("shapes", <schema's shapes table>)` (convex/server, Convex 1.44)
- *   - `doc(<schema>, "shapes")`                   (convex-helpers/validators)
+ *   - `doc(<schema>, "shapes")`                         (convex-helpers/validators)
  * Returns a short description, or null when the chain roots elsewhere.
  */
-function describeDerivation(
-  expression: ts.Expression,
-  bindings: Bindings,
-  seen: Set<string>,
-): string | null {
-  const expr = unwrap(expression);
-  if (ts.isIdentifier(expr)) {
-    for (const init of constInits(expr.text, bindings, seen)) {
-      const found = describeDerivation(init, bindings, seen);
-      if (found !== null) return found;
+function describeDerivation(expression: ts.Expression, project: Project, seen: Set<string>): string | null {
+  // The snapshot expression lives in shapes.ts; resolution follows imports from there.
+  for (const r of resolveExpression(expression, "shapes.ts", project, seen)) {
+    if (!("expr" in r)) continue;
+    const expr = unwrap(r.expr);
+    if (!ts.isCallExpression(expr)) continue;
+    const callee = expr.expression;
+    const [firstArg, secondArg] = expr.arguments;
+    if (
+      ts.isPropertyAccessExpression(callee) &&
+      callee.name.text === "doc" &&
+      isStringArg(firstArg, "shapes") &&
+      isSchemaValue(callee.expression, r.file, project)
+    ) {
+      return `${callee.expression.getText()}.doc("shapes")`;
     }
-    return null;
-  }
-  if (!ts.isCallExpression(expr)) return null;
-  const callee = expr.expression;
-  const [firstArg, secondArg] = expr.arguments;
-  if (
-    ts.isPropertyAccessExpression(callee) &&
-    callee.name.text === "doc" &&
-    isStringArg(firstArg, "shapes") &&
-    isSchemaValue(callee.expression, bindings, seen)
-  ) {
-    return `${callee.expression.getText()}.doc("shapes")`;
-  }
-  if (
-    ts.isIdentifier(callee) &&
-    isImportedAs(callee.text, bindings, /^convex\/server$/, "docValidator") &&
-    isStringArg(firstArg, "shapes") &&
-    secondArg !== undefined &&
-    isShapesTableValue(secondArg, bindings, seen)
-  ) {
-    return `docValidator("shapes", <schema shapes table>)`;
-  }
-  if (
-    ts.isIdentifier(callee) &&
-    isImportedAs(callee.text, bindings, /^convex-helpers\/validators$/, "doc") &&
-    firstArg !== undefined &&
-    isSchemaValue(firstArg, bindings, seen) &&
-    isStringArg(secondArg, "shapes")
-  ) {
-    return `doc(schema, "shapes")`;
+    if (
+      isPackageSymbol(callee, r.file, project, /^convex\/server$/, "docValidator") &&
+      isStringArg(firstArg, "shapes") &&
+      secondArg !== undefined &&
+      isShapesTableValue(secondArg, r.file, project)
+    ) {
+      return `docValidator("shapes", <schema shapes table>)`;
+    }
+    if (
+      isPackageSymbol(callee, r.file, project, /^convex-helpers\/validators$/, "doc") &&
+      firstArg !== undefined &&
+      isSchemaValue(firstArg, r.file, project) &&
+      isStringArg(secondArg, "shapes")
+    ) {
+      return `doc(schema, "shapes")`;
+    }
   }
   return null;
 }
