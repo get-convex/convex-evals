@@ -1,0 +1,14 @@
+Create a backend that exposes its own deployment addresses so clients can build webhook callback URLs and share links.
+
+Use Convex's typed environment variable API. Declare one application environment variable:
+- `PUBLIC_APP_NAME`: optional string
+
+Create `convex/deployment.ts` with a public query `getDeploymentInfo` that:
+- Takes no arguments
+- Reads every value through the typed `env` object; do not read any environment variable through `process.env`
+- Returns an object with:
+  - `siteUrl`: this deployment's HTTP actions URL (the `.convex.site` address in production)
+  - `cloudUrl`: this deployment's client URL (the `.convex.cloud` address in production)
+  - `appName`: the configured `PUBLIC_APP_NAME`, or `null` when it is not set
+
+No schema is required.

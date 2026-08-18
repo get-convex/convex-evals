@@ -1,0 +1,53 @@
+Build the backend for a collaborative whiteboard that supports client-side undo.
+
+Use this schema in `convex/schema.ts`:
+
+```ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  boards: defineTable({
+    name: v.string(),
+  }),
+  shapes: defineTable(
+    v.union(
+      v.object({
+        kind: v.literal("rect"),
+        boardId: v.id("boards"),
+        x: v.number(),
+        y: v.number(),
+        width: v.number(),
+        height: v.number(),
+      }),
+      v.object({
+        kind: v.literal("circle"),
+        boardId: v.id("boards"),
+        x: v.number(),
+        y: v.number(),
+        radius: v.number(),
+      }),
+      v.object({
+        kind: v.literal("text"),
+        boardId: v.id("boards"),
+        x: v.number(),
+        y: v.number(),
+        text: v.string(),
+      }),
+    ),
+  ).index("by_boardId", ["boardId"]),
+});
+```
+
+Clients keep an undo stack of shape documents exactly as they were fetched from the backend. To undo, the client sends one of those documents back and the backend overwrites the current shape with it.
+
+Create `convex/shapes.ts` with:
+
+- A query `getShape` that takes `{ shapeId: Id<"shapes"> }` and returns the shape document, or `null` if it does not exist.
+- A mutation `restoreShape` that takes `{ snapshot }`, where `snapshot` is a complete `shapes` document as returned by `getShape` (including its `_id` and `_creationTime` system fields), and returns `null`. It must:
+  - Throw an error if no shape with `snapshot._id` exists.
+  - Otherwise overwrite every field of that shape with the snapshot's fields, keeping the same `_id`. The shape's `kind` may change as a result.
+
+Requirements:
+- The `snapshot` argument must be validated as a complete `shapes` document: accept exactly the documents `getShape` returns and reject anything else (a missing or extra field, a wrong field type, an `_id` from another table, a missing `_creationTime`).
+- Define each shape field's validator exactly once, in the schema. Derive the document validator for `snapshot` from the schema instead of writing the shape fields or the system fields again.

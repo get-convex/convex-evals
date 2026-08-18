@@ -31,7 +31,7 @@ const answerPort = process.env.CONVEX_ANSWER_PORT;
 
 export const responseClient = new ConvexClient(cloudUrl);
 
-const adminKey =
+export const adminKey =
   "0135d8598650f8f5cb0f30c34ec2e2bb62793bc28717c8eb6fb577996d50be5f4281b59181095065c5d0f86a2c31ddbe9b597ec62b47ded69782cd";
 export const responseAdminClient = new ConvexClient(
   `http://localhost:${responsePort}`,

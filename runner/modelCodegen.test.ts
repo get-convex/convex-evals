@@ -249,7 +249,7 @@ describe("renderPrompt", () => {
 
   it("includes Convex version requirement", () => {
     const prompt = renderPrompt("test");
-    expect(prompt).toContain("1.41.0");
+    expect(prompt).toContain("1.44.0");
   });
 
   it("always generates non-empty output", () => {
