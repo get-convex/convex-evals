@@ -2,12 +2,13 @@
  * LLM code generation: builds prompts, calls provider APIs, parses responses.
  *
  * Uses the Vercel AI SDK as a unified interface across all
- * providers. When the "web_search" experiment is active, a Tavily-powered
- * search tool is made available to every model.
+ * providers. When the "web_search" experiment is active, OpenRouter's server
+ * tool gives each model its native web search or OpenRouter's fallback.
  */
-import { stepCountIs, streamText, type LanguageModel, type LanguageModelUsage } from "ai";
+import { streamText, type LanguageModel, type LanguageModelUsage } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import type { FetchFunction } from "@ai-sdk/provider-utils";
 import MarkdownIt from "markdown-it";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -19,9 +20,8 @@ import {
 } from "./index.js";
 import { getGuidelines } from "./guidelines.js";
 import {
-  webSearchTool,
-  WEB_SEARCH_SYSTEM_SUPPLEMENT,
-  MAX_TOOL_STEPS,
+  addOpenRouterWebSearchTool,
+  getOpenRouterWebSearchRequestCount,
 } from "./webSearch.js";
 import { logInfo } from "../logging.js";
 
@@ -31,6 +31,30 @@ function isWebSearchEnabled(): boolean {
   const exp = process.env.EVALS_EXPERIMENT;
   return exp === "web_search" || exp === "web_search_no_guidelines";
 }
+
+function transformOpenRouterRequestBody(
+  body: Record<string, unknown>,
+): Record<string, unknown> {
+  const withReasoning = {
+    ...body,
+    reasoning: { effort: "medium" },
+  };
+  return isWebSearchEnabled()
+    ? addOpenRouterWebSearchTool(withReasoning)
+    : withReasoning;
+}
+
+const openRouterResponsesFetch = (async (input, init) => {
+  if (!isWebSearchEnabled() || typeof init?.body !== "string") {
+    return fetch(input, init);
+  }
+
+  const body = JSON.parse(init.body) as Record<string, unknown>;
+  return fetch(input, {
+    ...init,
+    body: JSON.stringify(addOpenRouterWebSearchTool(body)),
+  });
+}) as FetchFunction;
 
 // ── Guidelines helpers ────────────────────────────────────────────────
 
@@ -55,7 +79,11 @@ function createLanguageModel(
   }
 
   if (model.apiKind === "responses") {
-    const openai = createOpenAI({ apiKey, baseURL: model.baseURL });
+    const openai = createOpenAI({
+      apiKey,
+      baseURL: model.baseURL,
+      fetch: openRouterResponsesFetch,
+    });
     return openai.responses(model.runnableName);
   }
 
@@ -63,10 +91,7 @@ function createLanguageModel(
     name: "openrouter",
     baseURL: model.baseURL,
     apiKey,
-    transformRequestBody: (body: Record<string, unknown>) => ({
-      ...body,
-      reasoning: { effort: "medium" },
-    }),
+    transformRequestBody: transformOpenRouterRequestBody,
   });
   return openrouter.chatModel(model.runnableName);
 }
@@ -269,6 +294,39 @@ export function attachTimeToFirstTokenUsage({
   };
 }
 
+export function attachWebSearchUsage({
+  usage,
+}: {
+  usage: LanguageModelUsage | undefined;
+}): LanguageModelUsage {
+  const raw =
+    usage?.raw && typeof usage.raw === "object"
+      ? (usage.raw as Record<string, unknown>)
+      : {};
+
+  return {
+    inputTokens: usage?.inputTokens,
+    inputTokenDetails: usage?.inputTokenDetails ?? {
+      noCacheTokens: undefined,
+      cacheReadTokens: undefined,
+      cacheWriteTokens: undefined,
+    },
+    outputTokens: usage?.outputTokens,
+    outputTokenDetails: usage?.outputTokenDetails ?? {
+      textTokens: undefined,
+      reasoningTokens: undefined,
+    },
+    totalTokens: usage?.totalTokens,
+    reasoningTokens: usage?.reasoningTokens,
+    cachedInputTokens: usage?.cachedInputTokens,
+    raw: {
+      ...raw,
+      webSearchRequestCount:
+        getOpenRouterWebSearchRequestCount(raw) ?? 0,
+    },
+  };
+}
+
 async function enrichUsageWithOpenRouterPricingFallback(
   usage: LanguageModelUsage | undefined,
   modelName: string,
@@ -333,12 +391,8 @@ export class Model {
     const userPrompt = renderPrompt(prompt);
     const useWebSearch = isWebSearchEnabled();
 
-    const systemContent = useWebSearch
-      ? `${SYSTEM_PROMPT}\n\n${WEB_SEARCH_SYSTEM_SUPPLEMENT}`
-      : SYSTEM_PROMPT;
-
     if (this.resolved.apiKind === "cursor-sdk") {
-      return this.generateWithCursorSdk(systemContent, userPrompt);
+      return this.generateWithCursorSdk(SYSTEM_PROMPT, userPrompt);
     }
 
     const maxTokens = getMaxOutputTokens(this.resolved);
@@ -354,7 +408,7 @@ export class Model {
     };
 
     const promptOptions = {
-      system: systemContent,
+      system: SYSTEM_PROMPT,
       prompt: userPrompt,
     };
 
@@ -378,18 +432,6 @@ export class Model {
       };
     }
 
-    if (useWebSearch) {
-      options.tools = { web_search: webSearchTool };
-      options.stopWhen = stepCountIs(MAX_TOOL_STEPS);
-      options.onStepFinish = ({ toolCalls }) => {
-        if (toolCalls && toolCalls.length > 0) {
-          logInfo(
-            `  [web_search] Model made ${toolCalls.length} tool call(s)`,
-          );
-        }
-      };
-    }
-
     const result = streamText(options);
 
     const [text, usage] = await Promise.all([
@@ -401,9 +443,24 @@ export class Model {
       usage,
       timeToFirstTokenMs,
     });
+    const reportedWebSearchRequests = useWebSearch
+      ? getOpenRouterWebSearchRequestCount(usageWithTiming?.raw)
+      : undefined;
+    const usageWithSearchCalls = useWebSearch
+      ? attachWebSearchUsage({
+          usage: usageWithTiming,
+        })
+      : usageWithTiming;
+    if (useWebSearch) {
+      logInfo(
+        reportedWebSearchRequests === undefined
+          ? "  [web_search] OpenRouter did not report a search request count"
+          : `  [web_search] OpenRouter reported ${reportedWebSearchRequests} search request(s)`,
+      );
+    }
 
     const enrichedUsage = await enrichUsageWithOpenRouterPricingFallback(
-      usageWithTiming,
+      usageWithSearchCalls,
       this.resolved.runnableName,
       this.resolved.baseURL,
     );

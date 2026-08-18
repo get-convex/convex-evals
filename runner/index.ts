@@ -488,6 +488,9 @@ export async function runEvalsForModel(
         },
         totalTokens: 0,
       };
+      let trackedWebSearchEvals = 0;
+      let evalsUsingWebSearch = 0;
+      let webSearchRequestCount = 0;
       for (const r of allResults) {
         if (r.usage) {
           if (typeof r.usage.inputTokens === "number")
@@ -499,7 +502,29 @@ export async function runEvalsForModel(
           if (typeof r.usage.totalTokens === "number")
             runUsage.totalTokens =
               (runUsage.totalTokens ?? 0) + r.usage.totalTokens;
+
+          const raw = r.usage.raw;
+          const searchCalls =
+            raw && typeof raw === "object"
+              ? (raw as Record<string, unknown>).webSearchRequestCount
+              : undefined;
+          if (typeof searchCalls === "number") {
+            trackedWebSearchEvals++;
+            webSearchRequestCount += searchCalls;
+            if (searchCalls > 0) evalsUsingWebSearch++;
+          }
         }
+      }
+
+      if (trackedWebSearchEvals > 0) {
+        runUsage.raw = {
+          webSearchRequestCount,
+          evalsUsingWebSearch,
+          trackedWebSearchEvals,
+        };
+        logInfo(
+          `[web_search] ${evalsUsingWebSearch}/${trackedWebSearchEvals} evals used search (${webSearchRequestCount} total requests)`,
+        );
       }
 
       await completeRun(runId, {

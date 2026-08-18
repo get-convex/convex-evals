@@ -1,0 +1,124 @@
+name: Web Search Evaluation Experiment
+
+on:
+  workflow_dispatch:
+    inputs:
+      models:
+        description: "Comma-separated non-Cursor model names to evaluate"
+        required: false
+        default: "anthropic/claude-sonnet-5,openai/gpt-5.6-sol,deepseek/deepseek-v4-pro,moonshotai/kimi-k3,x-ai/grok-4.6"
+      test_filter:
+        description: "Regex to filter evals; leave empty to run the full suite"
+        required: false
+        default: ""
+      runs_per_condition:
+        description: "Independent full-suite runs for each model and condition"
+        required: false
+        default: "1"
+        type: choice
+        options:
+          - "1"
+          - "3"
+      max_concurrency:
+        description: "Maximum concurrent eval requests inside each runner"
+        required: false
+        default: "2"
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "4"
+
+permissions:
+  contents: read
+
+# A full run is expensive, so do not let two copies of this experiment overlap.
+concurrency:
+  group: web-search-evals-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      models: ${{ steps.matrix.outputs.models }}
+      repetitions: ${{ steps.matrix.outputs.repetitions }}
+    steps:
+      - name: Require the production branch
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "Run this experiment from main so every result is reported and comparable" >&2
+          exit 1
+
+      - id: matrix
+        name: Build experiment matrix
+        env:
+          INPUT_MODELS: ${{ inputs.models }}
+          RUNS_PER_CONDITION: ${{ inputs.runs_per_condition }}
+        run: |
+          models=$(jq -cn --arg value "$INPUT_MODELS" '$value | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))')
+          if [ "$models" = "[]" ]; then
+            echo "At least one model is required" >&2
+            exit 1
+          fi
+          if jq -e 'any(.[]; startswith("cursor/"))' <<< "$models" > /dev/null; then
+            echo "Cursor models are intentionally excluded from this experiment" >&2
+            exit 1
+          fi
+
+          repetitions=$(jq -cn --argjson count "$RUNS_PER_CONDITION" '[range(1; $count + 1)]')
+          echo "models=$models" >> "$GITHUB_OUTPUT"
+          echo "repetitions=$repetitions" >> "$GITHUB_OUTPUT"
+
+  run-evals:
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        model: ${{ fromJson(needs.setup.outputs.models) }}
+        experiment:
+          - default
+          - no_guidelines
+          - web_search
+          - web_search_no_guidelines
+        repetition: ${{ fromJson(needs.setup.outputs.repetitions) }}
+
+    name: ${{ matrix.model }} / ${{ matrix.experiment }} / run ${{ matrix.repetition }}
+
+    env:
+      ENVIRONMENT: ci
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      CONVEX_EVAL_URL: ${{ secrets.CONVEX_EVAL_URL }}
+      CONVEX_AUTH_TOKEN: ${{ secrets.CONVEX_AUTH_TOKEN }}
+      OPENROUTER_CONCURRENCY: ${{ inputs.max_concurrency }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install Bun
+        run: npm install -g bun@1.3.8
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Verify experiment secrets
+        run: |
+          test -n "$OPENROUTER_API_KEY" || { echo "OPENROUTER_API_KEY is required" >&2; exit 1; }
+          test -n "$CONVEX_EVAL_URL" || { echo "CONVEX_EVAL_URL is required" >&2; exit 1; }
+          test -n "$CONVEX_AUTH_TOKEN" || { echo "CONVEX_AUTH_TOKEN is required" >&2; exit 1; }
+
+      - name: Run full comparison condition
+        env:
+          MODELS: ${{ matrix.model }}
+          TEST_FILTER: ${{ inputs.test_filter }}
+          EVALS_EXPERIMENT: ${{ matrix.experiment == 'default' && '' || matrix.experiment }}
+          OUTPUT_TEMPDIR: /tmp/convex-evals-${{ matrix.experiment }}-${{ matrix.repetition }}
+        run: bun run runner/index.ts

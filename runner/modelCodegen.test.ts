@@ -2,6 +2,7 @@ import { describe, it, expect } from "bun:test";
 import type { LanguageModelUsage } from "ai";
 import {
   attachTimeToFirstTokenUsage,
+  attachWebSearchUsage,
   computeCostFromUsageAndPricing,
   normalizeUsageForScoring,
   parseMarkdownResponse,
@@ -359,6 +360,50 @@ describe("attachTimeToFirstTokenUsage", () => {
       cachedInputTokens: undefined,
       raw: {
         timeToFirstTokenMs: 789,
+      },
+    });
+  });
+});
+
+describe("attachWebSearchUsage", () => {
+  it("records zero requests so non-use is distinguishable from an untracked run", () => {
+    const updated = attachWebSearchUsage({
+      usage: undefined,
+    });
+
+    expect(updated.raw).toEqual({ webSearchRequestCount: 0 });
+  });
+
+  it("preserves provider usage metadata while recording search requests", () => {
+    const usage = {
+      inputTokens: 10,
+      inputTokenDetails: {
+        noCacheTokens: undefined,
+        cacheReadTokens: undefined,
+        cacheWriteTokens: undefined,
+      },
+      outputTokens: 20,
+      outputTokenDetails: {
+        textTokens: undefined,
+        reasoningTokens: undefined,
+      },
+      totalTokens: 30,
+      raw: {
+        cost: 0.12,
+        server_tool_use: { web_search_requests: 2 },
+      },
+    } satisfies LanguageModelUsage;
+
+    const updated = attachWebSearchUsage({
+      usage,
+    });
+
+    expect(updated).toEqual({
+      ...usage,
+      raw: {
+        cost: 0.12,
+        server_tool_use: { web_search_requests: 2 },
+        webSearchRequestCount: 2,
       },
     });
   });
