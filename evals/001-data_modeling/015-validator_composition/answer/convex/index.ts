@@ -1,21 +1,13 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import schema from "./schema";
+import { articleFieldsValidator } from "./validators";
 
-export const articleDocValidator = v.object({
-  _id: v.id("articles"),
-  _creationTime: v.number(),
-  title: v.string(),
-  body: v.string(),
-  slug: v.string(),
-});
-
-// Every shape below derives from the base - no field validator is written twice.
-export const articleFields = articleDocValidator.omit("_id", "_creationTime");
-export const createArticleArgs = articleFields.omit("slug");
+export const createArticleArgs = articleFieldsValidator.omit("slug");
 export const updateArticleArgs = createArticleArgs
   .partial()
-  .extend({ articleId: v.id("articles") });
-export const articleResponseValidator = articleDocValidator.extend({
+  .extend({ articleId: schema.id("articles") });
+export const articleResponseValidator = schema.doc("articles").extend({
   excerpt: v.string(),
 });
 
@@ -52,7 +44,7 @@ export const updateArticle = mutation({
 });
 
 export const getArticle = query({
-  args: { articleId: v.id("articles") },
+  args: { articleId: schema.id("articles") },
   returns: articleResponseValidator,
   handler: async (ctx, args) => {
     const article = await ctx.db.get("articles", args.articleId);

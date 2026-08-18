@@ -9,8 +9,5 @@ Implement these HTTP handlers in `convex/http.ts`:
 
 They should all return a JSON response: `{ ok: true }` and only accept the specified methods (reject other methods with 404). Non-existent paths should return 404.
 
-Also create a query `getSiteURL` that takes no arguments (empty object `{}`) and returns `process.env.CONVEX_SITE_URL!`.
-This will require the @types/node npm dev dependency.
-
 Create only the `convex/http.ts` and `package.json` files. Do not generate any other files.
 No schema is required since this demo doesn't use the database.

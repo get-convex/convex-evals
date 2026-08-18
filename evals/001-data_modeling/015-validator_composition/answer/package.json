@@ -2,6 +2,6 @@
   "name": "convexbot",
   "version": "1.0.0",
   "dependencies": {
-    "convex": "1.41.0"
+    "convex": "1.44.0"
   }
 }

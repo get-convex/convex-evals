@@ -1,17 +1,15 @@
-import { expect, test, beforeEach } from "vitest";
+import { beforeEach, expect, test } from "vitest";
 import {
-  addDocuments,
   compareFunctionSpec,
   compareSchema,
   deleteAllDocuments,
   getLatestOutputProjectDir,
   listTable,
-  readOutputFile,
   responseAdminClient,
   responseClient,
 } from "../../../grader";
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
 import { anyApi } from "convex/server";
 import ts from "typescript";
 
@@ -27,26 +25,26 @@ test("compare schema", async ({ skip }) => {
 });
 
 test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip, { ignoreReturns: true });
+  await compareFunctionSpec(skip, { ignoreReturns: true, publicOnly: true });
 });
 
-test("getArticle declares the extended response validator", async () => {
+test("getArticle declares the complete document plus excerpt", async () => {
   const spec = (await responseAdminClient.query(
     "_system/cli/modules:apiSpec" as any,
     {},
   )) as { identifier: string; returns?: unknown }[];
-  const entry = spec.find((f) => f.identifier === "index.js:getArticle");
+  const entry = spec.find(
+    (candidate) => candidate.identifier === "index.js:getArticle",
+  );
   expect(entry, "getArticle must exist in convex/index.ts").toBeDefined();
+
   let returns = entry!.returns;
   if (typeof returns === "string") returns = JSON.parse(returns);
   const field = (fieldType: Record<string, unknown>) => ({
     fieldType,
     optional: false,
   });
-  expect(
-    returns,
-    "the return validator must be the full document extended with excerpt: string",
-  ).toEqual({
+  expect(returns).toEqual({
     type: "object",
     value: {
       _id: field({ type: "id", tableName: "articles" }),
@@ -59,14 +57,13 @@ test("getArticle declares the extended response validator", async () => {
   });
 });
 
-test("create, update, and get behave with derived shapes", async () => {
+test("create, update, and get behave with the composed validators", async () => {
   const id = await responseClient.mutation(anyApi.index.createArticle, {
     title: "Hello World Post",
     body: "This body is long enough to have an excerpt cut from it.",
   });
   expect(id).toBeDefined();
 
-  // Clients cannot supply the server-derived slug or system fields.
   await expect(
     responseClient.mutation(anyApi.index.createArticle, {
       title: "X",
@@ -84,17 +81,14 @@ test("create, update, and get behave with derived shapes", async () => {
   expect(stored).toHaveLength(1);
   expect(stored[0].slug).toBe("hello-world-post");
 
-  // Partial update: body only, slug unchanged.
   await responseClient.mutation(anyApi.index.updateArticle, {
     articleId: id,
     body: "New body content for the article.",
   });
-  // Title update recomputes the slug.
   await responseClient.mutation(anyApi.index.updateArticle, {
     articleId: id,
     title: "Fresh Title",
   });
-  // Immutable/unknown fields are rejected by the derived args validator.
   await expect(
     responseClient.mutation(anyApi.index.updateArticle, {
       articleId: id,
@@ -108,239 +102,317 @@ test("create, update, and get behave with derived shapes", async () => {
   expect(article.title).toBe("Fresh Title");
   expect(article.slug).toBe("fresh-title");
   expect(article.excerpt).toBe("New body content for");
-  expect(article.excerpt.length).toBe(20);
 });
 
-test("generated solution derives every shape from one base validator", () => {
-  const compose = new Set(["pick", "omit", "partial", "extend"]);
-  const parse = (name: string, text: string) =>
-    ts.createSourceFile(
-      name,
-      text,
-      ts.ScriptTarget.Latest,
-      true,
-      ts.ScriptKind.TS,
-    );
-
-  // All authored convex sources: derived validators may live in any module
-  // (index.ts, a validators.ts helper, schema.ts) and resolve by name.
+test("application fields are declared once and every function shape is derived", () => {
   const convexDir = join(
     getLatestOutputProjectDir(CATEGORY, EVAL_NAME),
     "convex",
   );
-  const corpus = readdirSync(convexDir)
-    .filter((f) => f.endsWith(".ts") && !f.endsWith(".d.ts"))
-    .map((f) => parse(f, readFileSync(join(convexDir, f), "utf8")));
-  const indexFile = parse(
-    "index.ts",
-    readOutputFile(CATEGORY, EVAL_NAME, "convex/index.ts"),
+  const files = authoredTypeScriptFiles(convexDir);
+  const sources = new Map(
+    files.map((file) => [
+      file.relativePath,
+      ts.createSourceFile(
+        file.relativePath,
+        readFileSync(file.absolutePath, "utf8"),
+        ts.ScriptTarget.Latest,
+        true,
+        ts.ScriptKind.TS,
+      ),
+    ]),
   );
-  const schemaFile = parse(
-    "schema.ts",
-    readOutputFile(CATEGORY, EVAL_NAME, "convex/schema.ts"),
-  );
+  const validators = sources.get("validators.ts");
+  const schema = sources.get("schema.ts");
+  const index = sources.get("index.ts");
+  expect(validators, "create convex/validators.ts").toBeDefined();
+  expect(schema, "create convex/schema.ts").toBeDefined();
+  expect(index, "create convex/index.ts").toBeDefined();
 
-  // The task mandates the root's name and location: a base validator named
-  // articleDocValidator declared with v.object in convex/index.ts. Chains
-  // rooted anywhere else (e.g. a second hand-written v.object) don't count,
-  // so duplicating the shape into another "base" can't satisfy the checks.
-  const baseVars = new Set<string>();
-  const visitBase = (node: ts.Node) => {
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.name.text === "articleDocValidator" &&
-      node.initializer !== undefined &&
-      ts.isCallExpression(node.initializer) &&
-      node.initializer.expression.getText() === "v.object"
-    ) {
-      baseVars.add(node.name.text);
-    }
-    ts.forEachChild(node, visitBase);
-  };
-  visitBase(indexFile);
+  expectBaseValidator(validators!);
+  expectSingleFieldDeclarations(sources);
+  expectSchemaUsesBase(schema!);
+  expectFunctionValidatorsAreDerived(index!, sources);
+});
+
+function expectBaseValidator(source: ts.SourceFile) {
+  const declaration = findVariable(source, "articleFieldsValidator");
   expect(
-    baseVars.size,
-    "declare articleDocValidator with v.object in convex/index.ts",
-  ).toBeGreaterThan(0);
+    declaration,
+    "declare articleFieldsValidator in convex/validators.ts",
+  ).toBeDefined();
+  expect(
+    declaration!.initializer !== undefined &&
+      ts.isCallExpression(declaration!.initializer) &&
+      declaration!.initializer.expression.getText(source) === "v.object",
+    "articleFieldsValidator must be a v.object",
+  ).toBe(true);
+}
 
-  // derivedVars: consts (in any module) whose initializer is a chain of
-  // composition methods rooted at the base or another derived var. Models may
-  // also compose inline at the use site; the use-site checks below accept
-  // anonymous chains with the same rooting rule.
-  const derivedVars = new Set<string>();
-  let changed = true;
-  while (changed) {
-    changed = false;
+function expectSingleFieldDeclarations(sources: Map<string, ts.SourceFile>) {
+  const declarations = new Map<string, string[]>([
+    ["title", []],
+    ["body", []],
+    ["slug", []],
+    ["_id", []],
+    ["_creationTime", []],
+  ]);
+
+  for (const [fileName, source] of sources) {
     const visit = (node: ts.Node) => {
       if (
-        ts.isVariableDeclaration(node) &&
-        ts.isIdentifier(node.name) &&
-        node.initializer !== undefined &&
-        !derivedVars.has(node.name.text) &&
-        ts.isCallExpression(node.initializer)
+        ts.isPropertyAssignment(node) &&
+        (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name)) &&
+        declarations.has(node.name.text) &&
+        ts.isCallExpression(node.initializer) &&
+        node.initializer.expression.getText(source).startsWith("v.")
       ) {
-        // Walk the chain down to its root identifier.
-        let current: ts.Expression = node.initializer;
-        const methods: string[] = [];
-        while (
-          ts.isCallExpression(current) &&
-          ts.isPropertyAccessExpression(current.expression)
-        ) {
-          methods.push(current.expression.name.text);
-          current = current.expression.expression;
-        }
-        if (
-          methods.length > 0 &&
-          methods.every((m) => compose.has(m)) &&
-          ts.isIdentifier(current) &&
-          (baseVars.has(current.text) || derivedVars.has(current.text))
-        ) {
-          derivedVars.add(node.name.text);
-          changed = true;
-        }
+        declarations
+          .get(node.name.text)!
+          .push(`${fileName}: ${node.getText(source)}`);
       }
       ts.forEachChild(node, visit);
     };
-    for (const file of corpus) visit(file);
+    visit(source);
   }
 
-  const derivedOrBase = new Set([...baseVars, ...derivedVars]);
+  for (const field of ["title", "body", "slug"]) {
+    expect(
+      declarations.get(field),
+      `${field} must be declared exactly once`,
+    ).toHaveLength(1);
+    expect(declarations.get(field)![0]).toMatch(/^validators\.ts:/);
+  }
+  expect(declarations.get("_id")).toEqual([]);
+  expect(declarations.get("_creationTime")).toEqual([]);
+}
 
-  // Root of a composition chain: walk through compose calls and property
-  // accesses (e.g. .fields) down to the leftmost expression.
-  const chainRoot = (expr: ts.Expression): ts.Expression => {
-    let current: ts.Expression = expr;
-    for (;;) {
-      if (ts.isPropertyAccessExpression(current)) {
-        current = current.expression;
-      } else if (
-        ts.isCallExpression(current) &&
-        ts.isPropertyAccessExpression(current.expression) &&
-        compose.has(current.expression.name.text)
-      ) {
-        current = current.expression.expression;
-      } else {
-        break;
-      }
-    }
-    return current;
-  };
-
-  // Count every distinct composition method applied to a base- or
-  // derived-rooted chain anywhere in the authored sources.
-  const usedMethods = new Set<string>();
-  const collectMethods = (node: ts.Node) => {
+function expectSchemaUsesBase(source: ts.SourceFile) {
+  let usesBase = false;
+  const visit = (node: ts.Node) => {
     if (
       ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression) &&
-      compose.has(node.expression.name.text)
+      node.expression.getText(source) === "defineTable" &&
+      node.arguments.some((argument) =>
+        containsIdentifier(argument, "articleFieldsValidator"),
+      )
     ) {
-      const root = chainRoot(node.expression.expression);
-      if (ts.isIdentifier(root) && derivedOrBase.has(root.text)) {
-        usedMethods.add(node.expression.name.text);
-      }
+      usesBase = true;
     }
-    ts.forEachChild(node, collectMethods);
+    ts.forEachChild(node, visit);
   };
-  for (const file of corpus) collectMethods(file);
-  expect(
-    usedMethods.size,
-    "use at least three distinct composition operations",
-  ).toBeGreaterThanOrEqual(3);
+  visit(source);
+  expect(usesBase, "defineTable must use articleFieldsValidator").toBe(true);
+}
 
-  // A use site consumes a derivation when it references a derived const or
-  // contains a composition chain rooted at the base or a derived var.
-  // Hand-written duplicate shapes contain neither and fail.
-  const usesDerivation = (expression: ts.Expression): boolean => {
-    let found = false;
-    const scan = (node: ts.Node) => {
-      if (found) return;
-      if (ts.isIdentifier(node) && derivedVars.has(node.text)) {
-        found = true;
-        return;
+function expectFunctionValidatorsAreDerived(
+  indexSource: ts.SourceFile,
+  sources: Map<string, ts.SourceFile>,
+) {
+  const variables = new Map<string, ts.Expression>();
+  const schemaImports = new Set<string>();
+  const compositionMethods = new Set<string>();
+
+  const collect = (node: ts.Node) => {
+    if (
+      ts.isImportDeclaration(node) &&
+      ts.isStringLiteral(node.moduleSpecifier) &&
+      node.moduleSpecifier.text === "./schema" &&
+      node.importClause !== undefined
+    ) {
+      if (node.importClause.name !== undefined) {
+        schemaImports.add(node.importClause.name.text);
       }
-      if (
-        ts.isCallExpression(node) &&
-        ts.isPropertyAccessExpression(node.expression) &&
-        compose.has(node.expression.name.text)
-      ) {
-        const root = chainRoot(node.expression.expression);
-        if (ts.isIdentifier(root) && derivedOrBase.has(root.text)) {
-          found = true;
-          return;
+      const bindings = node.importClause.namedBindings;
+      if (bindings !== undefined && ts.isNamespaceImport(bindings)) {
+        schemaImports.add(bindings.name.text);
+      } else if (bindings !== undefined) {
+        for (const element of bindings.elements) {
+          schemaImports.add(element.name.text);
         }
       }
-      ts.forEachChild(node, scan);
-    };
-    scan(expression);
-    return found;
-  };
-
-  // The schema must consume the derived table validator. The identifier at
-  // the chain root must be a known base/derived name, and must not be
-  // shadowed by a hand-written v.object const local to schema.ts.
-  const schemaLocalObjects = new Set<string>();
-  const visitSchemaLocals = (node: ts.Node) => {
+    }
     if (
       ts.isVariableDeclaration(node) &&
       ts.isIdentifier(node.name) &&
-      node.initializer !== undefined &&
-      ts.isCallExpression(node.initializer) &&
-      node.initializer.expression.getText() === "v.object"
+      node.initializer !== undefined
     ) {
-      schemaLocalObjects.add(node.name.text);
+      variables.set(node.name.text, node.initializer);
     }
-    ts.forEachChild(node, visitSchemaLocals);
-  };
-  visitSchemaLocals(schemaFile);
-
-  let schemaUsesDerived = false;
-  const visitSchema = (node: ts.Node) => {
     if (
       ts.isCallExpression(node) &&
-      node.expression.getText() === "defineTable" &&
-      node.arguments.length >= 1
+      ts.isPropertyAccessExpression(node.expression) &&
+      ["pick", "omit", "partial", "extend"].includes(
+        node.expression.name.text,
+      ) &&
+      derivesFromBase(node.expression.expression, variables)
     ) {
-      const root = chainRoot(node.arguments[0]);
-      if (
-        ts.isIdentifier(root) &&
-        derivedOrBase.has(root.text) &&
-        !schemaLocalObjects.has(root.text)
-      ) {
-        schemaUsesDerived = true;
-      }
+      compositionMethods.add(node.expression.name.text);
     }
-    ts.forEachChild(node, visitSchema);
+    ts.forEachChild(node, collect);
   };
-  visitSchema(schemaFile);
-  expect(
-    schemaUsesDerived,
-    "defineTable must consume a validator derived from articleDocValidator, not a duplicated shape",
-  ).toBe(true);
+  for (const source of sources.values()) collect(source);
 
-  let argsUseDerived = 0;
-  let returnsUseDerived = 0;
-  const visitRegs = (node: ts.Node) => {
+  for (const functionName of ["createArticle", "updateArticle"]) {
+    const args = registrationProperty(indexSource, functionName, "args");
+    expect(args, `${functionName} must declare args`).toBeDefined();
+    expect(
+      derivesFromBase(args!, variables),
+      `${functionName} args must derive from articleFieldsValidator`,
+    ).toBe(true);
+  }
+  expect(
+    compositionMethods.size,
+    "compose the argument validators with at least three distinct operations",
+  ).toBeGreaterThanOrEqual(3);
+
+  const returns = registrationProperty(indexSource, "getArticle", "returns");
+  expect(returns, "getArticle must declare returns").toBeDefined();
+  expect(
+    derivesFromSchemaDoc(returns!, variables, schemaImports),
+    'getArticle returns must derive from schema.doc("articles")',
+  ).toBe(true);
+}
+
+function derivesFromBase(
+  expression: ts.Node,
+  variables: Map<string, ts.Expression>,
+  seen = new Set<string>(),
+): boolean {
+  if (ts.isIdentifier(expression)) {
+    if (expression.text === "articleFieldsValidator") return true;
+    if (seen.has(expression.text)) return false;
+    const initializer = variables.get(expression.text);
+    if (initializer === undefined) return false;
+    seen.add(expression.text);
+    const result = derivesFromBase(initializer, variables, seen);
+    seen.delete(expression.text);
+    return result;
+  }
+  let found = false;
+  ts.forEachChild(expression, (child) => {
+    if (!found && derivesFromBase(child, variables, seen)) {
+      found = true;
+    }
+  });
+  return found;
+}
+
+function derivesFromSchemaDoc(
+  expression: ts.Node,
+  variables: Map<string, ts.Expression>,
+  schemaImports: Set<string>,
+  seen = new Set<string>(),
+): boolean {
+  if (ts.isIdentifier(expression)) {
+    if (seen.has(expression.text)) return false;
+    const initializer = variables.get(expression.text);
+    if (initializer === undefined) return false;
+    seen.add(expression.text);
+    const result = derivesFromSchemaDoc(
+      initializer,
+      variables,
+      schemaImports,
+      seen,
+    );
+    seen.delete(expression.text);
+    return result;
+  }
+  if (
+    ts.isCallExpression(expression) &&
+    ts.isPropertyAccessExpression(expression.expression) &&
+    ts.isIdentifier(expression.expression.expression) &&
+    schemaImports.has(expression.expression.expression.text) &&
+    expression.expression.name.text === "doc" &&
+    expression.arguments.length === 1 &&
+    ts.isStringLiteral(expression.arguments[0]) &&
+    expression.arguments[0].text === "articles"
+  ) {
+    return true;
+  }
+  let found = false;
+  ts.forEachChild(expression, (child) => {
+    if (!found && derivesFromSchemaDoc(child, variables, schemaImports, seen)) {
+      found = true;
+    }
+  });
+  return found;
+}
+
+function registrationProperty(
+  source: ts.SourceFile,
+  functionName: string,
+  propertyName: string,
+): ts.Expression | undefined {
+  const declaration = findVariable(source, functionName);
+  if (
+    declaration?.initializer === undefined ||
+    !ts.isCallExpression(declaration.initializer) ||
+    declaration.initializer.arguments.length === 0 ||
+    !ts.isObjectLiteralExpression(declaration.initializer.arguments[0])
+  ) {
+    return undefined;
+  }
+  const property = declaration.initializer.arguments[0].properties.find(
+    (candidate) =>
+      ts.isPropertyAssignment(candidate) &&
+      (ts.isIdentifier(candidate.name) || ts.isStringLiteral(candidate.name)) &&
+      candidate.name.text === propertyName,
+  );
+  return property !== undefined && ts.isPropertyAssignment(property)
+    ? property.initializer
+    : undefined;
+}
+
+function findVariable(
+  source: ts.SourceFile,
+  name: string,
+): ts.VariableDeclaration | undefined {
+  let result: ts.VariableDeclaration | undefined;
+  const visit = (node: ts.Node) => {
     if (
-      ts.isPropertyAssignment(node) &&
+      result === undefined &&
+      ts.isVariableDeclaration(node) &&
       ts.isIdentifier(node.name) &&
-      (node.name.text === "args" || node.name.text === "returns")
+      node.name.text === name
     ) {
-      if (usesDerivation(node.initializer)) {
-        if (node.name.text === "args") argsUseDerived++;
-        else returnsUseDerived++;
+      result = node;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return result;
+}
+
+function containsIdentifier(node: ts.Node, name: string): boolean {
+  if (ts.isIdentifier(node) && node.text === name) return true;
+  let found = false;
+  ts.forEachChild(node, (child) => {
+    if (!found && containsIdentifier(child, name)) found = true;
+  });
+  return found;
+}
+
+function authoredTypeScriptFiles(root: string): {
+  absolutePath: string;
+  relativePath: string;
+}[] {
+  const files: { absolutePath: string; relativePath: string }[] = [];
+  const walk = (directory: string) => {
+    for (const entry of readdirSync(directory)) {
+      if (entry === "_generated" || entry === "node_modules") continue;
+      const absolutePath = join(directory, entry);
+      if (statSync(absolutePath).isDirectory()) {
+        walk(absolutePath);
+      } else if (entry.endsWith(".ts") && !entry.endsWith(".d.ts")) {
+        files.push({
+          absolutePath,
+          relativePath: relative(root, absolutePath).replace(/\\/g, "/"),
+        });
       }
     }
-    ts.forEachChild(node, visitRegs);
   };
-  visitRegs(indexFile);
-  expect(
-    argsUseDerived,
-    "at least two functions' args must consume derived validators",
-  ).toBeGreaterThanOrEqual(2);
-  expect(
-    returnsUseDerived,
-    "getArticle's returns must consume the derived response validator",
-  ).toBeGreaterThanOrEqual(1);
-});
+  walk(root);
+  return files;
+}

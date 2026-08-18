@@ -1,6 +1,5 @@
 import { httpRouter } from "convex/server";
-import { httpAction, query } from "./_generated/server";
-import { v } from "convex/values";
+import { httpAction } from "./_generated/server";
 
 const http = httpRouter();
 
@@ -61,11 +60,3 @@ http.route({
 });
 
 export default http;
-
-// Query to get the site URL
-export const getSiteURL = query({
-  args: {},
-  handler: async (ctx) => {
-    return process.env.CONVEX_SITE_URL!;
-  },
-});

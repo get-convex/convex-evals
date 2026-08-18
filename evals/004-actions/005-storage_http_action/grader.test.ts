@@ -1,20 +1,14 @@
 import { expect, test } from "vitest";
-import { responseAdminClient } from "../../../grader";
-import { api } from "./answer/convex/_generated/api";
+import { siteUrl } from "../../../grader";
 import { createAIGraderTest } from "../../../grader/aiGrader";
 
 createAIGraderTest(import.meta.url);
-import { getSiteURL } from "./answer/convex/http";
 
-async function getStoreURL(): Promise<string> {
-  const siteURL = await responseAdminClient.query(api.http.getSiteURL, {});
-  return `${siteURL}/store`;
-}
+const storeUrl = `${siteUrl}/store`;
 
 test("stores request body and returns valid JSON", async () => {
   const testData = "Hello, World!";
-  const storeURL = await getStoreURL();
-  const response = await fetch(storeURL, {
+  const response = await fetch(storeUrl, {
     method: "POST",
     body: testData,
   });
@@ -35,8 +29,7 @@ test("stores request body and returns valid JSON", async () => {
 });
 
 test("handles empty request body", async () => {
-  const storeURL = await getStoreURL();
-  const response = await fetch(storeURL, {
+  const response = await fetch(storeUrl, {
     method: "POST",
     body: "",
   });
@@ -50,8 +43,7 @@ test("handles empty request body", async () => {
 
 test("handles binary data", async () => {
   const binaryData = new Uint8Array([1, 2, 3, 4, 5]);
-  const storeURL = await getStoreURL();
-  const response = await fetch(storeURL, {
+  const response = await fetch(storeUrl, {
     method: "POST",
     body: binaryData,
   });
@@ -65,8 +57,7 @@ test("handles binary data", async () => {
 
 test("handles large request body", async () => {
   const largeData = "x".repeat(1024 * 1024); // 1MB of data
-  const storeURL = await getStoreURL();
-  const response = await fetch(storeURL, {
+  const response = await fetch(storeUrl, {
     method: "POST",
     body: largeData,
   });
@@ -80,8 +71,7 @@ test("handles large request body", async () => {
 
 test("stored content is retrievable", async () => {
   const testContent = "Test content for retrieval";
-  const storeURL = await getStoreURL();
-  const storeResponse = await fetch(storeURL, {
+  const storeResponse = await fetch(storeUrl, {
     method: "POST",
     body: testContent,
   });
@@ -100,8 +90,7 @@ test("rejects non-POST requests", async () => {
   const methods = ["GET", "PUT", "DELETE", "PATCH"];
 
   for (const method of methods) {
-    const storeURL = await getStoreURL();
-    const response = await fetch(storeURL, {
+    const response = await fetch(storeUrl, {
       method,
     });
 

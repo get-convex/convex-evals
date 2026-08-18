@@ -1,17 +1,11 @@
 import { expect, test } from "vitest";
-import { responseAdminClient } from "../../../grader";
-import { api } from "./answer/convex/_generated/api";
+import { siteUrl } from "../../../grader";
 import { createAIGraderTest } from "../../../grader/aiGrader";
 
 createAIGraderTest(import.meta.url);
 
-async function getBaseURL(): Promise<string> {
-  return await responseAdminClient.query(api.http.getSiteURL, {});
-}
-
 test("GET /getFoo returns correct response", async () => {
-  const baseUrl = await getBaseURL();
-  const response = await fetch(`${baseUrl}/getFoo`);
+  const response = await fetch(`${siteUrl}/getFoo`);
 
   expect(response.status).toBe(200);
   expect(response.headers.get("content-type")).toBe("application/json");
@@ -22,8 +16,7 @@ test("GET /getFoo returns correct response", async () => {
 });
 
 test("POST /postBar returns correct response", async () => {
-  const baseUrl = await getBaseURL();
-  const response = await fetch(`${baseUrl}/postBar`, {
+  const response = await fetch(`${siteUrl}/postBar`, {
     method: "POST",
   });
 
@@ -36,8 +29,7 @@ test("POST /postBar returns correct response", async () => {
 });
 
 test("PUT /putBaz returns correct response", async () => {
-  const baseUrl = await getBaseURL();
-  const response = await fetch(`${baseUrl}/putBaz`, {
+  const response = await fetch(`${siteUrl}/putBaz`, {
     method: "PUT",
   });
 
@@ -50,11 +42,10 @@ test("PUT /putBaz returns correct response", async () => {
 });
 
 test("GET /api/* wildcard returns correct response", async () => {
-  const baseUrl = await getBaseURL();
   const testPaths = ["/api/test", "/api/foo/bar", "/api/deeply/nested/path"];
 
   for (const path of testPaths) {
-    const response = await fetch(`${baseUrl}${path}`);
+    const response = await fetch(`${siteUrl}${path}`);
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/json");
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -65,7 +56,6 @@ test("GET /api/* wildcard returns correct response", async () => {
 });
 
 test("endpoints reject incorrect methods", async () => {
-  const baseUrl = await getBaseURL();
   const tests = [
     { path: "/getFoo", method: "POST" },
     { path: "/getFoo", method: "PUT" },
@@ -78,13 +68,12 @@ test("endpoints reject incorrect methods", async () => {
   ];
 
   for (const { path, method } of tests) {
-    const response = await fetch(`${baseUrl}${path}`, { method });
+    const response = await fetch(`${siteUrl}${path}`, { method });
     expect(response.status).toBe(404);
   }
 });
 
 test("non-existent paths return 404", async () => {
-  const baseUrl = await getBaseURL();
   const nonExistentPaths = [
     "/nonexistent",
     "/getFooBar",
@@ -93,13 +82,12 @@ test("non-existent paths return 404", async () => {
   ];
 
   for (const path of nonExistentPaths) {
-    const response = await fetch(`${baseUrl}${path}`);
+    const response = await fetch(`${siteUrl}${path}`);
     expect(response.status).toBe(404);
   }
 });
 
 test("handles special characters in API paths", async () => {
-  const baseUrl = await getBaseURL();
   const specialPaths = [
     "/api/test!@#$%",
     "/api/spaces in path",
@@ -107,7 +95,7 @@ test("handles special characters in API paths", async () => {
   ];
 
   for (const path of specialPaths) {
-    const response = await fetch(`${baseUrl}${encodeURI(path)}`);
+    const response = await fetch(`${siteUrl}${encodeURI(path)}`);
     expect(response.status).toBe(200);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const data = await response.json();

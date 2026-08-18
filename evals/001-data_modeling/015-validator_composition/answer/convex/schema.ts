@@ -1,6 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
-import { articleFields } from "./index";
+import { articleFieldsValidator } from "./validators";
 
 export default defineSchema({
-  articles: defineTable(articleFields),
+  articles: defineTable(articleFieldsValidator),
 });

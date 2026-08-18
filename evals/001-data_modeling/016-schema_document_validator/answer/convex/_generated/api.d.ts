@@ -8,7 +8,7 @@
  * @module
  */
 
-import type * as shapes from "../shapes.js";
+import type * as profiles from "../profiles.js";
 
 import type {
   ApiFromModules,
@@ -17,7 +17,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  shapes: typeof shapes;
+  profiles: typeof profiles;
 }>;
 
 /**
