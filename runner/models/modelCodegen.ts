@@ -303,6 +303,7 @@ export function attachWebSearchUsage({
     usage?.raw && typeof usage.raw === "object"
       ? (usage.raw as Record<string, unknown>)
       : {};
+  const webSearchRequestCount = getOpenRouterWebSearchRequestCount(raw);
 
   return {
     inputTokens: usage?.inputTokens,
@@ -321,8 +322,9 @@ export function attachWebSearchUsage({
     cachedInputTokens: usage?.cachedInputTokens,
     raw: {
       ...raw,
-      webSearchRequestCount:
-        getOpenRouterWebSearchRequestCount(raw) ?? 0,
+      ...(webSearchRequestCount === undefined
+        ? {}
+        : { webSearchRequestCount }),
     },
   };
 }

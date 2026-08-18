@@ -115,10 +115,13 @@ jobs:
           test -n "$CONVEX_EVAL_URL" || { echo "CONVEX_EVAL_URL is required" >&2; exit 1; }
           test -n "$CONVEX_AUTH_TOKEN" || { echo "CONVEX_AUTH_TOKEN is required" >&2; exit 1; }
 
+      - name: Configure tagged experiment
+        if: matrix.experiment != 'default'
+        run: echo "EVALS_EXPERIMENT=${{ matrix.experiment }}" >> "$GITHUB_ENV"
+
       - name: Run full comparison condition
         env:
           MODELS: ${{ matrix.model }}
           TEST_FILTER: ${{ inputs.test_filter }}
-          EVALS_EXPERIMENT: ${{ matrix.experiment == 'default' && '' || matrix.experiment }}
           OUTPUT_TEMPDIR: /tmp/convex-evals-${{ matrix.experiment }}-${{ matrix.repetition }}
         run: bun run runner/index.ts

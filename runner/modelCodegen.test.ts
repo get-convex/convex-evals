@@ -366,12 +366,39 @@ describe("attachTimeToFirstTokenUsage", () => {
 });
 
 describe("attachWebSearchUsage", () => {
-  it("records zero requests so non-use is distinguishable from an untracked run", () => {
+  it("keeps missing provider telemetry distinguishable from zero requests", () => {
     const updated = attachWebSearchUsage({
       usage: undefined,
     });
 
-    expect(updated.raw).toEqual({ webSearchRequestCount: 0 });
+    expect(updated.raw).toEqual({});
+  });
+
+  it("records a provider-reported zero when the model did not search", () => {
+    const updated = attachWebSearchUsage({
+      usage: {
+        inputTokens: 10,
+        inputTokenDetails: {
+          noCacheTokens: undefined,
+          cacheReadTokens: undefined,
+          cacheWriteTokens: undefined,
+        },
+        outputTokens: 20,
+        outputTokenDetails: {
+          textTokens: undefined,
+          reasoningTokens: undefined,
+        },
+        totalTokens: 30,
+        raw: {
+          server_tool_use_details: { web_search_requests: 0 },
+        },
+      },
+    });
+
+    expect(updated.raw).toEqual({
+      server_tool_use_details: { web_search_requests: 0 },
+      webSearchRequestCount: 0,
+    });
   });
 
   it("preserves provider usage metadata while recording search requests", () => {
