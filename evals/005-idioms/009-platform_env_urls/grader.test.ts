@@ -145,16 +145,26 @@ test("getDeploymentInfo reads every value from the generated env object and noth
   );
   const sources = collectSources(convexDir);
 
-  // No authored source may touch process.env (directly, via globalThis, or
-  // through an alias like `const environment = process.env`).
+  // No authored source may touch `process` at all (process.env directly, via
+  // globalThis, or through aliases like `const p = process` / `const e = process.env`).
   const processReads: string[] = [];
   for (const file of sources) {
     const visit = (node: ts.Node) => {
-      if (
-        (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) &&
-        /^(globalThis\.)?process\s*\.\s*env\b/.test(node.getText())
-      ) {
-        processReads.push(`${file.fileName}: ${node.getText()}`);
+      const isProcessIdentifier =
+        ts.isIdentifier(node) &&
+        node.text === "process" &&
+        !(ts.isPropertyAccessExpression(node.parent) && node.parent.name === node) &&
+        !ts.isPropertyAssignment(node.parent) &&
+        !ts.isImportSpecifier(node.parent);
+      const isGlobalThisProcess =
+        (ts.isPropertyAccessExpression(node) &&
+          node.name.text === "process" &&
+          node.expression.getText() === "globalThis") ||
+        (ts.isElementAccessExpression(node) &&
+          ts.isStringLiteral(node.argumentExpression) &&
+          node.argumentExpression.text === "process");
+      if (isProcessIdentifier || isGlobalThisProcess) {
+        processReads.push(`${file.fileName}: ${node.parent.getText().slice(0, 60)}`);
       }
       ts.forEachChild(node, visit);
     };

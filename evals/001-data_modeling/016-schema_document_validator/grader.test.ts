@@ -459,21 +459,46 @@ function constInits(
   return inits;
 }
 
-/** True when the expression is the app schema: the default export of convex/schema.ts, or a defineSchema(...) value. */
+const SCHEMA_FILE = /^schema\.ts$/;
+
+/**
+ * The schema's identity: the expression `convex/schema.ts` default-exports
+ * (`export default defineSchema({...})` or `export default schema` where
+ * `schema` is a const in that file). Any other defineSchema(...) value is a
+ * duplicate and does not count.
+ */
+function canonicalSchema(bindings: Bindings): {
+  init: ts.Expression | null;
+  names: Set<string>;
+} {
+  const names = new Set<string>();
+  let init: ts.Expression | null = null;
+  for (const binding of bindings.get(DEFAULT_EXPORT) ?? []) {
+    if (binding.kind !== "const" || !SCHEMA_FILE.test(binding.file)) continue;
+    const expr = unwrap(binding.init);
+    if (ts.isIdentifier(expr)) {
+      names.add(expr.text);
+      for (const target of bindings.get(expr.text) ?? []) {
+        if (target.kind === "const" && SCHEMA_FILE.test(target.file)) {
+          init = unwrap(target.init);
+        }
+      }
+    } else {
+      init = expr;
+    }
+  }
+  return { init, names };
+}
+
+/** True when the expression is the app schema: the default export of convex/schema.ts (imported, or referenced by name inside schema.ts). */
 function isSchemaValue(
   expression: ts.Expression,
   bindings: Bindings,
   seen: Set<string>,
 ): boolean {
   const expr = unwrap(expression);
-  if (ts.isCallExpression(expr)) {
-    const callee = expr.expression;
-    return (
-      (ts.isIdentifier(callee) && callee.text === "defineSchema") ||
-      (ts.isPropertyAccessExpression(callee) &&
-        callee.name.text === "defineSchema")
-    );
-  }
+  const canonical = canonicalSchema(bindings);
+  if (canonical.init !== null && expr === canonical.init) return true;
   if (
     ts.isPropertyAccessExpression(expr) &&
     expr.name.text === "default" &&
@@ -487,6 +512,8 @@ function isSchemaValue(
     );
   }
   if (!ts.isIdentifier(expr)) return false;
+  if (seen.has(`schema:${expr.text}`)) return false;
+  seen.add(`schema:${expr.text}`);
   for (const binding of bindings.get(expr.text) ?? []) {
     if (
       binding.kind === "import" &&
@@ -495,32 +522,38 @@ function isSchemaValue(
     ) {
       return true;
     }
-  }
-  return constInits(expr.text, bindings, seen).some((init) =>
-    isSchemaValue(init, bindings, seen),
-  );
-}
-
-/** The identifier the schema's defineSchema literal uses for the `shapes` table, if it is not inline. */
-function schemaShapesTableName(bindings: Bindings): string | null {
-  for (const list of bindings.values()) {
-    for (const binding of list) {
-      if (binding.kind !== "const") continue;
+    if (binding.kind === "const") {
+      // The schema const inside schema.ts itself.
+      if (SCHEMA_FILE.test(binding.file) && canonical.names.has(expr.text)) {
+        return true;
+      }
+      // An alias (`const s = schema`), but never a fresh defineSchema(...) call.
       const init = unwrap(binding.init);
-      if (!ts.isCallExpression(init) || init.arguments.length === 0) continue;
-      const callee = init.expression;
-      const isDefineSchema =
-        (ts.isIdentifier(callee) && callee.text === "defineSchema") ||
-        (ts.isPropertyAccessExpression(callee) &&
-          callee.name.text === "defineSchema");
-      if (!isDefineSchema) continue;
-      const tables = unwrap(init.arguments[0]);
-      if (!ts.isObjectLiteralExpression(tables)) continue;
-      const shapes = propertyNamed(tables, "shapes");
-      if (shapes !== null && ts.isIdentifier(unwrap(shapes))) {
-        return (unwrap(shapes) as ts.Identifier).text;
+      if (!ts.isCallExpression(init) && isSchemaValue(init, bindings, seen)) {
+        return true;
       }
     }
+  }
+  return false;
+}
+
+/** The identifier the canonical schema's defineSchema literal uses for the `shapes` table, if it is not inline. */
+function schemaShapesTableName(bindings: Bindings): string | null {
+  const { init } = canonicalSchema(bindings);
+  if (init === null || !ts.isCallExpression(init) || init.arguments.length === 0) {
+    return null;
+  }
+  const callee = init.expression;
+  const isDefineSchema =
+    (ts.isIdentifier(callee) && callee.text === "defineSchema") ||
+    (ts.isPropertyAccessExpression(callee) &&
+      callee.name.text === "defineSchema");
+  if (!isDefineSchema) return null;
+  const tables = unwrap(init.arguments[0]);
+  if (!ts.isObjectLiteralExpression(tables)) return null;
+  const shapes = propertyNamed(tables, "shapes");
+  if (shapes !== null && ts.isIdentifier(unwrap(shapes))) {
+    return (unwrap(shapes) as ts.Identifier).text;
   }
   return null;
 }
