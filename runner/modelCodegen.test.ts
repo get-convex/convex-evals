@@ -67,6 +67,36 @@ export const list = query({ args: {}, handler: async (ctx) => ctx.db.query("task
     expect(files["convex/tasks.ts"]).toBeDefined();
   });
 
+  it("recovers a Files heading concatenated after web search commentary", () => {
+    const response = `I'll look up the current component API first.The docs have what I need. I'll write the backend now.# Files
+## package.json
+
+\`\`\`json
+{ "name": "searched-example" }
+\`\`\`
+
+## convex/tasks.ts
+
+\`\`\`typescript
+export const list = query({ args: {}, handler: async (ctx) => ctx.db.query("tasks").collect() });
+\`\`\`
+`;
+
+    const files = parseMarkdownResponse(response);
+    expect(files).toEqual({
+      "package.json": '{ "name": "searched-example" }',
+      "convex/tasks.ts":
+        'export const list = query({ args: {}, handler: async (ctx) => ctx.db.query("tasks").collect() });',
+    });
+  });
+
+  it("does not treat a prose mention of # Files as a file section", () => {
+    const response =
+      "The response should contain # Files, but no generated files followed.";
+
+    expect(parseMarkdownResponse(response)).toEqual({});
+  });
+
   it("returns empty object for response with no Files section", () => {
     const response = `
 # Analysis

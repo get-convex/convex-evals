@@ -539,8 +539,20 @@ export class Model {
 export function parseMarkdownResponse(
   response: string,
 ): Record<string, string> {
+  // Some providers emit commentary between server-side tool calls. The AI SDK
+  // concatenates those text parts without inserting a newline, which can turn
+  // the final heading into `...commentary.# Files`. Start parsing at a Files
+  // heading that is followed by an h2 file entry so valid generated files do
+  // not disappear purely because of that response-part boundary.
+  const filesSectionMatch = response.match(
+    /# Files\r?\n(?:[\t ]*\r?\n)*##[\t ]+\S/,
+  );
+  const markdown = filesSectionMatch?.index
+    ? response.slice(filesSectionMatch.index)
+    : response;
+
   const md = new MarkdownIt();
-  const tokens = md.parse(response, {});
+  const tokens = md.parse(markdown, {});
 
   const files: Record<string, string> = {};
   let currentFile: string | null = null;
