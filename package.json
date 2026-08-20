@@ -67,6 +67,7 @@
     "local:run:fundamentals": "MODELS=gpt-5 TEST_FILTER=000-fundamentals bun run runner/index.ts",
     "local:run:one": "MODELS=gpt-5 TEST_FILTER=000-fundamentals/000 bun run runner/index.ts",
     "local:run": "bun run runner/index.ts",
+    "native-harness:run": "bun run scripts/runNativeHarnessMatrix.ts",
     "list:models": "bun run scripts/listModels.ts",
     "build:release": "bun run buildRelease.ts",
     "ablation:generate": "bun run scripts/ablateGuidelines.ts",

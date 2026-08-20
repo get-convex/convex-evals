@@ -6,6 +6,7 @@ import {
   computeCostFromUsageAndPricing,
   normalizeUsageForScoring,
   parseMarkdownResponse,
+  renderNativeHarnessPrompt,
   renderPrompt,
 } from "./models/modelCodegen.js";
 
@@ -229,7 +230,9 @@ describe("renderPrompt", () => {
   it("does not include analysis instructions", () => {
     const prompt = renderPrompt("test");
     expect(prompt).not.toContain("Before writing any code, analyze the task");
-    expect(prompt).not.toContain("Begin your response with your thought process");
+    expect(prompt).not.toContain(
+      "Begin your response with your thought process",
+    );
     expect(prompt).not.toContain("Summarize the task requirements");
   });
 
@@ -256,7 +259,30 @@ describe("renderPrompt", () => {
     const prompt = renderPrompt("");
     expect(prompt.length).toBeGreaterThan(100);
   });
+});
 
+describe("renderNativeHarnessPrompt", () => {
+  it("asks the harness to write files directly without mentioning search", () => {
+    const prompt = renderNativeHarnessPrompt("Build a todo app");
+
+    expect(prompt).toContain(
+      "Implement the requested Convex backend directly in the current working directory",
+    );
+    expect(prompt).not.toContain("Output all files within an h1 Files section");
+    expect(prompt.toLowerCase()).not.toContain("web search");
+  });
+
+  it("omits Convex guidelines in the no-guidelines experiment", () => {
+    const previous = process.env.EVALS_EXPERIMENT;
+    process.env.EVALS_EXPERIMENT = "no_guidelines";
+    try {
+      const prompt = renderNativeHarnessPrompt("Build a todo app");
+      expect(prompt).not.toContain("# Convex guidelines");
+    } finally {
+      if (previous === undefined) delete process.env.EVALS_EXPERIMENT;
+      else process.env.EVALS_EXPERIMENT = previous;
+    }
+  });
 });
 
 describe("normalizeUsageForScoring", () => {

@@ -24,6 +24,10 @@ import {
   getOpenRouterWebSearchRequestCount,
 } from "./webSearch.js";
 import { logInfo } from "../logging.js";
+import {
+  generateWithNativeHarness,
+  type NativeHarnessConfig,
+} from "./nativeHarness.js";
 
 // ── Experiment helpers ────────────────────────────────────────────────
 
@@ -322,9 +326,7 @@ export function attachWebSearchUsage({
     cachedInputTokens: usage?.cachedInputTokens,
     raw: {
       ...raw,
-      ...(webSearchRequestCount === undefined
-        ? {}
-        : { webSearchRequestCount }),
+      ...(webSearchRequestCount === undefined ? {} : { webSearchRequestCount }),
     },
   };
 }
@@ -377,12 +379,20 @@ export class Model {
   private languageModel: LanguageModel | null;
   private resolved: ResolvedModel;
   private apiKey: string;
+  private nativeHarness: NativeHarnessConfig | undefined;
 
-  constructor(apiKey: string, model: ResolvedModel) {
+  constructor(
+    apiKey: string,
+    model: ResolvedModel,
+    options?: { nativeHarness?: NativeHarnessConfig },
+  ) {
     this.resolved = model;
     this.apiKey = apiKey;
+    this.nativeHarness = options?.nativeHarness;
     this.languageModel =
-      model.apiKind === "cursor-sdk" ? null : createLanguageModel(model, apiKey);
+      model.apiKind === "cursor-sdk" || this.nativeHarness
+        ? null
+        : createLanguageModel(model, apiKey);
   }
 
   async generate(prompt: string): Promise<{
@@ -390,6 +400,14 @@ export class Model {
     usage?: LanguageModelUsage;
     rawResponse: string;
   }> {
+    if (this.nativeHarness) {
+      return generateWithNativeHarness({
+        config: this.nativeHarness,
+        modelName: this.resolved.name,
+        prompt: renderNativeHarnessPrompt(prompt),
+      });
+    }
+
     const userPrompt = renderPrompt(prompt);
     const useWebSearch = isWebSearchEnabled();
 
@@ -436,10 +454,7 @@ export class Model {
 
     const result = streamText(options);
 
-    const [text, usage] = await Promise.all([
-      result.text,
-      result.usage,
-    ]);
+    const [text, usage] = await Promise.all([result.text, result.usage]);
 
     const usageWithTiming = attachTimeToFirstTokenUsage({
       usage,
@@ -485,24 +500,20 @@ export class Model {
     const helperPath = fileURLToPath(
       new URL("./cursorSdkGenerate.mjs", import.meta.url),
     );
-    const raw = execFileSync(
-      "node",
-      [helperPath],
-      {
-        input: JSON.stringify({
-          runnableName: this.resolved.runnableName,
-          formattedName: this.resolved.formattedName,
-          systemContent,
-          userPrompt,
-        }),
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          CURSOR_API_KEY: this.apiKey,
-        },
-        maxBuffer: 50 * 1024 * 1024,
+    const raw = execFileSync("node", [helperPath], {
+      input: JSON.stringify({
+        runnableName: this.resolved.runnableName,
+        formattedName: this.resolved.formattedName,
+        systemContent,
+        userPrompt,
+      }),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        CURSOR_API_KEY: this.apiKey,
       },
-    );
+      maxBuffer: 50 * 1024 * 1024,
+    });
 
     const result = JSON.parse(raw) as {
       text: string;
@@ -627,6 +638,35 @@ ${FILE_FORMAT_EXAMPLE}`,
   sections.push(
     `Now, implement a Convex backend that satisfies the following task description:\n\`\`\`\n${taskDescription}\n\`\`\``,
   );
+
+  return sections.join("\n\n") + "\n";
+}
+
+export function renderNativeHarnessPrompt(taskDescription: string): string {
+  const sections: string[] = [
+    `Implement the requested Convex backend directly in the current working directory.
+Do not merely explain the solution or return a Markdown file listing. Create the actual project files and finish once the implementation is complete.`,
+  ];
+
+  sections.push(`# General Coding Standards
+- Use 2 spaces for code indentation.
+- Ensure your code is clear, efficient, and concise.
+- Maintain a friendly and approachable tone in any comments or documentation.`);
+
+  const guidelinesContent = getGuidelinesContent();
+  if (guidelinesContent) {
+    sections.push(guidelinesContent);
+  }
+
+  sections.push(`# File Structure
+- You can write to \`package.json\`, \`tsconfig.json\`, and any files within the \`convex/\` folder. Only write additional files such as \`src/\` if the task explicitly requests them. Do not add unrelated files.
+- Do not write to the \`convex/_generated\` folder. You can assume that \`npx convex dev\` will populate it.
+- Write files to the exact paths requested by the task.
+- Include \`package.json\` and \`tsconfig.json\`.
+- Use Convex version \"^1.44.0\".
+- Use TypeScript version \"^5.7.3\".`);
+
+  sections.push(`# Task\n\n${taskDescription}`);
 
   return sections.join("\n\n") + "\n";
 }
