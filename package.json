@@ -8,7 +8,7 @@
   "devDependencies": {
     "@ai-sdk/provider-utils": "4.0.46",
     "@convex-dev/agent": "0.6.4",
-    "@convex-dev/aggregate": "0.2.2",
+    "@convex-dev/aggregate": "0.3.1",
     "@convex-dev/presence": "0.3.2",
     "@convex-dev/rate-limiter": "0.3.2",
     "@convex-dev/workpool": "0.4.8",
