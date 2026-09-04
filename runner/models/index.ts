@@ -37,6 +37,7 @@ export const ALL_MODELS: string[] = [
   "openai/gpt-5.6-sol",
   "openai/gpt-5.6-terra",
   "openai/gpt-5.6-luna",
+  "openai/gpt-6-astra",
   "deepseek/deepseek-v4-pro",
   "z-ai/glm-5.3-flash",
   "poolside/laguna-s-2.1",
