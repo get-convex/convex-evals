@@ -1,5 +1,7 @@
 [build]
-  command = "bun run build"
+  # Cached node_modules can retain incompatible nested dependencies after updates.
+  # Recreate the install from the lockfile; Bun's download cache is still reused.
+  command = 'if [ -d node_modules ]; then mv node_modules "$(mktemp -d)/node_modules"; fi && bun install --frozen-lockfile && bun run build'
   publish = "dist"
 
 [build.environment]

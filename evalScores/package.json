@@ -12,7 +12,7 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "convex-test": "^0.0.55",
+    "convex-test": "^0.0.56",
     "vitest": "^5.0.0",
     "@edge-runtime/vm": "^5.0.0"
   },
