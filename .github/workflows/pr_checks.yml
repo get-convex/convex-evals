@@ -37,6 +37,11 @@ jobs:
       - name: Run tests
         run: bun run test
 
+      # The unit suite uses Bun at the root, but eval graders run through Vitest.
+      # Exercise that runtime too so incompatible Vitest/Vite pairs fail in CI.
+      - name: Check grader Vitest runtime
+        run: bunx vitest run grader/pollUntil.test.ts
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
