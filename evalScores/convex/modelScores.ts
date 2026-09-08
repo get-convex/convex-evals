@@ -50,11 +50,7 @@ export const backfillAllModelScores = internalMutation({
     const seen = new Set<string>();
     const pairs: Array<{
       modelId: Id<"models">;
-      experiment?:
-        | "no_guidelines"
-        | "web_search"
-        | "web_search_no_guidelines"
-        | "agents_md";
+      experiment?: Doc<"runs">["experiment"];
       benchmarkVersion: Id<"benchmarkVersions">;
     }> = [];
     for (const run of runs) {

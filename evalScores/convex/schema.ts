@@ -3,6 +3,8 @@ import { v } from "convex/values";
 
 export const experimentLiteral = v.union(
   v.literal("no_guidelines"),
+  v.literal("no_guidelines_with_web"),
+  // Retired experiments remain valid for historical records.
   v.literal("web_search"),
   v.literal("web_search_no_guidelines"),
   v.literal("agents_md"),

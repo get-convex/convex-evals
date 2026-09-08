@@ -15,14 +15,8 @@
  *   CONVEX_AUTH_TOKEN - auth token for the Convex backend
  *   CUSTOM_GUIDELINES_PATH - path to custom guidelines markdown file
  */
-import {
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  existsSync,
-  writeFileSync,
-} from "fs";
-import { dirname, join, resolve } from "path";
+import { readdirSync, readFileSync, existsSync } from "fs";
+import { join } from "path";
 import { tmpdir } from "os";
 import { config } from "dotenv";
 
@@ -40,6 +34,11 @@ import {
 } from "./models/openRouterDiscovery.js";
 import { logInfo } from "./logging.js";
 import { Model } from "./models/modelCodegen.js";
+import {
+  isWebResearchExperiment,
+  validateExperimentConfiguration,
+} from "./experiments.js";
+import { requireWebResearchApiKey } from "./models/webResearchTools.js";
 import { convexScorer, walkAnswer } from "./scorer.js";
 import { InfrastructureError, RateLimitAbortError } from "./convexBackend.js";
 import { computeBenchmarkDefinition } from "./benchmark.js";
@@ -55,10 +54,6 @@ import {
   type EvalIndividualResult,
 } from "./reporting.js";
 import type { LanguageModelUsage } from "ai";
-import type {
-  NativeHarnessConfig,
-  NativeHarnessName,
-} from "./models/nativeHarness.js";
 
 config(); // Load .env
 
@@ -79,7 +74,6 @@ export interface RunConfig {
   convexEvalUrl?: string;
   convexAuthToken?: string;
   experiment?: string;
-  nativeHarness?: NativeHarnessConfig;
 }
 
 type ExecutionMode = "generate" | "answer";
@@ -159,8 +153,9 @@ const SCORE_FAILURE_REASONS: Record<string, string> = {
 // ── Main (CLI entrypoint) ─────────────────────────────────────────────
 
 async function main(): Promise<void> {
+  validateExperimentConfiguration(process.env.EVALS_EXPERIMENT);
+  validateWebResearchRun(process.env.EVALS_EXPERIMENT);
   const executionMode = parseExecutionMode(process.env.EVALS_EXECUTION_MODE);
-  const nativeHarness = parseNativeHarnessConfig();
   const modelNames = process.env.MODELS
     ? process.env.MODELS.split(",")
         .map((s) => s.trim())
@@ -200,20 +195,10 @@ async function main(): Promise<void> {
     ? new RegExp(process.env.TEST_FILTER)
     : undefined;
 
-  const savedResults: Array<{
-    model: string;
-    provider: string;
-    experiment?: string;
-    nativeHarness?: NativeHarnessConfig;
-    results: EvalIndividualResult[];
-  }> = [];
-
   for (const resolved of resolvedModels) {
     const cfg: RunConfig = {
       model: resolved.model,
-      provider: nativeHarness
-        ? `native-${nativeHarness.name}`
-        : resolved.provider,
+      provider: resolved.provider,
       tempdir: td,
       testFilter: tf,
       executionMode,
@@ -221,37 +206,10 @@ async function main(): Promise<void> {
       convexEvalUrl: process.env.CONVEX_EVAL_URL,
       convexAuthToken: process.env.CONVEX_AUTH_TOKEN,
       experiment: process.env.EVALS_EXPERIMENT,
-      nativeHarness,
     };
-    const results = await runEvalsForModel(cfg, {
+    await runEvalsForModel(cfg, {
       openRouterFirstSeenAt: resolved.openRouterFirstSeenAt,
     });
-    savedResults.push({
-      model: resolved.model.name,
-      provider: cfg.provider ?? resolved.provider,
-      experiment: cfg.experiment,
-      nativeHarness,
-      results,
-    });
-  }
-
-  const resultsJsonPath = process.env.EVALS_RESULTS_JSON;
-  if (resultsJsonPath) {
-    const absolutePath = resolve(resultsJsonPath);
-    mkdirSync(dirname(absolutePath), { recursive: true });
-    writeFileSync(
-      absolutePath,
-      JSON.stringify(
-        {
-          createdAt: new Date().toISOString(),
-          runs: savedResults,
-        },
-        null,
-        2,
-      ),
-      "utf8",
-    );
-    logInfo(`Saved eval results to ${absolutePath}`);
   }
 
   await closeClient();
@@ -274,6 +232,22 @@ export async function runEvalsForModel(
     openRouterFirstSeenAt?: number;
   },
 ): Promise<EvalIndividualResult[]> {
+  validateExperimentConfiguration(config.experiment);
+  validateWebResearchRun(config.experiment);
+  if (isWebResearchExperiment(config.experiment)) {
+    if (config.customGuidelinesPath)
+      throw new Error(
+        "no_guidelines_with_web does not allow custom guidelines.",
+      );
+    if (config.model.apiKind === "cursor-sdk")
+      throw new Error(
+        "no_guidelines_with_web requires an API model in our shared harness.",
+      );
+    if (config.executionMode === "answer")
+      throw new Error(
+        "no_guidelines_with_web requires model generation, not answer validation.",
+      );
+  }
   const {
     model,
     provider = "openrouter",
@@ -282,7 +256,6 @@ export async function runEvalsForModel(
     executionMode = "generate",
     convexEvalUrl,
     convexAuthToken,
-    nativeHarness,
   } = config;
   const modelDisplayName = model.formattedName;
 
@@ -322,11 +295,7 @@ export async function runEvalsForModel(
     let runId: string | null = null;
     const runStartTime = Date.now();
 
-    if (nativeHarness && (convexEvalUrl || convexAuthToken)) {
-      logInfo(
-        `[native-harness] Ignoring Convex reporting configuration. Native harness experiments are local-only.`,
-      );
-    } else if (convexEvalUrl && convexAuthToken) {
+    if (convexEvalUrl && convexAuthToken) {
       const plannedEvals = filteredPaths.map((e) => `${e.category}/${e.name}`);
       const modelId = await ensureModelFromSlug(
         model.name,
@@ -361,7 +330,7 @@ export async function runEvalsForModel(
 
     let modelImpl: Model | null = null;
     let modelApiKey: string | null = null;
-    if (executionMode === "generate" && !nativeHarness) {
+    if (executionMode === "generate") {
       const apiKeyVar =
         model.apiKind === "cursor-sdk"
           ? CURSOR_API_KEY_VAR
@@ -374,13 +343,13 @@ export async function runEvalsForModel(
       modelApiKey = apiKey;
     }
 
-    if (executionMode === "generate" && (modelApiKey || nativeHarness)) {
-      if (!nativeHarness && model.apiKind !== "cursor-sdk") {
+    if (executionMode === "generate" && modelApiKey) {
+      if (model.apiKind !== "cursor-sdk") {
         logInfo(
           `[preflight] Checking endpoint availability for ${model.name}...`,
         );
         try {
-          await preflightOpenRouterEndpoint(model, modelApiKey ?? "");
+          await preflightOpenRouterEndpoint(model, modelApiKey);
           logInfo(`[preflight] Endpoint is available for ${model.name}`);
         } catch (error) {
           const reason = `[infrastructure] [preflight] ${String(error)}`;
@@ -399,7 +368,7 @@ export async function runEvalsForModel(
           throw new InfrastructureError(String(error));
         }
       }
-      modelImpl = new Model(modelApiKey ?? "", model, { nativeHarness });
+      modelImpl = new Model(modelApiKey, model);
     }
 
     const allResults: EvalIndividualResult[] = [];
@@ -429,10 +398,7 @@ export async function runEvalsForModel(
           break;
         }
 
-        const maxConcurrency = nativeHarness
-          ? parsePositiveInteger(process.env.NATIVE_HARNESS_CONCURRENCY, 1)
-          : DEFAULT_MAX_CONCURRENCY;
-        while (queue.length > 0 && inFlight.size < maxConcurrency) {
+        while (queue.length > 0 && inFlight.size < DEFAULT_MAX_CONCURRENCY) {
           const evalInfo = queue.shift()!;
           const promise = processOneEval(
             model,
@@ -545,9 +511,6 @@ export async function runEvalsForModel(
         },
         totalTokens: 0,
       };
-      let trackedWebSearchEvals = 0;
-      let evalsUsingWebSearch = 0;
-      let webSearchRequestCount = 0;
       for (const r of allResults) {
         if (r.usage) {
           if (typeof r.usage.inputTokens === "number")
@@ -559,29 +522,7 @@ export async function runEvalsForModel(
           if (typeof r.usage.totalTokens === "number")
             runUsage.totalTokens =
               (runUsage.totalTokens ?? 0) + r.usage.totalTokens;
-
-          const raw = r.usage.raw;
-          const searchCalls =
-            raw && typeof raw === "object"
-              ? (raw as Record<string, unknown>).webSearchRequestCount
-              : undefined;
-          if (typeof searchCalls === "number") {
-            trackedWebSearchEvals++;
-            webSearchRequestCount += searchCalls;
-            if (searchCalls > 0) evalsUsingWebSearch++;
-          }
         }
-      }
-
-      if (trackedWebSearchEvals > 0) {
-        runUsage.raw = {
-          webSearchRequestCount,
-          evalsUsingWebSearch,
-          trackedWebSearchEvals,
-        };
-        logInfo(
-          `[web_search] ${evalsUsingWebSearch}/${trackedWebSearchEvals} evals used search (${webSearchRequestCount} total requests)`,
-        );
       }
 
       await completeRun(runId, {
@@ -692,8 +633,22 @@ async function processOneEval(
 
   for (let attempt = 0; attempt <= RATE_LIMIT_MAX_RETRIES; attempt++) {
     try {
-      const { files, usage, rawResponse } =
-        await modelImpl.generate(taskDescription);
+      const webTracePath = isWebResearchExperiment(process.env.EVALS_EXPERIMENT)
+        ? join(
+            tempdir,
+            "research",
+            model.name,
+            category,
+            name,
+            `attempt-${attempt + 1}.json`,
+          )
+        : undefined;
+      if (webTracePath)
+        logInfo(`[${evalPathStr}] Research trace: ${webTracePath}`);
+      const { files, usage, rawResponse } = await modelImpl.generate(
+        taskDescription,
+        { webTracePath },
+      );
       generateResult = { files, usage, rawResponse };
       break;
     } catch (e) {
@@ -837,36 +792,9 @@ function parseExecutionMode(value: string | undefined): ExecutionMode {
   process.exit(1);
 }
 
-function parseNativeHarnessConfig(): NativeHarnessConfig | undefined {
-  const value = process.env.EVALS_NATIVE_HARNESS;
-  if (!value) return undefined;
-  if (value !== "codex" && value !== "claude" && value !== "grok") {
-    throw new Error(`Invalid EVALS_NATIVE_HARNESS: ${value}`);
-  }
-
-  const webSearchValue = process.env.EVALS_NATIVE_WEB_SEARCH ?? "false";
-  if (webSearchValue !== "true" && webSearchValue !== "false") {
-    throw new Error(
-      `Invalid EVALS_NATIVE_WEB_SEARCH: ${webSearchValue}. Use true or false.`,
-    );
-  }
-
-  return {
-    name: value as NativeHarnessName,
-    webSearch: webSearchValue === "true",
-  };
-}
-
-function parsePositiveInteger(
-  value: string | undefined,
-  fallback: number,
-): number {
-  if (!value) return fallback;
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 1) {
-    throw new Error(`Expected a positive integer, got: ${value}`);
-  }
-  return parsed;
+function validateWebResearchRun(experiment: string | undefined): void {
+  if (!isWebResearchExperiment(experiment)) return;
+  requireWebResearchApiKey();
 }
 
 function readExpectedFiles(evalPath: string): Record<string, string> {

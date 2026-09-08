@@ -146,8 +146,8 @@ export async function startRun(
       benchmarkVersion,
       experiment: (experiment ?? getEvalsExperiment()) as
         | "no_guidelines"
-        | "web_search"
-        | "web_search_no_guidelines"
+        | "no_guidelines_with_web"
+        | "agents_md"
         | undefined,
     })) ?? null
   );

@@ -1,5 +1,73 @@
 import { describe, expect, it } from "bun:test";
-import { buildEvalResult } from "./index.js";
+import { buildEvalResult, runEvalsForModel } from "./index.js";
+
+describe("experiment validation before starting a run", () => {
+  it("rejects a missing OpenRouter key before starting any model or reporting work", async () => {
+    const previousReporting = process.env.DISABLE_CONVEX_REPORTING;
+    const previousKey = process.env.OPENROUTER_API_KEY;
+    delete process.env.DISABLE_CONVEX_REPORTING;
+    delete process.env.OPENROUTER_API_KEY;
+    try {
+      await expect(
+        runEvalsForModel({
+          experiment: "no_guidelines_with_web",
+          get model(): never {
+            throw new Error("Run started before validation");
+          },
+          tempdir: "unused",
+        }),
+      ).rejects.toThrow("requires OPENROUTER_API_KEY");
+    } finally {
+      if (previousReporting === undefined)
+        delete process.env.DISABLE_CONVEX_REPORTING;
+      else process.env.DISABLE_CONVEX_REPORTING = previousReporting;
+      if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
+      else process.env.OPENROUTER_API_KEY = previousKey;
+    }
+  });
+
+  it.each(["EVALS_NATIVE_HARNESS", "EVALS_NATIVE_WEB_SEARCH"])(
+    "rejects the retired %s setting before starting work",
+    async (key) => {
+      const previous = process.env[key];
+      process.env[key] = key === "EVALS_NATIVE_HARNESS" ? "claude" : "true";
+      try {
+        await expect(
+          runEvalsForModel({
+            experiment: "no_guidelines",
+            get model(): never {
+              throw new Error("The retired native command started a run");
+            },
+            tempdir: "unused",
+          }),
+        ).rejects.toThrow("Native harness experiments have been removed");
+      } finally {
+        if (previous === undefined) delete process.env[key];
+        else process.env[key] = previous;
+      }
+    },
+  );
+
+  it.each([
+    ["web_search", "Unsupported EVALS_EXPERIMENT"],
+    ["web_search_no_guidelines", "Unsupported EVALS_EXPERIMENT"],
+  ])(
+    "rejects %s before accessing the model or reporting results",
+    async (experiment, message) => {
+      await expect(
+        runEvalsForModel({
+          experiment,
+          // Accessing the model marks the start of work. Keep this test unable to
+          // make model or reporting calls even if validation regresses.
+          get model(): never {
+            throw new Error("The run started before validating its experiment");
+          },
+          tempdir: "unused",
+        }),
+      ).rejects.toThrow(message);
+    },
+  );
+});
 
 describe("buildEvalResult", () => {
   it("fails eval when eslint fails even if tests pass", () => {

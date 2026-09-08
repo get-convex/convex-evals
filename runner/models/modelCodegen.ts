@@ -1,9 +1,7 @@
 /**
  * LLM code generation: builds prompts, calls provider APIs, parses responses.
  *
- * Uses the Vercel AI SDK as a unified interface across all
- * providers. When the "web_search" experiment is active, OpenRouter's server
- * tool gives each model its native web search or OpenRouter's fallback.
+ * Uses the Vercel AI SDK as a unified interface across providers.
  */
 import { streamText, type LanguageModel, type LanguageModelUsage } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
@@ -20,55 +18,25 @@ import {
 } from "./index.js";
 import { getGuidelines } from "./guidelines.js";
 import {
-  addOpenRouterWebSearchTool,
-  getOpenRouterWebSearchRequestCount,
-} from "./webSearch.js";
-import { logInfo } from "../logging.js";
+  isWebResearchExperiment,
+  validateExperimentConfiguration,
+} from "../experiments.js";
 import {
-  generateWithNativeHarness,
-  type NativeHarnessConfig,
-} from "./nativeHarness.js";
-
-// ── Experiment helpers ────────────────────────────────────────────────
-
-function isWebSearchEnabled(): boolean {
-  const exp = process.env.EVALS_EXPERIMENT;
-  return exp === "web_search" || exp === "web_search_no_guidelines";
-}
-
-function transformOpenRouterRequestBody(
-  body: Record<string, unknown>,
-): Record<string, unknown> {
-  const withReasoning = {
-    ...body,
-    reasoning: { effort: "medium" },
-  };
-  return isWebSearchEnabled()
-    ? addOpenRouterWebSearchTool(withReasoning)
-    : withReasoning;
-}
-
-const openRouterResponsesFetch = (async (input, init) => {
-  if (!isWebSearchEnabled() || typeof init?.body !== "string") {
-    return fetch(input, init);
-  }
-
-  const body = JSON.parse(init.body) as Record<string, unknown>;
-  return fetch(input, {
-    ...init,
-    body: JSON.stringify(addOpenRouterWebSearchTool(body)),
-  });
-}) as FetchFunction;
+  generateWithWebResearch,
+  saveWebResearchTrace,
+} from "./webResearch.js";
 
 // ── Guidelines helpers ────────────────────────────────────────────────
 
 function getGuidelinesContent(): string {
+  validateExperimentConfiguration(process.env.EVALS_EXPERIMENT);
+  if (isWebResearchExperiment(process.env.EVALS_EXPERIMENT)) return "";
   const customPath = process.env.CUSTOM_GUIDELINES_PATH;
   if (customPath && existsSync(customPath)) {
     return readFileSync(customPath, "utf-8");
   }
   const exp = process.env.EVALS_EXPERIMENT;
-  if (exp === "no_guidelines" || exp === "web_search_no_guidelines") return "";
+  if (exp === "no_guidelines") return "";
   return getGuidelines();
 }
 
@@ -77,6 +45,7 @@ function getGuidelinesContent(): string {
 function createLanguageModel(
   model: ResolvedModel,
   apiKey: string,
+  fetch?: FetchFunction,
 ): LanguageModel {
   if (model.apiKind === "cursor-sdk") {
     throw new Error("Cursor SDK models are invoked directly, not via AI SDK");
@@ -86,7 +55,7 @@ function createLanguageModel(
     const openai = createOpenAI({
       apiKey,
       baseURL: model.baseURL,
-      fetch: openRouterResponsesFetch,
+      fetch,
     });
     return openai.responses(model.runnableName);
   }
@@ -95,7 +64,11 @@ function createLanguageModel(
     name: "openrouter",
     baseURL: model.baseURL,
     apiKey,
-    transformRequestBody: transformOpenRouterRequestBody,
+    fetch,
+    transformRequestBody: (body) => ({
+      ...body,
+      reasoning: { effort: "medium" },
+    }),
   });
   return openrouter.chatModel(model.runnableName);
 }
@@ -298,39 +271,6 @@ export function attachTimeToFirstTokenUsage({
   };
 }
 
-export function attachWebSearchUsage({
-  usage,
-}: {
-  usage: LanguageModelUsage | undefined;
-}): LanguageModelUsage {
-  const raw =
-    usage?.raw && typeof usage.raw === "object"
-      ? (usage.raw as Record<string, unknown>)
-      : {};
-  const webSearchRequestCount = getOpenRouterWebSearchRequestCount(raw);
-
-  return {
-    inputTokens: usage?.inputTokens,
-    inputTokenDetails: usage?.inputTokenDetails ?? {
-      noCacheTokens: undefined,
-      cacheReadTokens: undefined,
-      cacheWriteTokens: undefined,
-    },
-    outputTokens: usage?.outputTokens,
-    outputTokenDetails: usage?.outputTokenDetails ?? {
-      textTokens: undefined,
-      reasoningTokens: undefined,
-    },
-    totalTokens: usage?.totalTokens,
-    reasoningTokens: usage?.reasoningTokens,
-    cachedInputTokens: usage?.cachedInputTokens,
-    raw: {
-      ...raw,
-      ...(webSearchRequestCount === undefined ? {} : { webSearchRequestCount }),
-    },
-  };
-}
-
 async function enrichUsageWithOpenRouterPricingFallback(
   usage: LanguageModelUsage | undefined,
   modelName: string,
@@ -379,39 +319,32 @@ export class Model {
   private languageModel: LanguageModel | null;
   private resolved: ResolvedModel;
   private apiKey: string;
-  private nativeHarness: NativeHarnessConfig | undefined;
 
-  constructor(
-    apiKey: string,
-    model: ResolvedModel,
-    options?: { nativeHarness?: NativeHarnessConfig },
-  ) {
+  constructor(apiKey: string, model: ResolvedModel) {
     this.resolved = model;
     this.apiKey = apiKey;
-    this.nativeHarness = options?.nativeHarness;
     this.languageModel =
-      model.apiKind === "cursor-sdk" || this.nativeHarness
+      model.apiKind === "cursor-sdk"
         ? null
         : createLanguageModel(model, apiKey);
   }
 
-  async generate(prompt: string): Promise<{
+  async generate(
+    prompt: string,
+    generationOptions?: { webTracePath?: string },
+  ): Promise<{
     files: Record<string, string>;
     usage?: LanguageModelUsage;
     rawResponse: string;
   }> {
-    if (this.nativeHarness) {
-      return generateWithNativeHarness({
-        config: this.nativeHarness,
-        modelName: this.resolved.name,
-        prompt: renderNativeHarnessPrompt(prompt),
-      });
-    }
-
     const userPrompt = renderPrompt(prompt);
-    const useWebSearch = isWebSearchEnabled();
 
     if (this.resolved.apiKind === "cursor-sdk") {
+      if (isWebResearchExperiment(process.env.EVALS_EXPERIMENT)) {
+        throw new Error(
+          "no_guidelines_with_web supports API models in our shared harness only.",
+        );
+      }
       return this.generateWithCursorSdk(SYSTEM_PROMPT, userPrompt);
     }
 
@@ -419,6 +352,52 @@ export class Model {
     const languageModel = this.languageModel;
     if (languageModel === null) {
       throw new Error("Language model missing");
+    }
+
+    if (isWebResearchExperiment(process.env.EVALS_EXPERIMENT)) {
+      const research = await generateWithWebResearch({
+        createModel: (fetch) =>
+          createLanguageModel(this.resolved, this.apiKey, fetch),
+        modelName: this.resolved.name,
+        system: SYSTEM_PROMPT,
+        prompt: userPrompt,
+        maxOutputTokens: maxTokens,
+        apiKey: this.apiKey,
+        tracePath: generationOptions?.webTracePath,
+        responsesApi: this.resolved.apiKind === "responses",
+      });
+      const normalized = normalizeUsageForScoring(research.usage);
+      const usageWithTrace: LanguageModelUsage = {
+        ...research.usage,
+        raw: {
+          ...(normalized?.raw && typeof normalized.raw === "object"
+            ? normalized.raw
+            : {}),
+          webResearch: {
+            ...research.trace.summary,
+            searchEngine: "exa",
+            fetchEngine: "exa",
+            tracePath: generationOptions?.webTracePath,
+          },
+        },
+      };
+      // A model-price estimate excludes search/fetch charges. Keep unknown
+      // cost unknown when OpenRouter does not report it for this experiment.
+      const usage = attachTimeToFirstTokenUsage({
+        usage: usageWithTrace,
+        timeToFirstTokenMs: research.timeToFirstTokenMs,
+      });
+      research.trace.usage = usage;
+      saveWebResearchTrace(
+        generationOptions?.webTracePath,
+        research.trace,
+        this.apiKey,
+      );
+      return {
+        files: parseMarkdownResponse(research.text),
+        usage,
+        rawResponse: research.text,
+      };
     }
 
     const baseOptions = {
@@ -460,24 +439,8 @@ export class Model {
       usage,
       timeToFirstTokenMs,
     });
-    const reportedWebSearchRequests = useWebSearch
-      ? getOpenRouterWebSearchRequestCount(usageWithTiming?.raw)
-      : undefined;
-    const usageWithSearchCalls = useWebSearch
-      ? attachWebSearchUsage({
-          usage: usageWithTiming,
-        })
-      : usageWithTiming;
-    if (useWebSearch) {
-      logInfo(
-        reportedWebSearchRequests === undefined
-          ? "  [web_search] OpenRouter did not report a search request count"
-          : `  [web_search] OpenRouter reported ${reportedWebSearchRequests} search request(s)`,
-      );
-    }
-
     const enrichedUsage = await enrichUsageWithOpenRouterPricingFallback(
-      usageWithSearchCalls,
+      usageWithTiming,
       this.resolved.runnableName,
       this.resolved.baseURL,
     );
@@ -638,35 +601,6 @@ ${FILE_FORMAT_EXAMPLE}`,
   sections.push(
     `Now, implement a Convex backend that satisfies the following task description:\n\`\`\`\n${taskDescription}\n\`\`\``,
   );
-
-  return sections.join("\n\n") + "\n";
-}
-
-export function renderNativeHarnessPrompt(taskDescription: string): string {
-  const sections: string[] = [
-    `Implement the requested Convex backend directly in the current working directory.
-Do not merely explain the solution or return a Markdown file listing. Create the actual project files and finish once the implementation is complete.`,
-  ];
-
-  sections.push(`# General Coding Standards
-- Use 2 spaces for code indentation.
-- Ensure your code is clear, efficient, and concise.
-- Maintain a friendly and approachable tone in any comments or documentation.`);
-
-  const guidelinesContent = getGuidelinesContent();
-  if (guidelinesContent) {
-    sections.push(guidelinesContent);
-  }
-
-  sections.push(`# File Structure
-- You can write to \`package.json\`, \`tsconfig.json\`, and any files within the \`convex/\` folder. Only write additional files such as \`src/\` if the task explicitly requests them. Do not add unrelated files.
-- Do not write to the \`convex/_generated\` folder. You can assume that \`npx convex dev\` will populate it.
-- Write files to the exact paths requested by the task.
-- Include \`package.json\` and \`tsconfig.json\`.
-- Use Convex version \"^1.44.0\".
-- Use TypeScript version \"^5.7.3\".`);
-
-  sections.push(`# Task\n\n${taskDescription}`);
 
   return sections.join("\n\n") + "\n";
 }
