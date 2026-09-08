@@ -5,14 +5,14 @@ import {
   compareSchema,
   deleteAllDocuments,
   listTable,
-  readOutputFile,
   responseAdminClient,
   responseClient,
 } from "../../../grader";
 import { api } from "./answer/convex/_generated/api";
 import { Doc, Id } from "./answer/convex/_generated/dataModel";
 import { anyApi } from "convex/server";
-import ts from "typescript";
+import { getLatestOutputProjectDir } from "../../../grader/outputDir";
+import { inspectNestedWriteLimit } from "./checks";
 
 beforeEach(async () => {
   await deleteAllDocuments(responseAdminClient, ["deliveries", "jobs"]);
@@ -125,99 +125,14 @@ test("jobs do not contaminate one another", async () => {
   expect(await getDeliveries(badJobId)).toHaveLength(0);
 });
 
-function hasRunMutationWithDocumentsWrittenLimit(
-  sourceText: string,
-  expectedLimit: number,
-): boolean {
-  const sourceFile = ts.createSourceFile(
-    "index.ts",
-    sourceText,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TS,
-  );
-
-  // Resolve identifiers through `const X = ...` declarations anywhere in the
-  // file (including inside handlers) so that answers which factor the options
-  // or limits into a named constant still pass.
-  const constDeclarations = new Map<string, ts.Expression>();
-  const collectDeclarations = (node: ts.Node) => {
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.initializer !== undefined
-    ) {
-      constDeclarations.set(node.name.text, node.initializer);
-    }
-    ts.forEachChild(node, collectDeclarations);
-  };
-  collectDeclarations(sourceFile);
-  const resolve = (expr: ts.Expression): ts.Expression => {
-    let current = expr;
-    for (let i = 0; i < 5; i++) {
-      if (ts.isIdentifier(current) && constDeclarations.has(current.text)) {
-        current = constDeclarations.get(current.text)!;
-      } else if (ts.isAsExpression(current) || ts.isParenthesizedExpression(current)) {
-        current = current.expression;
-      } else {
-        break;
-      }
-    }
-    return current;
-  };
-  const getProperty = (
-    obj: ts.Expression,
-    name: string,
-  ): ts.Expression | undefined => {
-    const resolved = resolve(obj);
-    if (!ts.isObjectLiteralExpression(resolved)) return undefined;
-    for (const p of resolved.properties) {
-      if (
-        ts.isPropertyAssignment(p) &&
-        (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name)) &&
-        p.name.text === name
-      ) {
-        return p.initializer;
-      }
-    }
-    return undefined;
-  };
-
-  let found = false;
-  const visit = (node: ts.Node) => {
-    if (
-      ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression) &&
-      node.expression.name.text === "runMutation" &&
-      node.arguments.length >= 3
-    ) {
-      const limits = getProperty(node.arguments[2], "transactionLimits");
-      if (limits !== undefined) {
-        const documentsWritten = getProperty(limits, "documentsWritten");
-        if (documentsWritten !== undefined) {
-          const value = resolve(documentsWritten);
-          if (
-            ts.isNumericLiteral(value) &&
-            Number(value.text) === expectedLimit
-          ) {
-            found = true;
-            return;
-          }
-        }
-      }
-    }
-    ts.forEachChild(node, visit);
-  };
-
-  visit(sourceFile);
-  return found;
-}
-
-test("generated solution limits the nested runMutation to 5 documents written", () => {
-  const sourceText = readOutputFile(
-    "005-idioms",
-    "008-nested_transaction_limits",
-    "convex/index.ts",
-  );
-  expect(hasRunMutationWithDocumentsWrittenLimit(sourceText, 5)).toBe(true);
-});
+test(
+  "the executed writeDeliveries call has a native five-write limit",
+  { timeout: 15_000 },
+  async () => {
+    const jobId = await seedJob("job-native-limit");
+    await inspectNestedWriteLimit(
+      getLatestOutputProjectDir("005-idioms", "008-nested_transaction_limits"),
+      await getJob(jobId),
+    );
+  },
+);
