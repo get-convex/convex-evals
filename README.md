@@ -158,12 +158,17 @@ Note that test or category names cannot contain dashes.
 
 ### What we're testing
 
-These evals measure whether a model understands Convex - not whether it can follow detailed instructions. This creates a deliberate tension when writing tasks:
+Each eval should make one specific claim about a Convex capability. State that claim before writing or changing its task or grader:
 
-- **Be explicit** about the shape of the problem: schema, function names, argument types, return structure, which files to create.
-- **Don't over-specify** Convex implementation details that are covered in the guidelines (e.g. when to use `internalMutation`, how to call functions via `internal.*`, how to export queries alongside an HTTP router). If a model needs the task to spell those out, it's failing the eval for the right reason.
+- **API knowledge or requested usage:** the task requests a capability or API family, and the eval checks correct implementation. Exact method names can remain unstated when knowing them is part of the claim.
+- **Unprompted selection:** the task describes a need, and the eval checks whether the model chooses a particular pattern or component. A miss establishes that the desired choice was not made; it does not establish that an alternative implementation is broken.
+- **Behavioral correctness:** the task states the required behavior, and equivalent correct implementations must be accepted unless an implementation constraint is justified by the stated claim.
 
-When reviewing a failure, the first question should be: "Is this something the guidelines already cover?" If yes, it's a model fault - not a task problem. Only add detail to a task when the requirement is genuinely ambiguous or the model's interpretation was reasonable given the guidelines.
+Be explicit about product requirements, interfaces, edge cases, and relevant scale. Withholding API mechanics can be intentional; leaving product behavior ambiguous is a separate issue. Record what a pass does **not** establish, such as spontaneous API selection, complete pagination, or production-scale correctness.
+
+Review the actual task and context sent to the model, including the experiment, SDK version, and available tools. `no_guidelines` omits the guidelines and research tools, and scoring does not give the model a code-repair loop. Guideline coverage alone is not sufficient evidence of model fault. A wrong answer, an ambiguous task, and a grader defect can coexist.
+
+Before changing a score, separate those three questions: is the requested capability worth measuring, does the prompt support the graded requirement, and does the grader distinguish correct from incorrect implementations? If a prompt change makes an implicit choice explicit, record the changed measurement; do not reinterpret historical scores under the new contract.
 
 ### Writing good prompts
 
@@ -176,7 +181,7 @@ When reviewing a failure, the first question should be: "Is this something the g
    - Expected return type/structure
    - Any specific behaviors or edge cases to handle
 
-3. **Scope the context** - describe what the feature does, but trust the model to know _how_ to implement it in Convex. Don't assume knowledge of the problem domain; do assume knowledge of Convex patterns from the guidelines.
+3. **Scope the context** - describe the feature and its domain constraints. Omit API mechanics only when recalling or selecting them is the intended measurement. Do not assume guidelines are present in every experiment.
 
 4. **Implementation constraints** - specify what files to create, what NOT to do, and any performance considerations that aren't obvious from the guidelines.
 
@@ -186,11 +191,26 @@ When reviewing a failure, the first question should be: "Is this something the g
 
 2. **Over-complication** - don't test multiple concepts in one eval; keep schemas focused on the tested concept
 
-3. **Missing context** - describe the problem domain clearly, but don't explain Convex mechanics that are already in the guidelines
+3. **Missing context** - describe the problem domain and required behavior clearly; decide separately whether API references belong in this eval's supplied context
 
 4. **Untestable requirements** - make success criteria measurable; specify exact return types; include specific test cases
 
-5. **Over-specification** - spelling out every Convex detail (e.g. which function type to use, how the internal API works) defeats the purpose of the eval; if a model needs that hand-holding, that's a meaningful signal
+5. **Over-specification** - do not give away a choice the eval claims to measure. Explicit API instructions are appropriate for usage evals, but change an unprompted-selection eval into a different measurement.
+
+### Grader validation
+
+Use real data and runtime behavior where possible. For required API use, verify that the relevant operation executes or that the returned artifact derives from it. Merely finding an identifier, import, or correctly shaped call is not enough.
+
+Every grader correction needs both sides of a regression matrix:
+
+- Equivalent valid answers: aliases, constants, shorthand and quoted properties, helpers, and module organization permitted by the task.
+- Invalid answers that look plausible: unused correct calls, fake local objects, wrong limits, hardcoded defaults, unrelated operations, and incomplete results.
+
+Keep those regression tests separate from scored assertions so adding fixtures does not change an eval's weighting. Validate the reference and targeted alternatives through the real scoring pipeline. A passing reference alone does not validate the grader.
+
+Execution probes also need scrutiny: an incomplete SDK mock can reject valid code. Cover harmless operations allowed by the task, and document sampled paths and unsupported behavior. Neither a source check nor a sampled execution probe proves correctness for every possible program.
+
+The [Astra task-contract review](docs/astra-eval-contract-review.md) applies this process to the recurring failures audited in September 2026.
 
 ### Eval structure
 
