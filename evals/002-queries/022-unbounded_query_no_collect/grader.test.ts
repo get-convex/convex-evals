@@ -99,11 +99,11 @@ test("listAuditLogs includes system fields", async () => {
 test(
   "listAuditLogs consumes a bounded database query",
   { timeout: 15_000 },
-  () => {
+  async () => {
     const projectDir = getLatestOutputProjectDir(
       "002-queries",
       "022-unbounded_query_no_collect",
     );
-    inspectBoundedQuery(projectDir);
+    await inspectBoundedQuery(projectDir);
   },
 );

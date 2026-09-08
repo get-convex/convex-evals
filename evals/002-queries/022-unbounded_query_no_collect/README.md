@@ -60,7 +60,7 @@ surround the target in creation order to catch taking a global prefix before
 filtering. There is no requirement to return exactly 100 rows or the newest rows.
 
 The bounded-read check invokes only `index:listAuditLogs`, using the generated
-project's real Convex SDK in a separate process. It observes native query streams
+project's real Convex SDK in a WebAssembly interpreter. It observes native query streams
 and pagination requests when they are consumed:
 
 - A query stream must carry a positive finite native limit, as `take(n)` supplies.
@@ -75,6 +75,14 @@ tests. It checks native bounded API selection, not arbitrary JavaScript loop
 termination or worst-case rows/bytes scanned by a filtered query. A timeout bounds
 probe execution. Reading every page until exhaustion is deliberately not made to
 finish in the probe.
+
+Generated code has no host filesystem, process, environment, network, or module
+loader. Static bundling only accepts the generated Convex source, its installed
+dependencies, and the trusted inspector; resolved symlinks must stay in those
+roots. The SDK's `process.env` export receives an empty object. Each interpreter
+runs in a disposable worker with a 64 MiB guest heap limit, a two-second execution
+deadline, and a ten-second worker timeout. The worker is terminated after every
+result, including resource exhaustion.
 
 Choosing a bounded preview does not prove that users can reach the whole
 collection or that bulk work eventually completes. Those stronger pagination
