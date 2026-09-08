@@ -25,7 +25,7 @@ try {
   parentPort.postMessage({ result: context.dump(state.value) });
 } catch (error) {
   parentPort.postMessage({
-    error: `Bounded query probe failed: ${String(error)}`,
+    error: `Query probe failed: ${String(error)}`,
   });
 }
 
