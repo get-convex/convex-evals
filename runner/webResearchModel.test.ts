@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import { Model } from "./models/modelCodegen.js";
+import { EmptyProviderResponseError, Model } from "./models/modelCodegen.js";
 import { resolveModelDefaults } from "./models/index.js";
 import { WEB_RESEARCH_LIMITS } from "./models/webResearchTools.js";
 import { InfrastructureError } from "./convexBackend.js";
@@ -118,6 +118,7 @@ describe("web research through the real SDK adapters", () => {
   it("pins Exa, preserves source excerpts and reported total cost, and needs one API key", async () => {
     const model = stub(() => sse(chatEvents()));
     const result = await model.generate("Build a backend.", {
+      sessionId: "session-web-test",
       webTracePath: tracePath,
     });
     expect(result.files["convex/tasks.ts"]).toContain("complete = true");
@@ -130,6 +131,8 @@ describe("web research through the real SDK adapters", () => {
     expect(requests[0]!.reasoning).toEqual({ effort: "medium" });
     expect(requests[0]!.max_tokens).toBe(16384);
     expect(requestHeaders[0]!.get("X-OpenRouter-Metadata")).toBe("enabled");
+    expect(requestHeaders[0]!.get("x-session-id")).toBe("session-web-test");
+    expect(result.openRouterGenerationId).toBe("response-1");
     expect(result.usage).toMatchObject({
       inputTokens: 40,
       outputTokens: 200,
@@ -156,6 +159,7 @@ describe("web research through the real SDK adapters", () => {
   it("keeps unknown cost and missing search counters unknown", async () => {
     const model = stub(() => sse(chatEvents({ cost: false, counters: false })));
     const result = await model.generate("Build a backend.", {
+      sessionId: "session-web-test",
       webTracePath: tracePath,
     });
     expect(result.usage?.raw).not.toHaveProperty("cost");
@@ -173,21 +177,57 @@ describe("web research through the real SDK adapters", () => {
       tool_calls_executed: 0,
     };
     const model = stub(() => sse(events));
-    await model.generate("Build a backend.", { webTracePath: tracePath });
+    await model.generate("Build a backend.", {
+      sessionId: "session-web-test",
+      webTracePath: tracePath,
+    });
     expect(saved().summary.searchRequests).toBe(0);
     expect(saved().citations).toEqual([]);
     expect(requests[0]!.tool_choice).toBe("auto");
   });
 
-  it("keeps the baseline request free of web tools and its prompt identical", async () => {
-    const model = stub(() => sse(chatEvents()));
-    await model.generate("Build a backend.");
-    process.env.EVALS_EXPERIMENT = "no_guidelines";
-    await model.generate("Build a backend.");
-    expect(requests[1]!.messages).toEqual(requests[0]!.messages);
-    expect(requests[1]!.tools).toBeUndefined();
-    expect(requestHeaders[1]!.get("X-OpenRouter-Metadata")).toBeNull();
+  it("retains the provider header ID for retry diagnostics", async () => {
+    const model = stub(() => {
+      const response = sse(chatEvents());
+      response.headers.set("x-generation-id", "gen-header");
+      return response;
+    });
+    const result = await model.generate("Build a backend.", {
+      sessionId: "session-web-test",
+    });
+    expect(result.openRouterGenerationId).toBe("gen-header");
   });
+
+  it("lets the runner retry a completed but empty provider response", async () => {
+    const model = stub(() => sse([chatEvents()[0], chatEvents()[2]]));
+    await expect(
+      model.generate("Build a backend.", {
+        sessionId: "session-web-test",
+        webTracePath: tracePath,
+      }),
+    ).rejects.toBeInstanceOf(EmptyProviderResponseError);
+    expect(saved().status).toBe("completed");
+    expect(saved().partialText).toBe("");
+  });
+
+  it.each([false, true])(
+    "keeps the baseline prompt identical (moduleOnly=%s)",
+    async (moduleOnly) => {
+      const model = stub(() => sse(chatEvents()));
+      await model.generate("Build a backend.", {
+        sessionId: "session-web-test",
+        moduleOnly,
+      });
+      process.env.EVALS_EXPERIMENT = "no_guidelines";
+      await model.generate("Build a backend.", {
+        sessionId: "session-web-test",
+        moduleOnly,
+      });
+      expect(requests[1]!.messages).toEqual(requests[0]!.messages);
+      expect(requests[1]!.tools).toBeUndefined();
+      expect(requestHeaders[1]!.get("X-OpenRouter-Metadata")).toBeNull();
+    },
+  );
 
   it.each(["completed", "incomplete"])(
     "retains Responses tools and usage for a %s generation",
@@ -259,6 +299,7 @@ describe("web research through the real SDK adapters", () => {
       ];
       const model = stub(() => sse(events), "responses");
       const result = await model.generate("Build a backend.", {
+        sessionId: "session-web-test",
         webTracePath: tracePath,
       });
       expect(result.files["convex/tasks.ts"]).toContain("complete = true");
@@ -291,7 +332,10 @@ describe("web research through the real SDK adapters", () => {
       const silence = spyOn(console, "error").mockImplementation(() => {});
       try {
         await expect(
-          model.generate("Build a backend.", { webTracePath: tracePath }),
+          model.generate("Build a backend.", {
+            sessionId: "session-web-test",
+            webTracePath: tracePath,
+          }),
         ).rejects.toBeInstanceOf(InfrastructureError);
         expect(saved().status).toBe("failed");
         expect(readFileSync(tracePath, "utf8")).not.toContain(

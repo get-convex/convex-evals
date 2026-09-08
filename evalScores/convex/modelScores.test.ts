@@ -9,7 +9,7 @@
  * - Correct handling of multiple experiments
  * - Null cost when no cost data is present
  * - "Last 5 runs" cap is respected
- * - Infrastructure failures are excluded from scoring
+ * - Provider failures count against scoring but not generation time
  */
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -219,7 +219,7 @@ describe("recomputeModelScores", () => {
 
     const results = await t.query(api.runs.leaderboardScores, {});
     expect(results).toHaveLength(1);
-    expect(results[0].averageRunDurationMs).toBe(25_000);
+    expect(results[0].averageRunDurationMs).toBe(30_000);
   });
 
   it("upserts the row on subsequent runs", async () => {
@@ -293,7 +293,7 @@ describe("recomputeModelScores", () => {
     expect(results[0].totalScore).toBeCloseTo(1.0);
   });
 
-  it("excludes rate-limited evals from scoring", async () => {
+  it("counts exhausted rate-limit failures in scoring", async () => {
     const t = convexTest(schema, modules);
 
     await createCompletedRun(t, {
@@ -305,11 +305,10 @@ describe("recomputeModelScores", () => {
     });
 
     const results = await t.query(api.runs.leaderboardScores, {});
-    // Rate-limited eval excluded: 1/1 = 1.0
-    expect(results[0].totalScore).toBe(1.0);
+    expect(results[0].totalScore).toBe(0.5);
   });
 
-  it("excludes infrastructure eval failures from scoring", async () => {
+  it("counts exhausted infrastructure failures in scoring", async () => {
     const t = convexTest(schema, modules);
 
     await createCompletedRun(t, {
@@ -326,7 +325,33 @@ describe("recomputeModelScores", () => {
     });
 
     const results = await t.query(api.runs.leaderboardScores, {});
-    expect(results[0].totalScore).toBe(1.0);
+    expect(results[0].totalScore).toBe(0.5);
+  });
+
+  it("excludes failed provider requests from average generation time", async () => {
+    const t = convexTest(schema, modules);
+
+    await createCompletedRun(t, {
+      model: "model-a",
+      evals: [
+        {
+          category: "cat1",
+          name: "eval1",
+          passed: true,
+          generationDurationMs: 12_000,
+        },
+        {
+          category: "cat1",
+          name: "eval2",
+          rateLimited: true,
+          passed: false,
+          generationDurationMs: 90_000,
+        },
+      ],
+    });
+
+    const results = await t.query(api.runs.leaderboardScores, {});
+    expect(results[0].averageRunDurationMs).toBe(12_000);
   });
 
   it("stores null cost when no eval has cost data", async () => {
@@ -708,8 +733,8 @@ describe("recomputeModelScores", () => {
       runCount: 2,
       totalScore: 0.5,
       totalScoreErrorBar: 0.5,
-      averageRunDurationMs: 2000,
-      averageRunDurationMsErrorBar: 1000,
+      averageRunDurationMs: 1000,
+      averageRunDurationMsErrorBar: 0,
       averageRunCostUsd: 2,
       averageRunCostUsdErrorBar: 1,
       scores: { cat1: 0.5 },
@@ -758,6 +783,107 @@ describe("recomputeModelScores", () => {
     });
     expect(archived).toHaveLength(1);
     expect(archived[0].model).toBe("old-model");
+  });
+
+  it("can append recent previous-benchmark scores without ranking them as current", async () => {
+    const t = convexTest(schema, modules);
+
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+    await t.mutation(internal.benchmarkVersions.mint, {
+      version: "expired-benchmark",
+      evalCount: 1,
+      curatedModels: ["expired-model"],
+    });
+    await createCompletedRun(t, {
+      model: "expired-model",
+      benchmarkVersion: "expired-benchmark",
+      evals: [{ category: "cat1", name: "eval1", passed: true }],
+    });
+
+    vi.setSystemTime(new Date("2026-07-01T00:00:00Z"));
+    await t.mutation(internal.benchmarkVersions.mint, {
+      version: "recent-benchmark",
+      evalCount: 1,
+      curatedModels: ["recent-model"],
+    });
+    await createCompletedRun(t, {
+      model: "recent-model",
+      benchmarkVersion: "recent-benchmark",
+      evals: [{ category: "cat1", name: "eval1", passed: true }],
+    });
+
+    vi.setSystemTime(new Date("2026-08-20T00:00:00Z"));
+    await t.mutation(internal.benchmarkVersions.mint, {
+      version: "current-benchmark",
+      evalCount: 2,
+      curatedModels: ["current-model", "recent-model"],
+    });
+
+    expect(await t.query(api.runs.leaderboardScores, {})).toEqual([]);
+
+    const emptyCurrentWithFallbacks = await t.query(
+      api.runs.leaderboardScores,
+      {
+        includeRecentPreviousBenchmarks: true,
+        limit: 100,
+      },
+    );
+    expect(emptyCurrentWithFallbacks).toHaveLength(1);
+    expect(emptyCurrentWithFallbacks[0]).toMatchObject({
+      model: "recent-model",
+      benchmarkVersion: "current-benchmark",
+      scoreBenchmarkVersion: "recent-benchmark",
+      scoreBenchmarkEvalCount: 1,
+      scoreBenchmarkMintedAt: new Date("2026-07-01T00:00:00Z").getTime(),
+      matchesSelectedBenchmark: false,
+    });
+
+    await createCompletedRun(t, {
+      model: "current-model",
+      benchmarkVersion: "current-benchmark",
+      evals: [
+        { category: "cat1", name: "eval1", passed: true },
+        { category: "cat1", name: "eval2", passed: false },
+      ],
+    });
+
+    const currentWithFallbacks = await t.query(api.runs.leaderboardScores, {
+      benchmarkVersion: "current-benchmark",
+      includeRecentPreviousBenchmarks: true,
+      limit: 100,
+    });
+    expect(currentWithFallbacks.map((row) => row.model)).toEqual([
+      "current-model",
+      "recent-model",
+    ]);
+    expect(currentWithFallbacks[0]).toMatchObject({
+      scoreBenchmarkVersion: "current-benchmark",
+      scoreBenchmarkEvalCount: 2,
+      scoreBenchmarkMintedAt: new Date("2026-08-20T00:00:00Z").getTime(),
+      matchesSelectedBenchmark: true,
+      totalScore: 0.5,
+    });
+    expect(
+      currentWithFallbacks.some((row) => row.model === "expired-model"),
+    ).toBe(false);
+
+    const capped = await t.query(api.runs.leaderboardScores, {
+      includeRecentPreviousBenchmarks: true,
+      limit: 1,
+    });
+    expect(capped.map((row) => row.model)).toEqual(["current-model"]);
+
+    const archived = await t.query(api.runs.leaderboardScores, {
+      benchmarkVersion: "recent-benchmark",
+      includeRecentPreviousBenchmarks: true,
+      limit: 100,
+    });
+    expect(archived).toHaveLength(1);
+    expect(archived[0]).toMatchObject({
+      model: "recent-model",
+      scoreBenchmarkVersion: "recent-benchmark",
+      matchesSelectedBenchmark: true,
+    });
   });
 
   it("does not score filtered runs as full benchmark results", async () => {

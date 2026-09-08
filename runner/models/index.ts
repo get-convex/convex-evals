@@ -15,7 +15,7 @@ export interface ResolvedModel {
   runnableName: string;
   formattedName: string;
   baseURL: string;
-  apiKind: "chat" | "responses" | "cursor-sdk";
+  apiKind: "chat" | "responses";
 }
 
 export function resolveModelDefaults(name: string): ResolvedModel {
@@ -29,7 +29,6 @@ export function resolveModelDefaults(name: string): ResolvedModel {
 }
 
 export const ALL_MODELS: string[] = [
-  "cursor/composer-2.5",
   "anthropic/claude-sonnet-5",
   "anthropic/claude-opus-5",
   "anthropic/claude-opus-4.8",
@@ -38,7 +37,9 @@ export const ALL_MODELS: string[] = [
   "openai/gpt-5.6-sol",
   "openai/gpt-5.6-terra",
   "openai/gpt-5.6-luna",
+  "openai/gpt-6-astra",
   "deepseek/deepseek-v4-pro",
+  "z-ai/glm-5.3-flash",
   "poolside/laguna-s-2.1",
   "moonshotai/kimi-k3",
   "x-ai/grok-4.6",

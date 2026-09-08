@@ -278,34 +278,6 @@ export async function resolveModel(modelName: string): Promise<{
   outputModalities?: string[];
   hasTextOutput?: boolean;
 }> {
-  const cursorModels: Record<
-    string,
-    { runnableName: string; formattedName: string }
-  > = {
-    "cursor/composer-2.5": {
-      runnableName: "composer-2.5",
-      formattedName: "Cursor Composer 2.5",
-    },
-    "cursor/composer-2": {
-      runnableName: "composer-2",
-      formattedName: "Cursor Composer 2",
-    },
-  };
-  const cursorModel = cursorModels[modelName];
-  if (cursorModel) {
-    return {
-      model: {
-        ...resolveModelDefaults(modelName),
-        runnableName: cursorModel.runnableName,
-        formattedName: cursorModel.formattedName,
-        baseURL: "cursor-sdk",
-        apiKind: "cursor-sdk",
-      },
-      discovered: true,
-      provider: "cursor",
-    };
-  }
-
   const info = await discoverOpenRouterModel(modelName).catch(() => null);
   const defaults = resolveModelDefaults(modelName);
   return {

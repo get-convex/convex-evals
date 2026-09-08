@@ -8,8 +8,6 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { FetchFunction } from "@ai-sdk/provider-utils";
 import MarkdownIt from "markdown-it";
-import { execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { readFileSync, existsSync } from "fs";
 import {
   type ResolvedModel,
@@ -47,10 +45,6 @@ function createLanguageModel(
   apiKey: string,
   fetch?: FetchFunction,
 ): LanguageModel {
-  if (model.apiKind === "cursor-sdk") {
-    throw new Error("Cursor SDK models are invoked directly, not via AI SDK");
-  }
-
   if (model.apiKind === "responses") {
     const openai = createOpenAI({
       apiKey,
@@ -307,6 +301,89 @@ async function enrichUsageWithOpenRouterPricingFallback(
 // coupling directly to the ai package.
 export type { LanguageModelUsage };
 
+export type ProviderAttempt = {
+  attempt: number;
+  durationMs: number;
+  outcome:
+    | "success"
+    | "empty_response"
+    | "rate_limit"
+    | "transient_error"
+    | "error";
+  openRouterGenerationId?: string;
+};
+
+export class EmptyProviderResponseError extends Error {
+  readonly openRouterGenerationId?: string;
+
+  constructor(openRouterGenerationId?: string) {
+    super("Provider returned an empty response");
+    this.name = "EmptyProviderResponseError";
+    this.openRouterGenerationId = openRouterGenerationId;
+  }
+}
+
+export function extractOpenRouterGenerationId(response: {
+  id: string;
+  headers?: Record<string, string>;
+}): string | undefined {
+  const headerValue = Object.entries(response.headers ?? {}).find(
+    ([name]) => name.toLowerCase() === "x-generation-id",
+  )?.[1];
+  return headerValue || response.id || undefined;
+}
+
+/**
+ * Keep provider diagnostics inside usage.raw so they travel with the eval
+ * without requiring a schema change. The session groups retries for one eval,
+ * while each OpenRouter generation ID identifies an individual provider call.
+ */
+export function attachProviderObservabilityUsage({
+  usage,
+  sessionId,
+  attempts,
+}: {
+  usage: LanguageModelUsage | undefined;
+  sessionId: string;
+  attempts: ProviderAttempt[];
+}): LanguageModelUsage {
+  const raw =
+    usage?.raw && typeof usage.raw === "object"
+      ? (usage.raw as Record<string, unknown>)
+      : {};
+  const generationIds = attempts.flatMap((attempt) =>
+    attempt.openRouterGenerationId ? [attempt.openRouterGenerationId] : [],
+  );
+
+  return {
+    inputTokens: usage?.inputTokens,
+    inputTokenDetails: usage?.inputTokenDetails ?? {
+      noCacheTokens: undefined,
+      cacheReadTokens: undefined,
+      cacheWriteTokens: undefined,
+    },
+    outputTokens: usage?.outputTokens,
+    outputTokenDetails: usage?.outputTokenDetails ?? {
+      textTokens: undefined,
+      reasoningTokens: undefined,
+    },
+    totalTokens: usage?.totalTokens,
+    reasoningTokens: usage?.reasoningTokens,
+    cachedInputTokens: usage?.cachedInputTokens,
+    raw: {
+      ...raw,
+      requestSessionId: sessionId,
+      ...(generationIds.length > 0
+        ? {
+            openRouterGenerationId: generationIds[generationIds.length - 1],
+            openRouterGenerationIds: generationIds,
+          }
+        : {}),
+      providerAttempts: attempts,
+    },
+  };
+}
+
 function getMaxOutputTokens(model: ResolvedModel): number {
   if (model.name.startsWith("deepseek/")) return 4096;
   if (model.name === "anthropic/claude-3.5-sonnet") return 8192;
@@ -316,43 +393,28 @@ function getMaxOutputTokens(model: ResolvedModel): number {
 // ── Model class ───────────────────────────────────────────────────────
 
 export class Model {
-  private languageModel: LanguageModel | null;
+  private languageModel: LanguageModel;
   private resolved: ResolvedModel;
   private apiKey: string;
 
   constructor(apiKey: string, model: ResolvedModel) {
     this.resolved = model;
     this.apiKey = apiKey;
-    this.languageModel =
-      model.apiKind === "cursor-sdk"
-        ? null
-        : createLanguageModel(model, apiKey);
+    this.languageModel = createLanguageModel(model, apiKey);
   }
 
   async generate(
     prompt: string,
-    generationOptions?: { webTracePath?: string },
+    request: { sessionId: string; moduleOnly?: boolean; webTracePath?: string },
   ): Promise<{
     files: Record<string, string>;
     usage?: LanguageModelUsage;
     rawResponse: string;
+    openRouterGenerationId?: string;
   }> {
-    const userPrompt = renderPrompt(prompt);
-
-    if (this.resolved.apiKind === "cursor-sdk") {
-      if (isWebResearchExperiment(process.env.EVALS_EXPERIMENT)) {
-        throw new Error(
-          "no_guidelines_with_web supports API models in our shared harness only.",
-        );
-      }
-      return this.generateWithCursorSdk(SYSTEM_PROMPT, userPrompt);
-    }
-
+    const userPrompt = renderPrompt(prompt, request.moduleOnly);
     const maxTokens = getMaxOutputTokens(this.resolved);
     const languageModel = this.languageModel;
-    if (languageModel === null) {
-      throw new Error("Language model missing");
-    }
 
     if (isWebResearchExperiment(process.env.EVALS_EXPERIMENT)) {
       const research = await generateWithWebResearch({
@@ -363,7 +425,8 @@ export class Model {
         prompt: userPrompt,
         maxOutputTokens: maxTokens,
         apiKey: this.apiKey,
-        tracePath: generationOptions?.webTracePath,
+        sessionId: request.sessionId,
+        tracePath: request.webTracePath,
         responsesApi: this.resolved.apiKind === "responses",
       });
       const normalized = normalizeUsageForScoring(research.usage);
@@ -377,7 +440,7 @@ export class Model {
             ...research.trace.summary,
             searchEngine: "exa",
             fetchEngine: "exa",
-            tracePath: generationOptions?.webTracePath,
+            tracePath: request.webTracePath,
           },
         },
       };
@@ -388,15 +451,18 @@ export class Model {
         timeToFirstTokenMs: research.timeToFirstTokenMs,
       });
       research.trace.usage = usage;
-      saveWebResearchTrace(
-        generationOptions?.webTracePath,
-        research.trace,
-        this.apiKey,
+      saveWebResearchTrace(request.webTracePath, research.trace, this.apiKey);
+      const openRouterGenerationId = extractOpenRouterGenerationId(
+        research.response,
       );
+      if (research.text.trim().length === 0) {
+        throw new EmptyProviderResponseError(openRouterGenerationId);
+      }
       return {
         files: parseMarkdownResponse(research.text),
         usage,
         rawResponse: research.text,
+        openRouterGenerationId,
       };
     }
 
@@ -417,6 +483,11 @@ export class Model {
     const options: Parameters<typeof streamText>[0] = {
       ...baseOptions,
       ...promptOptions,
+      headers: {
+        // OpenRouter accepts this on both Chat Completions and Responses.
+        // It gives provider support one stable correlation ID across retries.
+        "x-session-id": request.sessionId,
+      },
       onChunk: ({ chunk }) => {
         if (timeToFirstTokenMs !== undefined) return;
         if (chunk.type !== "text-delta") return;
@@ -433,7 +504,19 @@ export class Model {
 
     const result = streamText(options);
 
-    const [text, usage] = await Promise.all([result.text, result.usage]);
+    const [text, usage, response] = await Promise.all([
+      result.text,
+      result.usage,
+      result.response,
+    ]);
+    const openRouterGenerationId = extractOpenRouterGenerationId(response);
+
+    // Some capacity failures arrive as a successful HTTP stream with no text,
+    // so the AI SDK has nothing to throw. Turn that into a retryable provider
+    // failure instead of sending an empty answer to the scorer.
+    if (text.trim().length === 0) {
+      throw new EmptyProviderResponseError(openRouterGenerationId);
+    }
 
     const usageWithTiming = attachTimeToFirstTokenUsage({
       usage,
@@ -449,61 +532,7 @@ export class Model {
       files: parseMarkdownResponse(text),
       usage: enrichedUsage,
       rawResponse: text,
-    };
-  }
-
-  private async generateWithCursorSdk(
-    systemContent: string,
-    userPrompt: string,
-  ): Promise<{
-    files: Record<string, string>;
-    usage?: LanguageModelUsage;
-    rawResponse: string;
-  }> {
-    const helperPath = fileURLToPath(
-      new URL("./cursorSdkGenerate.mjs", import.meta.url),
-    );
-    const raw = execFileSync("node", [helperPath], {
-      input: JSON.stringify({
-        runnableName: this.resolved.runnableName,
-        formattedName: this.resolved.formattedName,
-        systemContent,
-        userPrompt,
-      }),
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        CURSOR_API_KEY: this.apiKey,
-      },
-      maxBuffer: 50 * 1024 * 1024,
-    });
-
-    const result = JSON.parse(raw) as {
-      text: string;
-      sawToolCall: boolean;
-      advertisedTools?: string[];
-      timeToFirstTokenMs?: number;
-    };
-
-    if (result.advertisedTools && result.advertisedTools.length > 0) {
-      throw new Error(
-        `Cursor SDK run advertised tools (${result.advertisedTools.join(", ")}); refusing to score it as a raw model output`,
-      );
-    }
-
-    if (result.sawToolCall) {
-      throw new Error(
-        "Cursor SDK run attempted to use a tool; refusing to score it as a one-shot model output",
-      );
-    }
-
-    return {
-      files: parseMarkdownResponse(result.text),
-      usage: attachTimeToFirstTokenUsage({
-        usage: undefined,
-        timeToFirstTokenMs: result.timeToFirstTokenMs,
-      }),
-      rawResponse: result.text,
+      openRouterGenerationId,
     };
   }
 }
@@ -569,15 +598,28 @@ const FILE_FORMAT_EXAMPLE = [
   "```\n...\n```",
 ].join("\n");
 
-export function renderPrompt(taskDescription: string): string {
+export function renderPrompt(
+  taskDescription: string,
+  moduleOnly = false,
+): string {
+  const artifact = moduleOnly ? "TypeScript module" : "Convex backend";
+  const fileExample = moduleOnly
+    ? [
+        "# Files",
+        "## package.json",
+        "```\n...\n```",
+        "## validators.ts",
+        "```\n...\n```",
+      ].join("\n")
+    : FILE_FORMAT_EXAMPLE;
   const sections: string[] = [
-    "Your task is to generate a Convex backend from a task description.",
+    `Your task is to generate a ${artifact} from a task description.`,
   ];
 
   sections.push(
-    `Output all files within an h1 Files section that has an h2 section for each necessary file for a Convex backend that implements the requested functionality.
+    `Output all files within an h1 Files section that has an h2 section for each necessary file for a ${artifact} that implements the requested functionality.
 For example, correct output looks like
-${FILE_FORMAT_EXAMPLE}`,
+${fileExample}`,
   );
 
   sections.push(`# General Coding Standards
@@ -590,16 +632,23 @@ ${FILE_FORMAT_EXAMPLE}`,
     sections.push(guidelinesContent);
   }
 
-  sections.push(`# File Structure
+  if (moduleOnly) {
+    sections.push(`# File Structure
+- Create only the files requested by the task description, using the exact paths specified there.
+- Use the dependency versions specified in the task description.
+- Do not add backend scaffolding or generated files.`);
+  } else {
+    sections.push(`# File Structure
 - You can write to \`package.json\`, \`tsconfig.json\`, and any files within the \`convex/\` folder. Only write additional files (e.g. \`src/\`) if explicitly requested by the task description. Do NOT add extra files that were not asked for.
 - Do NOT write to the \`convex/_generated\` folder. You can assume that \`npx convex dev\` will populate this folder.
 - It's VERY IMPORTANT to output files to the correct paths, as specified in the task description.
 - Always start with \`package.json\` and \`tsconfig.json\` files.
 - Use Convex version "^1.44.0".
 - Use Typescript version "^5.7.3".`);
+  }
 
   sections.push(
-    `Now, implement a Convex backend that satisfies the following task description:\n\`\`\`\n${taskDescription}\n\`\`\``,
+    `Now, implement a ${artifact} that satisfies the following task description:\n\`\`\`\n${taskDescription}\n\`\`\``,
   );
 
   return sections.join("\n\n") + "\n";

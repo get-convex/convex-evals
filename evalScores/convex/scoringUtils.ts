@@ -40,16 +40,6 @@ export function hasCompleteBenchmarkPlan(
   );
 }
 
-export function isRateLimitFailure(evalDoc: Doc<"evals">): boolean {
-  if (evalDoc.status.kind !== "failed") return false;
-  return evalDoc.status.failureReason.startsWith("[rate_limit]");
-}
-
-export function isInfrastructureFailure(evalDoc: Doc<"evals">): boolean {
-  if (evalDoc.status.kind !== "failed") return false;
-  return evalDoc.status.failureReason.startsWith("[infrastructure]");
-}
-
 export function getEvalCostUsd(evalDoc: Doc<"evals">): number {
   const status = evalDoc.status;
   if (status.kind !== "passed" && status.kind !== "failed") return 0;
@@ -77,13 +67,14 @@ export function computeRunCostUsd(evals: Doc<"evals">[]): number | null {
 }
 
 export function computeRunDurationMs(evals: Doc<"evals">[]): number | null {
-  // Leaderboard speed compares mean model generation time per completed eval.
+  // Leaderboard speed compares mean model generation time per successful eval.
+  // Failed provider requests count against score, but not model generation time.
   // Older evals fall back to scorer duration until the generation backfill runs.
   let total = 0;
   let completedCount = 0;
   for (const evalDoc of evals) {
     const status = evalDoc.status;
-    if (status.kind !== "passed" && status.kind !== "failed") continue;
+    if (status.kind !== "passed") continue;
     const durationMs = status.generationDurationMs ?? status.durationMs;
     if (!Number.isFinite(durationMs)) continue;
     total += durationMs;
@@ -96,11 +87,10 @@ export function computeRunScores(evals: Doc<"evals">[]): {
   totalScore: number;
   scores: Record<string, number>;
 } {
+  // Once retries are exhausted, every failed eval counts as a failure. Excluding
+  // provider failures would let a model improve its score by skipping work.
   const completed = evals.filter(
-    (e) =>
-      (e.status.kind === "passed" || e.status.kind === "failed") &&
-      !isRateLimitFailure(e) &&
-      !isInfrastructureFailure(e),
+    (e) => e.status.kind === "passed" || e.status.kind === "failed",
   );
   if (completed.length === 0) return { totalScore: 0, scores: {} };
 

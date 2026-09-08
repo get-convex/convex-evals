@@ -18,6 +18,7 @@
 import { readdirSync, readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import { randomUUID } from "crypto";
 import { config } from "dotenv";
 
 import {
@@ -33,14 +34,19 @@ import {
   preflightOpenRouterEndpoint,
 } from "./models/openRouterDiscovery.js";
 import { logInfo } from "./logging.js";
-import { Model } from "./models/modelCodegen.js";
+import {
+  Model,
+  EmptyProviderResponseError,
+  attachProviderObservabilityUsage,
+  type ProviderAttempt,
+} from "./models/modelCodegen.js";
+import { convexScorer, getEvalPipeline, walkAnswer } from "./scorer.js";
+import { InfrastructureError } from "./convexBackend.js";
 import {
   isWebResearchExperiment,
   validateExperimentConfiguration,
 } from "./experiments.js";
 import { requireWebResearchApiKey } from "./models/webResearchTools.js";
-import { convexScorer, walkAnswer } from "./scorer.js";
-import { InfrastructureError, RateLimitAbortError } from "./convexBackend.js";
 import { computeBenchmarkDefinition } from "./benchmark.js";
 import {
   ensureModelFromSlug,
@@ -82,8 +88,6 @@ const ANSWER_VALIDATION_MODEL: ResolvedModel = {
   ...resolveModelDefaults("answer-validation"),
   formattedName: "Answer Validation",
 };
-
-const CURSOR_API_KEY_VAR = "CURSOR_API_KEY";
 
 type SharedRunOptions = Omit<RunConfig, "model" | "executionMode">;
 
@@ -239,10 +243,6 @@ export async function runEvalsForModel(
       throw new Error(
         "no_guidelines_with_web does not allow custom guidelines.",
       );
-    if (config.model.apiKind === "cursor-sdk")
-      throw new Error(
-        "no_guidelines_with_web requires an API model in our shared harness.",
-      );
     if (config.executionMode === "answer")
       throw new Error(
         "no_guidelines_with_web requires model generation, not answer validation.",
@@ -301,7 +301,7 @@ export async function runEvalsForModel(
         model.name,
         modelDisplayName,
         provider,
-        model.apiKind === "cursor-sdk" ? "chat" : model.apiKind,
+        model.apiKind,
         metadata?.openRouterFirstSeenAt,
       );
       if (modelId) {
@@ -331,49 +331,41 @@ export async function runEvalsForModel(
     let modelImpl: Model | null = null;
     let modelApiKey: string | null = null;
     if (executionMode === "generate") {
-      const apiKeyVar =
-        model.apiKind === "cursor-sdk"
-          ? CURSOR_API_KEY_VAR
-          : OPENROUTER_API_KEY_VAR;
-      const apiKey = process.env[apiKeyVar];
+      const apiKey = process.env[OPENROUTER_API_KEY_VAR];
       if (!apiKey) {
-        console.error(`${apiKeyVar} is not set`);
+        console.error(`${OPENROUTER_API_KEY_VAR} is not set`);
         process.exit(1);
       }
       modelApiKey = apiKey;
     }
 
     if (executionMode === "generate" && modelApiKey) {
-      if (model.apiKind !== "cursor-sdk") {
-        logInfo(
-          `[preflight] Checking endpoint availability for ${model.name}...`,
+      logInfo(
+        `[preflight] Checking endpoint availability for ${model.name}...`,
+      );
+      try {
+        await preflightOpenRouterEndpoint(model, modelApiKey);
+        logInfo(`[preflight] Endpoint is available for ${model.name}`);
+      } catch (error) {
+        const reason = `[infrastructure] [preflight] ${String(error)}`;
+        console.error(
+          `[preflight] Endpoint unavailable for ${model.name}: ${String(error)}`,
         );
-        try {
-          await preflightOpenRouterEndpoint(model, modelApiKey);
-          logInfo(`[preflight] Endpoint is available for ${model.name}`);
-        } catch (error) {
-          const reason = `[infrastructure] [preflight] ${String(error)}`;
-          console.error(
-            `[preflight] Endpoint unavailable for ${model.name}: ${String(error)}`,
-          );
-          if (runId) {
-            await completeRun(runId, {
-              kind: "failed",
-              failureReason: reason,
-              durationMs: Date.now() - runStartTime,
-            });
-            logInfo(`Run failed: ${reason}`);
-            runId = null;
-          }
-          throw new InfrastructureError(String(error));
+        if (runId) {
+          await completeRun(runId, {
+            kind: "failed",
+            failureReason: reason,
+            durationMs: Date.now() - runStartTime,
+          });
+          logInfo(`Run failed: ${reason}`);
+          runId = null;
         }
+        throw new InfrastructureError(String(error));
       }
       modelImpl = new Model(modelApiKey, model);
     }
 
     const allResults: EvalIndividualResult[] = [];
-    let rateLimitCount = 0;
-    const RATE_LIMIT_ABORT_THRESHOLD = 3;
 
     // Process evals with concurrency control
     const queue = [...filteredPaths];
@@ -381,23 +373,6 @@ export async function runEvalsForModel(
 
     try {
       while (queue.length > 0 || inFlight.size > 0) {
-        // Abort early if we've hit too many rate-limit errors
-        if (rateLimitCount >= RATE_LIMIT_ABORT_THRESHOLD) {
-          // Drain remaining queue — don't start new evals
-          if (queue.length > 0) {
-            logInfo(
-              `Aborting run: ${rateLimitCount} rate-limit errors exceeded threshold (${RATE_LIMIT_ABORT_THRESHOLD}). Skipping ${queue.length} remaining eval(s).`,
-            );
-            queue.length = 0;
-          }
-          // Wait for in-flight evals to finish, but don't start new ones
-          if (inFlight.size > 0) {
-            await Promise.race(inFlight);
-            continue;
-          }
-          break;
-        }
-
         while (queue.length > 0 && inFlight.size < DEFAULT_MAX_CONCURRENCY) {
           const evalInfo = queue.shift()!;
           const promise = processOneEval(
@@ -409,11 +384,7 @@ export async function runEvalsForModel(
             allResults,
             filteredPaths.length,
             tempdir,
-          )
-            .then((wasRateLimited) => {
-              if (wasRateLimited) rateLimitCount++;
-            })
-            .finally(() => inFlight.delete(promise));
+          ).finally(() => inFlight.delete(promise));
           inFlight.add(promise);
         }
         if (inFlight.size > 0) {
@@ -478,23 +449,6 @@ export async function runEvalsForModel(
       throw new Error(reason);
     }
 
-    // If we aborted due to rate limits, fail the run so it doesn't
-    // appear on the leaderboard with partial (misleading) results.
-    if (rateLimitCount >= RATE_LIMIT_ABORT_THRESHOLD) {
-      const reason = `[rate_limit] Aborted after ${rateLimitCount} rate-limit errors`;
-      if (runId) {
-        await completeRun(runId, {
-          kind: "failed",
-          failureReason: reason,
-          durationMs: Date.now() - runStartTime,
-        });
-      }
-      console.error(
-        `Run failed: aborted after ${rateLimitCount} rate-limit errors (threshold: ${RATE_LIMIT_ABORT_THRESHOLD})`,
-      );
-      throw new RateLimitAbortError(reason);
-    }
-
     // Complete run
     if (runId) {
       const runUsage: LanguageModelUsage = {
@@ -549,10 +503,11 @@ export async function runEvalsForModel(
   }
 }
 
-const RATE_LIMIT_MAX_RETRIES = 2; // 3 total attempts
+const PROVIDER_MAX_RETRIES = 2; // 3 total attempts
 const RATE_LIMIT_RETRY_BASE_MS = 30_000; // 30s, then 60s
+const TRANSIENT_RETRY_BASE_MS = 2_000; // 2s, then 4s
 
-/** Process a single eval. Returns `true` if the failure was a rate-limit error. */
+/** Process a single eval. */
 async function processOneEval(
   model: ResolvedModel,
   modelImpl: Model | null,
@@ -562,7 +517,7 @@ async function processOneEval(
   allResults: EvalIndividualResult[],
   totalEvals: number,
   tempdir: string,
-): Promise<boolean> {
+): Promise<void> {
   const { category, name, evalPath } = evalInfo;
   const evalPathStr = `${category}/${name}`;
 
@@ -616,14 +571,20 @@ async function processOneEval(
     const result = buildEvalResult(category, name, model.name, scores, tempdir);
     allResults.push(result);
     logProgress(evalPathStr, result, allResults, totalEvals, evalStartTime);
-    return false;
+    return;
   }
 
   if (modelImpl === null) {
     throw new Error(`Model implementation missing for mode: ${executionMode}`);
   }
 
-  // Attempt to generate with retries on rate-limit errors.
+  // One session ID groups all provider attempts for this eval. OpenRouter's
+  // generation ID still identifies each individual attempt inside that group.
+  const requestSessionId = randomUUID();
+  const providerAttempts: ProviderAttempt[] = [];
+
+  // Retry provider-side failures that are expected to be transient. Model
+  // answers that contain text are still scored normally, even if malformed.
   let generateResult: {
     files: Record<string, string>;
     usage: LanguageModelUsage | undefined;
@@ -631,7 +592,8 @@ async function processOneEval(
   } | null = null;
   let lastError: unknown = null;
 
-  for (let attempt = 0; attempt <= RATE_LIMIT_MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= PROVIDER_MAX_RETRIES; attempt++) {
+    const attemptStartedAt = Date.now();
     try {
       const webTracePath = isWebResearchExperiment(process.env.EVALS_EXPERIMENT)
         ? join(
@@ -645,11 +607,32 @@ async function processOneEval(
         : undefined;
       if (webTracePath)
         logInfo(`[${evalPathStr}] Research trace: ${webTracePath}`);
-      const { files, usage, rawResponse } = await modelImpl.generate(
-        taskDescription,
-        { webTracePath },
+      const { files, usage, rawResponse, openRouterGenerationId } =
+        await modelImpl.generate(taskDescription, {
+          sessionId: requestSessionId,
+          webTracePath,
+          ...(getEvalPipeline(category, name) === "module"
+            ? { moduleOnly: true }
+            : {}),
+        });
+      providerAttempts.push({
+        attempt: attempt + 1,
+        durationMs: Date.now() - attemptStartedAt,
+        outcome: "success",
+        openRouterGenerationId,
+      });
+      logInfo(
+        `[${evalPathStr}] Provider IDs: session=${requestSessionId} generation=${openRouterGenerationId ?? "unavailable"}`,
       );
-      generateResult = { files, usage, rawResponse };
+      generateResult = {
+        files,
+        usage: attachProviderObservabilityUsage({
+          usage,
+          sessionId: requestSessionId,
+          attempts: providerAttempts,
+        }),
+        rawResponse,
+      };
       break;
     } catch (e) {
       // Infrastructure failures always abort immediately - no retry.
@@ -657,15 +640,43 @@ async function processOneEval(
 
       lastError = e;
       const errorStr = String(e);
+      const rateLimited = isRateLimitError(errorStr);
+      const transient = isTransientProviderError(e);
+      providerAttempts.push({
+        attempt: attempt + 1,
+        durationMs: Date.now() - attemptStartedAt,
+        outcome:
+          e instanceof EmptyProviderResponseError
+            ? "empty_response"
+            : rateLimited
+              ? "rate_limit"
+              : transient
+                ? "transient_error"
+                : "error",
+        openRouterGenerationId:
+          e instanceof EmptyProviderResponseError
+            ? e.openRouterGenerationId
+            : undefined,
+      });
+      logInfo(
+        `[${evalPathStr}] Provider attempt ${attempt + 1}: session=${requestSessionId} generation=${
+          e instanceof EmptyProviderResponseError
+            ? (e.openRouterGenerationId ?? "unavailable")
+            : "unavailable"
+        } outcome=${providerAttempts[providerAttempts.length - 1].outcome}`,
+      );
 
-      if (isRateLimitError(errorStr) && attempt < RATE_LIMIT_MAX_RETRIES) {
-        const delayMs = RATE_LIMIT_RETRY_BASE_MS * Math.pow(2, attempt);
+      if (transient && attempt < PROVIDER_MAX_RETRIES) {
+        const delayMs =
+          (rateLimited ? RATE_LIMIT_RETRY_BASE_MS : TRANSIENT_RETRY_BASE_MS) *
+          Math.pow(2, attempt);
         logInfo(
-          `[${evalPathStr}] Rate limited, retrying in ${delayMs / 1000}s (attempt ${attempt + 1}/${RATE_LIMIT_MAX_RETRIES})...`,
+          `[${evalPathStr}] Transient provider failure, retrying in ${delayMs / 1000}s (attempt ${attempt + 1}/${PROVIDER_MAX_RETRIES})...`,
         );
         await new Promise((r) => setTimeout(r, delayMs));
+        continue;
       }
-      // Non-rate-limit errors, or retries exhausted - fall through to error handling.
+      break;
     }
   }
 
@@ -705,13 +716,23 @@ async function processOneEval(
     );
     allResults.push(result);
     logProgress(evalPathStr, result, allResults, totalEvals, evalStartTime);
-    return false;
+    return;
   }
 
   // Generation failed after all attempts.
   const errorStr = String(lastError);
   const rateLimited = isRateLimitError(errorStr);
-  const prefix = rateLimited ? "[rate_limit] " : "";
+  const infrastructureFailure = isTransientProviderError(lastError);
+  const prefix = rateLimited
+    ? "[rate_limit] "
+    : infrastructureFailure
+      ? "[infrastructure] "
+      : "";
+  const failureUsage = attachProviderObservabilityUsage({
+    usage: undefined,
+    sessionId: requestSessionId,
+    attempts: providerAttempts,
+  });
   console.error(`[${evalPathStr}] ERROR: ${errorStr}`);
   allResults.push({
     category,
@@ -726,16 +747,15 @@ async function processOneEval(
   // Mark the eval as failed in Convex so the run can be fully completed.
   // Without this, the eval stays "pending" and isFullyCompletedRun returns
   // false, preventing the run from appearing on the leaderboard.
-  // Rate-limit failures are tagged with [rate_limit] so the leaderboard
-  // can exclude them from scoring (they reflect infrastructure limits,
-  // not model quality).
+  // Provider failures retain their labels for reliability reporting, but they
+  // still count as failed evals in the leaderboard score.
   if (evalId) {
     await completeEval(evalId, {
       kind: "failed",
       failureReason: `${prefix}error: ${errorStr}`,
       durationMs: Date.now() - evalStartTime,
       generationDurationMs: Date.now() - evalStartTime,
-      usage: undefined,
+      usage: failureUsage,
     });
   }
 
@@ -747,7 +767,7 @@ async function processOneEval(
     evalStartTime,
   );
 
-  return rateLimited;
+  return;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -762,6 +782,25 @@ function isRateLimitError(errorStr: string): boolean {
     lower.includes("quota") ||
     lower.includes("429") ||
     lower.includes("throttl")
+  );
+}
+
+/** Detect empty/capacity/network failures that are safe to retry. */
+function isTransientProviderError(error: unknown): boolean {
+  if (error instanceof EmptyProviderResponseError) return true;
+  const lower = String(error).toLowerCase();
+  return (
+    isRateLimitError(lower) ||
+    lower.includes("at capacity") ||
+    lower.includes("high demand") ||
+    lower.includes("temporarily unavailable") ||
+    lower.includes("service unavailable") ||
+    lower.includes("overloaded") ||
+    lower.includes("timeout") ||
+    lower.includes("timed out") ||
+    lower.includes("econnreset") ||
+    lower.includes("connection reset") ||
+    /\b50[234]\b/.test(lower)
   );
 }
 
@@ -899,12 +938,9 @@ const isMain =
 
 if (isMain) {
   main().catch((e) => {
-    // InfrastructureError and RateLimitAbortError already print their message
-    // before throwing, so skip the double-print here.
-    if (
-      !(e instanceof InfrastructureError) &&
-      !(e instanceof RateLimitAbortError)
-    ) {
+    // InfrastructureError already prints its message before throwing, so skip
+    // the double-print here.
+    if (!(e instanceof InfrastructureError)) {
       console.error(e);
     }
     process.exit(1);

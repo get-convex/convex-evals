@@ -185,7 +185,7 @@ export const recomputeModelScores = internalMutation({
       run: Doc<"runs">;
       evals: Doc<"evals">[];
       scores: ReturnType<typeof computeRunScores>;
-      durationMs: number;
+      durationMs: number | null;
       costUsd: number | null;
     };
 
@@ -199,7 +199,6 @@ export const recomputeModelScores = internalMutation({
         .collect();
       if (!isFullyCompletedRun(run, evals)) continue;
       const durationMs = computeRunDurationMs(evals);
-      if (durationMs === null || durationMs <= 0) continue;
       scoredRuns.push({
         run,
         evals,
@@ -229,8 +228,19 @@ export const recomputeModelScores = internalMutation({
     const latest = scoredRuns[0];
     const { mean: totalScore, stdDev: totalScoreErrorBar } =
       computeMeanAndStdDev(scoredRuns.map((sr) => sr.scores.totalScore));
-    const { mean: averageRunDurationMs, stdDev: averageRunDurationMsErrorBar } =
-      computeMeanAndStdDev(scoredRuns.map((sr) => sr.durationMs));
+    const availableDurations = scoredRuns
+      .map((sr) => sr.durationMs)
+      .filter(
+        (duration): duration is number => duration !== null && duration > 0,
+      );
+    const { mean: durationMean, stdDev: durationStdDev } =
+      computeMeanAndStdDev(availableDurations);
+    // These fields predate nullable timing. A zero here means there were no
+    // successful evals to time, not that failed requests completed instantly.
+    const averageRunDurationMs =
+      availableDurations.length > 0 ? durationMean : 0;
+    const averageRunDurationMsErrorBar =
+      availableDurations.length > 0 ? durationStdDev : 0;
 
     const availableCosts = scoredRuns
       .map((sr) => sr.costUsd)

@@ -326,20 +326,6 @@ async function filterRunnableModelsSequentially(
       continue;
     }
 
-    if (resolved.model.apiKind === "cursor-sdk") {
-      if (process.env.CURSOR_API_KEY) {
-        logSuccess(
-          `[periodic] [preflight] keeping ${model}: Cursor SDK key is configured (${sources.join(", ") || "unknown source"})`,
-        );
-        runnableModels.push(model);
-      } else {
-        logError(
-          `[periodic] [preflight] skipping ${model}: CURSOR_API_KEY not set`,
-        );
-      }
-      continue;
-    }
-
     const result = await preflightWithRetries(resolved.model, openRouterApiKey);
     if (result.success) {
       logSuccess(

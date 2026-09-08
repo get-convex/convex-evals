@@ -9,7 +9,6 @@ export default tseslint.config(
       "evals/**/grader.test.ts",
       "scripts/**",
       "guidelines/**",
-      "runner/models/cursorSdkGenerate.mjs",
     ],
   },
   tseslint.configs.recommendedTypeChecked,

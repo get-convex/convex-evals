@@ -25,8 +25,11 @@ describe("ALL_MODELS", () => {
     expect(new Set(ALL_MODELS).size).toBe(ALL_MODELS.length);
   });
 
+  it("does not include Cursor Composer", () => {
+    expect(ALL_MODELS).not.toContain("cursor/composer-2.5");
+  });
+
   it("contains the current curated models", () => {
-    expect(ALL_MODELS).toContain("cursor/composer-2.5");
     expect(ALL_MODELS).toContain("anthropic/claude-sonnet-5");
     expect(ALL_MODELS).toContain("anthropic/claude-opus-5");
     expect(ALL_MODELS).toContain("anthropic/claude-opus-4.8");
@@ -36,6 +39,7 @@ describe("ALL_MODELS", () => {
     expect(ALL_MODELS).toContain("openai/gpt-5.6-terra");
     expect(ALL_MODELS).toContain("openai/gpt-5.6-luna");
     expect(ALL_MODELS).toContain("deepseek/deepseek-v4-pro");
+    expect(ALL_MODELS).toContain("z-ai/glm-5.3-flash");
     expect(ALL_MODELS).toContain("moonshotai/kimi-k3");
     expect(ALL_MODELS).toContain("poolside/laguna-s-2.1");
     expect(ALL_MODELS).toContain("x-ai/grok-4.6");

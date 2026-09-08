@@ -1,25 +1,32 @@
-Build a backend for managing articles, defining every application field's validator exactly once.
+Create a small module of reusable Convex validators in `validators.ts`.
 
-Define a single base validator `articleFieldsValidator` in
-`convex/validators.ts` describing the fields stored in the `articles` table:
+Start with this exported base validator and keep it unchanged:
 
-- `title: string`
-- `body: string`
-- `slug: string` (computed by the server from the title; never supplied by clients)
+```ts
+import { v } from "convex/values";
 
-Use `articleFieldsValidator` as the `articles` table validator in
-`convex/schema.ts`. Derive ALL of the following from that validator, the schema,
-or validators derived from them, without re-declaring a field's validator:
+export const profileValidator = v.object({
+  name: v.string(),
+  email: v.string(),
+  internalNote: v.optional(v.string()),
+});
+```
 
-1. `createArticle`'s arguments: `{ title, body }` - no `slug`
-2. `updateArticle`'s arguments: `{ articleId: Id<"articles">, title?, body? }` - the mutable fields made optional, plus the ID
-3. `getArticle`'s return validator: the complete stored article document, including its `_id` and `_creationTime`, plus `excerpt: string` (the first 20 characters of the body; computed in the query and never stored)
+Derive and export these four object validators from `profileValidator`:
 
-Create these functions in `convex/index.ts`:
-- A mutation `createArticle` that takes `{ title: string, body: string }`, computes `slug` by lowercasing the title and replacing spaces with dashes, inserts the article, and returns its ID (`Id<"articles">`)
-- A mutation `updateArticle` that takes `{ articleId: Id<"articles">, title?: string, body?: string }`, patches only the provided fields, recomputes `slug` when the title changes, and returns null
-- A query `getArticle` that takes `{ articleId: Id<"articles"> }`, and returns the full article document plus `excerpt` (declare this return validator - it is part of what this task tests)
+1. `partialProfileValidator`: the same three fields, all optional.
+2. `publicProfileValidator`: only the required `name` field.
+3. `profileInputValidator`: all base fields except `internalNote`.
+4. `identifiedProfileValidator`: all base fields plus a required string field
+   named `externalId`.
 
-Use the derived validators directly in the schema definition and function
-registrations. Derive the complete stored-document validator from the schema;
-do not declare `_id` or `_creationTime` validators yourself.
+Preserve the original field types and, except in the first transformation,
+their original optionality. Do not add any other fields.
+
+Use Convex's built-in object-validator composition API. Derive each result
+from the base or another validator derived from it. Do not redeclare the
+existing field validators or construct replacement object validators by hand.
+
+Create only `validators.ts` and `package.json`, with `convex` pinned to
+`1.44.0`. Keep all code in this one module and import only from
+`convex/values`. No schema or backend functions are needed.

@@ -122,6 +122,7 @@ export async function generateWithWebResearch({
   prompt,
   maxOutputTokens,
   apiKey,
+  sessionId,
   tracePath,
   responsesApi = false,
   fetch: fetchImpl = globalThis.fetch,
@@ -132,6 +133,7 @@ export async function generateWithWebResearch({
   prompt: string;
   maxOutputTokens: number;
   apiKey: string;
+  sessionId?: string;
   tracePath?: string;
   responsesApi?: boolean;
   fetch?: FetchFunction;
@@ -314,9 +316,14 @@ export async function generateWithWebResearch({
           }),
         );
       // Do not reuse transport length/encoding headers for the rewritten stream.
+      const responseHeaders = new Headers({
+        "Content-Type": "text/event-stream",
+      });
+      const generationId = response.headers.get("x-generation-id");
+      if (generationId) responseHeaders.set("x-generation-id", generationId);
       return new Response(body, {
         status: response.status,
-        headers: { "Content-Type": "text/event-stream" },
+        headers: responseHeaders,
       });
     },
     { preconnect: fetchImpl.preconnect },
@@ -332,6 +339,7 @@ export async function generateWithWebResearch({
       prompt,
       maxOutputTokens,
       maxRetries: 5,
+      headers: sessionId ? { "x-session-id": sessionId } : undefined,
       abortSignal: signal,
       providerOptions: responsesApi
         ? { openai: { reasoningEffort: "medium" } }
@@ -350,10 +358,11 @@ export async function generateWithWebResearch({
         "OpenRouter web generation ended before completion.",
       );
     }
-    const [text, usage, finishReason] = await Promise.all([
+    const [text, usage, finishReason, response] = await Promise.all([
       result.text,
       result.usage,
       result.finishReason,
+      result.response,
     ]);
     if (finishReason === "error") {
       throw new InfrastructureError("OpenRouter web generation failed.");
@@ -367,7 +376,7 @@ export async function generateWithWebResearch({
     };
     trace.usage = reportedUsage;
     trace.status = "completed";
-    return { text, usage: reportedUsage, trace, timeToFirstTokenMs };
+    return { text, usage: reportedUsage, trace, timeToFirstTokenMs, response };
   } catch (error) {
     trace.status = "failed";
     trace.error = (

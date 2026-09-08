@@ -200,6 +200,16 @@ Each eval directory contains:
 - `answer/` - the human-curated reference solution
 - `grader.test.ts` - Vitest tests that score the model's output
 
+The default pipeline installs, deploys, typechecks, lints, and tests a backend.
+An optional `eval.json` can select another pipeline:
+
+- `{"pipeline":"static"}` runs a grader directly on raw files, for component
+  selection evals that deliberately tolerate syntax and stale API errors.
+- `{"pipeline":"module"}` installs dependencies and runs a grader without a
+  backend. The grader must typecheck and execute the module against the task's
+  SDK version. Module prompts follow the task's file list and dependency pins
+  instead of the default backend scaffolding instructions.
+
 ### Common eval types
 
 - **Data modeling** - table relationships, index design, schema validation

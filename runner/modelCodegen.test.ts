@@ -2,11 +2,56 @@ import { describe, it, expect } from "bun:test";
 import type { LanguageModelUsage } from "ai";
 import {
   attachTimeToFirstTokenUsage,
+  attachProviderObservabilityUsage,
   computeCostFromUsageAndPricing,
   normalizeUsageForScoring,
   parseMarkdownResponse,
+  extractOpenRouterGenerationId,
   renderPrompt,
 } from "./models/modelCodegen.js";
+
+describe("provider observability", () => {
+  it("extracts OpenRouter's generation ID case-insensitively", () => {
+    expect(
+      extractOpenRouterGenerationId({
+        id: "body-id",
+        headers: { "X-Generation-Id": "gen-header" },
+      }),
+    ).toBe("gen-header");
+    expect(extractOpenRouterGenerationId({ id: "gen-body" })).toBe("gen-body");
+  });
+
+  it("stores the session, generation IDs, and retry attempts in usage.raw", () => {
+    const usage = attachProviderObservabilityUsage({
+      usage: undefined,
+      sessionId: "session-123",
+      attempts: [
+        {
+          attempt: 1,
+          durationMs: 400,
+          outcome: "empty_response",
+          openRouterGenerationId: "gen-1",
+        },
+        {
+          attempt: 2,
+          durationMs: 900,
+          outcome: "success",
+          openRouterGenerationId: "gen-2",
+        },
+      ],
+    });
+
+    expect(usage.raw).toMatchObject({
+      requestSessionId: "session-123",
+      openRouterGenerationId: "gen-2",
+      openRouterGenerationIds: ["gen-1", "gen-2"],
+      providerAttempts: [
+        { attempt: 1, outcome: "empty_response" },
+        { attempt: 2, outcome: "success" },
+      ],
+    });
+  });
+});
 
 describe("parseMarkdownResponse", () => {
   it("extracts files from a well-formed markdown response", () => {
@@ -252,6 +297,22 @@ describe("renderPrompt", () => {
         delete process.env.CUSTOM_GUIDELINES_PATH;
       else process.env.CUSTOM_GUIDELINES_PATH = previousGuidelines;
     }
+  });
+
+  it("lets module tasks specify files and versions without backend defaults", () => {
+    const prompt = renderPrompt(
+      "Create validators.ts with Convex 1.44.0",
+      true,
+    );
+    expect(prompt).toContain("generate a TypeScript module");
+    expect(prompt).toContain("## validators.ts");
+    expect(prompt).toContain(
+      "Use the dependency versions specified in the task description",
+    );
+    expect(prompt).not.toContain(
+      "Always start with `package.json` and `tsconfig.json` files",
+    );
+    expect(prompt).not.toContain('- Use Convex version "^1.44.0"');
   });
 
   it("includes task description in backtick block", () => {

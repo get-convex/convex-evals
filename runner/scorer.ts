@@ -629,8 +629,9 @@ export async function convexScorer(
   }
 
   // ── Static-pipeline evals: grade the raw files and stop ──
-  if (isStaticPipelineEval(category, name)) {
-    await runStaticTestsStep(ctx, category, name);
+  const pipeline = getEvalPipeline(category, name);
+  if (pipeline === "static") {
+    await runFileTestsStep(ctx, category, name, pipeline);
     return ctx.scores;
   }
 
@@ -649,6 +650,13 @@ export async function convexScorer(
     throw new InfrastructureError(
       `[install] ${installResult.error ?? "bun install failed"}`,
     );
+  }
+
+  // Module graders check TypeScript and execute exports against installed
+  // dependencies themselves. They need no generated server or deployment.
+  if (pipeline === "module") {
+    await runFileTestsStep(ctx, category, name, pipeline);
+    return ctx.scores;
   }
 
   // ── Steps 3-6: Deploy, typecheck, lint, test (inside backend context) ──
@@ -729,28 +737,33 @@ export async function convexScorer(
 // ── Test step (more complex than the others) ──────────────────────────
 
 /**
- * Evals may opt out of the deploy/typecheck pipeline by shipping an
- * eval.json with { "pipeline": "static" }. The grader then runs directly
- * against the generated files - used by selection evals that measure what
- * a model CHOSE, deliberately tolerant of syntax and stale-API errors.
+ * Static graders only inspect raw output (selection). Module graders run
+ * after dependency installation and own their type/runtime checks (usage).
+ * Existing evals default to the full backend pipeline.
  */
-export function isStaticPipelineEval(category: string, name: string): boolean {
+export function getEvalPipeline(
+  category: string,
+  name: string,
+): "backend" | "static" | "module" {
   const configPath = resolve(join("evals", category, name, "eval.json"));
-  if (!existsSync(configPath)) return false;
+  if (!existsSync(configPath)) return "backend";
   try {
     const parsed = JSON.parse(readFileSync(configPath, "utf-8")) as {
       pipeline?: string;
     };
-    return parsed.pipeline === "static";
+    return parsed.pipeline === "static" || parsed.pipeline === "module"
+      ? parsed.pipeline
+      : "backend";
   } catch {
-    return false;
+    return "backend";
   }
 }
 
-async function runStaticTestsStep(
+async function runFileTestsStep(
   ctx: ScoringContext,
   category: string,
   name: string,
+  pipeline: "static" | "module",
 ): Promise<void> {
   const testFile = resolve(join("evals", category, name, "grader.test.ts"));
   const env: Record<string, string> = {
@@ -763,7 +776,7 @@ async function runStaticTestsStep(
   let testCmd: string | null = null;
 
   try {
-    logInfo(`[${ctx.evalPrefix}] Running static grader`);
+    logInfo(`[${ctx.evalPrefix}] Running ${pipeline} grader`);
     const testResult = await executeVitest(env, testFile);
     testsRatio = testResult.ratio;
     vitestStdout = testResult.stdout;
