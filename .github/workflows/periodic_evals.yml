@@ -94,8 +94,15 @@ jobs:
       - name: Run evaluations
         env:
           OUTPUT_TEMPDIR: /tmp/convex-evals
-          EVALS_EXPERIMENT: ${{ matrix.experiment != 'default' && matrix.experiment || '' }}
-        run: bun run runner/index.ts
+          EVAL_CONDITION: ${{ matrix.experiment }}
+        run: |
+          # An empty experiment string is not a valid stored experiment label.
+          if [ "$EVAL_CONDITION" = "default" ]; then
+            unset EVALS_EXPERIMENT
+          else
+            export EVALS_EXPERIMENT="$EVAL_CONDITION"
+          fi
+          bun run runner/index.ts
 
       - name: Preserve web research traces
         if: ${{ always() && matrix.experiment == 'no_guidelines_with_web' }}
