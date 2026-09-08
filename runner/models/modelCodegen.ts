@@ -459,14 +459,14 @@ export class Model {
 
   async generate(
     prompt: string,
-    request: { sessionId: string },
+    request: { sessionId: string; moduleOnly?: boolean },
   ): Promise<{
     files: Record<string, string>;
     usage?: LanguageModelUsage;
     rawResponse: string;
     openRouterGenerationId?: string;
   }> {
-    const userPrompt = renderPrompt(prompt);
+    const userPrompt = renderPrompt(prompt, request.moduleOnly);
     const useWebSearch = isWebSearchEnabled();
 
     const maxTokens = getMaxOutputTokens(this.resolved);
@@ -620,15 +620,28 @@ const FILE_FORMAT_EXAMPLE = [
   "```\n...\n```",
 ].join("\n");
 
-export function renderPrompt(taskDescription: string): string {
+export function renderPrompt(
+  taskDescription: string,
+  moduleOnly = false,
+): string {
+  const artifact = moduleOnly ? "TypeScript module" : "Convex backend";
+  const fileExample = moduleOnly
+    ? [
+        "# Files",
+        "## package.json",
+        "```\n...\n```",
+        "## validators.ts",
+        "```\n...\n```",
+      ].join("\n")
+    : FILE_FORMAT_EXAMPLE;
   const sections: string[] = [
-    "Your task is to generate a Convex backend from a task description.",
+    `Your task is to generate a ${artifact} from a task description.`,
   ];
 
   sections.push(
-    `Output all files within an h1 Files section that has an h2 section for each necessary file for a Convex backend that implements the requested functionality.
+    `Output all files within an h1 Files section that has an h2 section for each necessary file for a ${artifact} that implements the requested functionality.
 For example, correct output looks like
-${FILE_FORMAT_EXAMPLE}`,
+${fileExample}`,
   );
 
   sections.push(`# General Coding Standards
@@ -641,16 +654,23 @@ ${FILE_FORMAT_EXAMPLE}`,
     sections.push(guidelinesContent);
   }
 
-  sections.push(`# File Structure
+  if (moduleOnly) {
+    sections.push(`# File Structure
+- Create only the files requested by the task description, using the exact paths specified there.
+- Use the dependency versions specified in the task description.
+- Do not add backend scaffolding or generated files.`);
+  } else {
+    sections.push(`# File Structure
 - You can write to \`package.json\`, \`tsconfig.json\`, and any files within the \`convex/\` folder. Only write additional files (e.g. \`src/\`) if explicitly requested by the task description. Do NOT add extra files that were not asked for.
 - Do NOT write to the \`convex/_generated\` folder. You can assume that \`npx convex dev\` will populate this folder.
 - It's VERY IMPORTANT to output files to the correct paths, as specified in the task description.
 - Always start with \`package.json\` and \`tsconfig.json\` files.
 - Use Convex version "^1.44.0".
 - Use Typescript version "^5.7.3".`);
+  }
 
   sections.push(
-    `Now, implement a Convex backend that satisfies the following task description:\n\`\`\`\n${taskDescription}\n\`\`\``,
+    `Now, implement a ${artifact} that satisfies the following task description:\n\`\`\`\n${taskDescription}\n\`\`\``,
   );
 
   return sections.join("\n\n") + "\n";

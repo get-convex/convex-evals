@@ -259,6 +259,22 @@ const v2 = "second";
 });
 
 describe("renderPrompt", () => {
+  it("lets module tasks specify files and versions without backend defaults", () => {
+    const prompt = renderPrompt(
+      "Create validators.ts with Convex 1.44.0",
+      true,
+    );
+    expect(prompt).toContain("generate a TypeScript module");
+    expect(prompt).toContain("## validators.ts");
+    expect(prompt).toContain(
+      "Use the dependency versions specified in the task description",
+    );
+    expect(prompt).not.toContain(
+      "Always start with `package.json` and `tsconfig.json` files",
+    );
+    expect(prompt).not.toContain('- Use Convex version "^1.44.0"');
+  });
+
   it("includes task description in backtick block", () => {
     const prompt = renderPrompt("Build a todo app");
     expect(prompt).toContain("Build a todo app");

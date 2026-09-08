@@ -40,7 +40,7 @@ import {
   attachProviderObservabilityUsage,
   type ProviderAttempt,
 } from "./models/modelCodegen.js";
-import { convexScorer, walkAnswer } from "./scorer.js";
+import { convexScorer, getEvalPipeline, walkAnswer } from "./scorer.js";
 import { InfrastructureError } from "./convexBackend.js";
 import { computeBenchmarkDefinition } from "./benchmark.js";
 import {
@@ -604,6 +604,9 @@ async function processOneEval(
       const { files, usage, rawResponse, openRouterGenerationId } =
         await modelImpl.generate(taskDescription, {
           sessionId: requestSessionId,
+          ...(getEvalPipeline(category, name) === "module"
+            ? { moduleOnly: true }
+            : {}),
         });
       providerAttempts.push({
         attempt: attempt + 1,

@@ -13,6 +13,7 @@ import {
   ensureConvexTsconfig,
   formatDeployFailure,
   getTypecheckTargets,
+  getEvalPipeline,
   isInfrastructureStepFailure,
   retryInfrastructureOperation,
   runCommandWithTimeout,
@@ -20,6 +21,26 @@ import {
   walkAnswer,
   writeFilesystem,
 } from "./scorer.js";
+
+describe("eval pipeline selection", () => {
+  it("keeps existing evals on the backend pipeline", () => {
+    expect(getEvalPipeline("000-fundamentals", "000-empty_functions")).toBe(
+      "backend",
+    );
+  });
+
+  it("keeps selection evals on the raw-file pipeline", () => {
+    expect(getEvalPipeline("007-components", "016-choose_agent_tools")).toBe(
+      "static",
+    );
+  });
+
+  it("opts validator composition into installed-module grading", () => {
+    expect(
+      getEvalPipeline("001-data_modeling", "015-validator_composition"),
+    ).toBe("module");
+  });
+});
 
 describe("deploy diagnostics", () => {
   it("preserves initial codegen diagnostics when convex dev also fails", () => {
