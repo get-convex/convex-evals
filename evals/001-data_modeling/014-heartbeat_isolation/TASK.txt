@@ -13,15 +13,22 @@ export default defineSchema({
 });
 ```
 
-You may add fields, tables, and indexes as needed. Do not remove or rename the existing users table fields or its by_email index.
+Keep the users table's fields unchanged and preserve its by_email index. Store
+heartbeat data separately in a userPresence table with these required fields:
+- userId: Id<"users">
+- lastHeartbeatMs: number
+
+You may add indexes as needed. Keeping frequent heartbeat updates separate from
+stable profile data is part of this task.
 
 Create these functions in `convex/index.ts`:
 - A mutation `recordHeartbeat` that takes `{ userId: Id<"users">, nowMs: number }` and records that the user is active at time `nowMs`.
-- A query `listOnlineUsers` that takes `{ activeWithinMs: number, nowMs: number }` and returns all users whose last heartbeat is within `nowMs - activeWithinMs`. Return shape: array of objects with `{ userId, name, email, lastHeartbeatMs }`.
+- A query `listOnlineUsers` that takes `{ activeWithinMs: number, nowMs: number }` and returns all users whose lastHeartbeatMs is greater than or equal to `nowMs - activeWithinMs`. Return shape: array of objects with `{ userId, name, email, lastHeartbeatMs }`. Result order is not specified.
 
 Requirements:
 - Return an empty array from `listOnlineUsers` when no users are online.
-- Calling `recordHeartbeat` multiple times for the same user must not create duplicate records.
+- Calling `recordHeartbeat` multiple times for the same user must update that user's existing userPresence record with the supplied timestamp, without creating duplicate records or changing another user's presence.
+- Recording heartbeats must leave the stored users documents unchanged.
 
 Generate only:
 - `package.json`

@@ -2,144 +2,222 @@ import { beforeEach, expect, test } from "vitest";
 import {
   addDocuments,
   deleteAllDocuments,
-  findTable,
   getSchema,
   listTable,
-  readOutputFile,
   responseAdminClient,
   responseClient,
 } from "../../../grader";
 import { anyApi } from "convex/server";
 
+type UserRow = {
+  _id: string;
+  name: string;
+  email: string;
+};
+
+type PresenceRow = {
+  _id: string;
+  userId: string;
+  lastHeartbeatMs: number;
+};
+
+type OnlineUser = {
+  userId: string;
+  name: string;
+  email: string;
+  lastHeartbeatMs: number;
+};
+
+type SchemaTable = {
+  tableName: string;
+  documentType: unknown;
+  indexes: { indexDescriptor: string; fields: string[] }[];
+};
+
+const profiles = [
+  { name: "Alice", email: "alice@example.com" },
+  { name: "Bob", email: "bob@example.com" },
+];
+
+async function seedUsers(
+  extraProfiles: typeof profiles = [],
+): Promise<UserRow[]> {
+  await addDocuments(responseAdminClient, "users", [
+    ...profiles,
+    ...extraProfiles,
+  ]);
+  return listTable(responseAdminClient, "users", 100);
+}
+
+async function heartbeat(userId: string, nowMs: number): Promise<void> {
+  await responseClient.mutation(anyApi.index.recordHeartbeat, {
+    userId,
+    nowMs,
+  });
+}
+
+async function presenceRows(): Promise<PresenceRow[]> {
+  return listTable(responseAdminClient, "userPresence", 100);
+}
+
+function byId<T extends { _id: string }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => a._id.localeCompare(b._id));
+}
+
 beforeEach(async () => {
   const schema = await getSchema(responseAdminClient);
-  if (schema && Array.isArray(schema.tables)) {
-    const tableNames = schema.tables.map((t: any) => t.tableName);
-    await deleteAllDocuments(responseAdminClient, tableNames);
+  const tables: SchemaTable[] = schema?.tables ?? [];
+  await deleteAllDocuments(
+    responseAdminClient,
+    tables.map((table) => table.tableName),
+  );
+});
+
+test("deployed schema preserves users and declares userPresence", async () => {
+  const schema = await getSchema(responseAdminClient);
+  const tables: SchemaTable[] = schema?.tables ?? [];
+  const users = tables.find((table) => table.tableName === "users");
+  const presence = tables.find((table) => table.tableName === "userPresence");
+
+  // Inspect the deployed validator, so aliases and composed schema declarations
+  // work and an extra heartbeat field cannot hide behind an unexpected name.
+  expect(users?.documentType).toEqual({
+    type: "object",
+    value: {
+      name: { fieldType: { type: "string" }, optional: false },
+      email: { fieldType: { type: "string" }, optional: false },
+    },
+  });
+  const emailIndex = users?.indexes.find(
+    (index) => index.indexDescriptor === "by_email",
+  );
+  // The backend appends _creationTime to each index as a tie-breaker.
+  expect(
+    emailIndex?.fields.filter((field) => field !== "_creationTime"),
+  ).toEqual(["email"]);
+  expect(presence?.documentType).toMatchObject({
+    type: "object",
+    value: {
+      userId: {
+        fieldType: { type: "id", tableName: "users" },
+        optional: false,
+      },
+      lastHeartbeatMs: { fieldType: { type: "number" }, optional: false },
+    },
+  });
+});
+
+test("listOnlineUsers returns empty when there are no heartbeats", async () => {
+  const args = { activeWithinMs: 60_000, nowMs: 1_000_000 };
+  expect(
+    await responseClient.query(anyApi.index.listOnlineUsers, args),
+  ).toEqual([]);
+
+  await seedUsers();
+  expect(
+    await responseClient.query(anyApi.index.listOnlineUsers, args),
+  ).toEqual([]);
+});
+
+test("heartbeats update the same presence record independently for each user", async () => {
+  const users = await seedUsers();
+  const alice = users.find((user) => user.email === profiles[0].email)!;
+  const bob = users.find((user) => user.email === profiles[1].email)!;
+
+  await heartbeat(alice._id, 1_000);
+  const initialRows = await presenceRows();
+  expect(initialRows).toHaveLength(1);
+  expect(initialRows[0]).toMatchObject({
+    userId: alice._id,
+    lastHeartbeatMs: 1_000,
+  });
+  const alicePresenceId = initialRows[0]._id;
+
+  await heartbeat(bob._id, 1_500);
+  const twoRows = await presenceRows();
+  expect(twoRows).toHaveLength(2);
+  expect(twoRows.find((row) => row.userId === alice._id)).toMatchObject({
+    _id: alicePresenceId,
+    lastHeartbeatMs: 1_000,
+  });
+  const bobPresence = twoRows.find((row) => row.userId === bob._id)!;
+  expect(bobPresence).toMatchObject({ lastHeartbeatMs: 1_500 });
+
+  await heartbeat(alice._id, 2_000);
+  await heartbeat(alice._id, 2_000);
+  const afterAlice = await presenceRows();
+  expect(afterAlice).toHaveLength(2);
+  expect(afterAlice.find((row) => row.userId === alice._id)).toMatchObject({
+    _id: alicePresenceId,
+    lastHeartbeatMs: 2_000,
+  });
+  expect(afterAlice.find((row) => row.userId === bob._id)).toEqual(bobPresence);
+
+  await heartbeat(bob._id, 2_500);
+  const afterBob = await presenceRows();
+  expect(afterBob).toHaveLength(2);
+  expect(afterBob.find((row) => row.userId === bob._id)).toMatchObject({
+    _id: bobPresence._id,
+    lastHeartbeatMs: 2_500,
+  });
+  expect(afterBob.find((row) => row.userId === alice._id)).toEqual(
+    afterAlice.find((row) => row.userId === alice._id),
+  );
+});
+
+test("recording heartbeats leaves every stored user document unchanged", async () => {
+  const users = await seedUsers();
+  // Keep complete documents, including IDs and creation times. Comparing only
+  // name/email would miss an added timestamp or a deleted/recreated profile.
+  const before = byId(users);
+  for (const [user, nowMs] of [
+    [users[0], 1_000],
+    [users[0], 2_000],
+    [users[1], 3_000],
+  ] as const) {
+    await heartbeat(user._id, nowMs);
+    expect(byId(await listTable(responseAdminClient, "users", 100))).toEqual(
+      before,
+    );
   }
 });
 
-test("listOnlineUsers returns empty when no users are online", async () => {
-  const result = await responseClient.query(anyApi.index.listOnlineUsers, {
-    activeWithinMs: 60_000,
-    nowMs: 1_000_000,
-  });
-
-  expect(result).toEqual([]);
-});
-
-test("recordHeartbeat creates then updates a single record per user", async () => {
-  await addDocuments(responseAdminClient, "users", [
-    { name: "Alice", email: "alice@example.com" },
-  ]);
-  const [alice] = await listTable(responseAdminClient, "users", 10);
-
-  await responseClient.mutation(anyApi.index.recordHeartbeat, {
-    userId: alice._id,
-    nowMs: 1_000,
-  });
-  await responseClient.mutation(anyApi.index.recordHeartbeat, {
-    userId: alice._id,
-    nowMs: 2_000,
-  });
-
-  const schema = await getSchema(responseAdminClient);
-  const tables = (schema?.tables ?? []) as { tableName: string }[];
-  const presenceTable = tables.find(
-    (t) => !t.tableName.startsWith("_") && t.tableName !== "users",
-  );
-  expect(
-    presenceTable,
-    "Expected a separate presence table besides users",
-  ).toBeTruthy();
-
-  const presenceRows = await listTable(
-    responseAdminClient,
-    presenceTable!.tableName,
-    100,
-  );
-  const aliceRows = presenceRows.filter((r) => r.userId === alice._id);
-  expect(aliceRows).toHaveLength(1);
-});
-
-test("listOnlineUsers filters by heartbeat threshold", async () => {
-  await addDocuments(responseAdminClient, "users", [
-    { name: "Alice", email: "alice@example.com" },
-    { name: "Bob", email: "bob@example.com" },
+test("listOnlineUsers returns complete profiles at the inclusive heartbeat threshold", async () => {
+  const users = await seedUsers([
     { name: "Cara", email: "cara@example.com" },
+    { name: "Dee", email: "dee@example.com" },
   ]);
-  const users = await listTable(responseAdminClient, "users", 10);
-  const alice = users.find((u) => u.email === "alice@example.com");
-  const bob = users.find((u) => u.email === "bob@example.com");
-  const cara = users.find((u) => u.email === "cara@example.com");
-
-  await responseClient.mutation(anyApi.index.recordHeartbeat, {
-    userId: alice!._id,
-    nowMs: 9_950,
-  });
-  await responseClient.mutation(anyApi.index.recordHeartbeat, {
-    userId: bob!._id,
-    nowMs: 8_000,
-  });
-  await responseClient.mutation(anyApi.index.recordHeartbeat, {
-    userId: cara!._id,
-    nowMs: 9_990,
-  });
-
-  const result = (await responseClient.query(anyApi.index.listOnlineUsers, {
-    activeWithinMs: 200,
-    nowMs: 10_000,
-  })) as any[];
-
-  expect(result).toHaveLength(2);
-  const names = result.map((r: any) => r.name).sort();
-  expect(names).toEqual(["Alice", "Cara"]);
-});
-
-test("schema uses a separate table for presence instead of adding fields to users", async () => {
-  const schema = await getSchema(responseAdminClient);
-  const tables = (schema?.tables ?? []) as { tableName: string }[];
-  const userTables = tables.filter((t) => !t.tableName.startsWith("_"));
-
-  expect(
-    userTables.length,
-    "Expected at least 2 tables (users + presence). " +
-      "Storing heartbeat fields directly on the users table causes unnecessary " +
-      "write contention on profile data from high-churn heartbeat updates.",
-  ).toBeGreaterThanOrEqual(2);
-
-  const usersTable = findTable(schema, "users");
-  expect(usersTable).toBeTruthy();
-});
-
-test("generated schema does not put heartbeat fields on users table", () => {
-  const sourceText = readOutputFile(
-    "001-data_modeling",
-    "014-heartbeat_isolation",
-    "convex/schema.ts",
-  );
-
-  const usersMatch = sourceText.match(
-    /users:\s*defineTable\(\{[\s\S]*?\}\)\s*(?:\.index\([^)]*\))*/,
-  );
-  const usersSection = usersMatch ? usersMatch[0] : "";
-  expect(usersSection.length).toBeGreaterThan(0);
-
-  const forbiddenFields = [
-    "lastHeartbeat",
-    "lastHeartbeatMs",
-    "isOnline",
-    "lastSeen",
-    "lastSeenAt",
-    "heartbeat",
-    "lastActive",
-    "lastActiveMs",
+  const alice = users.find((user) => user.email === profiles[0].email)!;
+  const bob = users.find((user) => user.email === profiles[1].email)!;
+  const cara = users.find((user) => user.email === "cara@example.com")!;
+  const beats = [
+    { user: alice, time: 9_800 },
+    { user: bob, time: 9_799 },
+    { user: cara, time: 9_990 },
   ];
+  for (const { user, time } of beats) await heartbeat(user._id, time);
 
-  for (const fieldName of forbiddenFields) {
+  // Check both sides of the cutoff, a second window, and expiry. No timing
+  // assumptions or sleeps are needed because the caller supplies the clock.
+  for (const args of [
+    { activeWithinMs: 200, nowMs: 10_000 },
+    { activeWithinMs: 500, nowMs: 10_000 },
+    { activeWithinMs: 200, nowMs: 10_200 },
+  ]) {
+    const result: OnlineUser[] = await responseClient.query(
+      anyApi.index.listOnlineUsers,
+      args,
+    );
+    const expected = beats
+      .filter(({ time }) => time >= args.nowMs - args.activeWithinMs)
+      .map(({ user, time }) => ({
+        userId: user._id,
+        name: user.name,
+        email: user.email,
+        lastHeartbeatMs: time,
+      }));
     expect(
-      new RegExp(`\\b${fieldName}\\b\\s*:`).test(usersSection),
-      `users table should not contain heartbeat field "${fieldName}"`,
-    ).toBe(false);
+      [...result].sort((a, b) => a.userId.localeCompare(b.userId)),
+    ).toEqual(expected.sort((a, b) => a.userId.localeCompare(b.userId)));
   }
 });
