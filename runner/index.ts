@@ -42,6 +42,11 @@ import {
 } from "./models/modelCodegen.js";
 import { convexScorer, getEvalPipeline, walkAnswer } from "./scorer.js";
 import { InfrastructureError } from "./convexBackend.js";
+import {
+  isWebResearchExperiment,
+  validateExperimentConfiguration,
+} from "./experiments.js";
+import { requireWebResearchApiKey } from "./models/webResearchTools.js";
 import { computeBenchmarkDefinition } from "./benchmark.js";
 import {
   ensureModelFromSlug,
@@ -152,6 +157,8 @@ const SCORE_FAILURE_REASONS: Record<string, string> = {
 // ── Main (CLI entrypoint) ─────────────────────────────────────────────
 
 async function main(): Promise<void> {
+  validateExperimentConfiguration(process.env.EVALS_EXPERIMENT);
+  validateWebResearchRun(process.env.EVALS_EXPERIMENT);
   const executionMode = parseExecutionMode(process.env.EVALS_EXECUTION_MODE);
   const modelNames = process.env.MODELS
     ? process.env.MODELS.split(",")
@@ -229,6 +236,18 @@ export async function runEvalsForModel(
     openRouterFirstSeenAt?: number;
   },
 ): Promise<EvalIndividualResult[]> {
+  validateExperimentConfiguration(config.experiment);
+  validateWebResearchRun(config.experiment);
+  if (isWebResearchExperiment(config.experiment)) {
+    if (config.customGuidelinesPath)
+      throw new Error(
+        "no_guidelines_with_web does not allow custom guidelines.",
+      );
+    if (config.executionMode === "answer")
+      throw new Error(
+        "no_guidelines_with_web requires model generation, not answer validation.",
+      );
+  }
   const {
     model,
     provider = "openrouter",
@@ -446,9 +465,6 @@ export async function runEvalsForModel(
         },
         totalTokens: 0,
       };
-      let trackedWebSearchEvals = 0;
-      let evalsUsingWebSearch = 0;
-      let webSearchRequestCount = 0;
       for (const r of allResults) {
         if (r.usage) {
           if (typeof r.usage.inputTokens === "number")
@@ -460,29 +476,7 @@ export async function runEvalsForModel(
           if (typeof r.usage.totalTokens === "number")
             runUsage.totalTokens =
               (runUsage.totalTokens ?? 0) + r.usage.totalTokens;
-
-          const raw = r.usage.raw;
-          const searchCalls =
-            raw && typeof raw === "object"
-              ? (raw as Record<string, unknown>).webSearchRequestCount
-              : undefined;
-          if (typeof searchCalls === "number") {
-            trackedWebSearchEvals++;
-            webSearchRequestCount += searchCalls;
-            if (searchCalls > 0) evalsUsingWebSearch++;
-          }
         }
-      }
-
-      if (trackedWebSearchEvals > 0) {
-        runUsage.raw = {
-          webSearchRequestCount,
-          evalsUsingWebSearch,
-          trackedWebSearchEvals,
-        };
-        logInfo(
-          `[web_search] ${evalsUsingWebSearch}/${trackedWebSearchEvals} evals used search (${webSearchRequestCount} total requests)`,
-        );
       }
 
       await completeRun(runId, {
@@ -601,9 +595,22 @@ async function processOneEval(
   for (let attempt = 0; attempt <= PROVIDER_MAX_RETRIES; attempt++) {
     const attemptStartedAt = Date.now();
     try {
+      const webTracePath = isWebResearchExperiment(process.env.EVALS_EXPERIMENT)
+        ? join(
+            tempdir,
+            "research",
+            model.name,
+            category,
+            name,
+            `attempt-${attempt + 1}.json`,
+          )
+        : undefined;
+      if (webTracePath)
+        logInfo(`[${evalPathStr}] Research trace: ${webTracePath}`);
       const { files, usage, rawResponse, openRouterGenerationId } =
         await modelImpl.generate(taskDescription, {
           sessionId: requestSessionId,
+          webTracePath,
           ...(getEvalPipeline(category, name) === "module"
             ? { moduleOnly: true }
             : {}),
@@ -822,6 +829,11 @@ function parseExecutionMode(value: string | undefined): ExecutionMode {
   if (value === "answer") return "answer";
   console.error(`Invalid EVALS_EXECUTION_MODE: ${value}`);
   process.exit(1);
+}
+
+function validateWebResearchRun(experiment: string | undefined): void {
+  if (!isWebResearchExperiment(experiment)) return;
+  requireWebResearchApiKey();
 }
 
 function readExpectedFiles(evalPath: string): Record<string, string> {

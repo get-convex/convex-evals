@@ -116,6 +116,11 @@ OUTPUT_TEMPDIR=/tmp/convex-codegen-evals bun run runner/index.ts
 
 ### Environment variables
 
+`no_guidelines_with_web` provides common web tools in our harness. It currently
+pins OpenRouter search and fetch to Exa using the existing `OPENROUTER_API_KEY`.
+Use `DISABLE_CONVEX_REPORTING=1` until the updated backend is deployed. See the
+[experiment guide](docs/no-guidelines-with-web.md) for its limits and traces.
+
 | Variable            | Description                                             |
 | ------------------- | ------------------------------------------------------- |
 | `MODELS`            | Comma-separated list of models to run                   |

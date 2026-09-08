@@ -14,7 +14,7 @@
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import {
   backfillCompletedRunsToBenchmark,
   consolidateCompletedBenchmarkRuns,
@@ -38,7 +38,7 @@ async function createCompletedRun(
   opts: {
     model: string;
     formattedName?: string;
-    experiment?: "no_guidelines";
+    experiment?: Doc<"runs">["experiment"];
     benchmarkVersion?: string;
     evals: Array<{
       category: string;
@@ -391,7 +391,13 @@ describe("recomputeModelScores", () => {
     expect(results[0].averageRunCostUsdErrorBar).toBeCloseTo(1.0);
   });
 
-  it("keeps separate rows per experiment", async () => {
+  it.each([
+    "no_guidelines",
+    "no_guidelines_with_web",
+    "web_search",
+    "web_search_no_guidelines",
+    "agents_md",
+  ] as const)("keeps separate score rows for %s", async (experiment) => {
     const t = convexTest(schema, modules);
 
     await createCompletedRun(t, {
@@ -400,7 +406,7 @@ describe("recomputeModelScores", () => {
     });
     await createCompletedRun(t, {
       model: "model-a",
-      experiment: "no_guidelines",
+      experiment,
       evals: [{ category: "cat1", name: "eval1", passed: false }],
     });
 
@@ -409,7 +415,7 @@ describe("recomputeModelScores", () => {
     expect(defaultRows[0].totalScore).toBe(1.0);
 
     const expRows = await t.query(api.runs.leaderboardScores, {
-      experiment: "no_guidelines",
+      experiment,
     });
     expect(expRows).toHaveLength(1);
     expect(expRows[0].totalScore).toBe(0.0);

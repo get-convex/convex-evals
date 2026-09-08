@@ -7,6 +7,18 @@
 - You should `bun run typecheck` regularly to ensure that any changes have not broken the types
 - Run `bun run test` to run all test suites (runner unit tests + evalScores backend tests). Do this after making changes to the runner or evalScores backend.
 
+## Web experiment direction
+
+`no_guidelines_with_web` is the sole web experiment, using OpenRouter search
+and page-fetch tools with both engines pinned to Exa in our harness. See `docs/no-guidelines-with-web.md` for its
+limits, tracing, and local run command. It uses the existing
+`OPENROUTER_API_KEY`; no separate search key is needed. Use
+`DISABLE_CONVEX_REPORTING=1` until the target deployment supports the new schema
+literal; local reporting is permitted only to the development deployment.
+The earlier provider-search and native coding-harness experiments are retired;
+do not resume them from old handoffs. Historical experiment literals in the
+backend are storage compatibility only.
+
 ## API Keys & Environment
 
 All API keys (OpenAI, Anthropic, Google, etc.) are stored in the root `.env` file and loaded automatically via `dotenv`. You do not need to set them manually — they are already configured for local development.

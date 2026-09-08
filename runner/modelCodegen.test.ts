@@ -3,7 +3,6 @@ import type { LanguageModelUsage } from "ai";
 import {
   attachTimeToFirstTokenUsage,
   attachProviderObservabilityUsage,
-  attachWebSearchUsage,
   computeCostFromUsageAndPricing,
   normalizeUsageForScoring,
   parseMarkdownResponse,
@@ -112,7 +111,7 @@ export const list = query({ args: {}, handler: async (ctx) => ctx.db.query("task
     expect(files["convex/tasks.ts"]).toBeDefined();
   });
 
-  it("recovers a Files heading concatenated after web search commentary", () => {
+  it("recovers a Files heading concatenated after commentary", () => {
     const response = `I'll look up the current component API first.The docs have what I need. I'll write the backend now.# Files
 ## package.json
 
@@ -259,6 +258,47 @@ const v2 = "second";
 });
 
 describe("renderPrompt", () => {
+  it("uses exactly the no_guidelines prompt when common web tools are enabled", () => {
+    const previous = process.env.EVALS_EXPERIMENT;
+    const previousGuidelines = process.env.CUSTOM_GUIDELINES_PATH;
+    delete process.env.CUSTOM_GUIDELINES_PATH;
+    try {
+      process.env.EVALS_EXPERIMENT = "no_guidelines";
+      const baseline = renderPrompt("Build a todo app");
+      process.env.EVALS_EXPERIMENT = "no_guidelines_with_web";
+      expect(renderPrompt("Build a todo app")).toBe(baseline);
+      process.env.CUSTOM_GUIDELINES_PATH = "any-path.md";
+      expect(() => renderPrompt("Build a todo app")).toThrow(
+        "does not allow CUSTOM_GUIDELINES_PATH",
+      );
+    } finally {
+      if (previous === undefined) delete process.env.EVALS_EXPERIMENT;
+      else process.env.EVALS_EXPERIMENT = previous;
+      if (previousGuidelines === undefined)
+        delete process.env.CUSTOM_GUIDELINES_PATH;
+      else process.env.CUSTOM_GUIDELINES_PATH = previousGuidelines;
+    }
+  });
+
+  it("still omits guidelines without changing the task in no_guidelines", () => {
+    const previous = process.env.EVALS_EXPERIMENT;
+    const previousGuidelines = process.env.CUSTOM_GUIDELINES_PATH;
+    process.env.EVALS_EXPERIMENT = "no_guidelines";
+    delete process.env.CUSTOM_GUIDELINES_PATH;
+    try {
+      const prompt = renderPrompt("Build a todo app");
+      expect(prompt).not.toContain("# Convex guidelines");
+      expect(prompt).toContain("Build a todo app");
+      expect(prompt).toContain("# File Structure");
+    } finally {
+      if (previous === undefined) delete process.env.EVALS_EXPERIMENT;
+      else process.env.EVALS_EXPERIMENT = previous;
+      if (previousGuidelines === undefined)
+        delete process.env.CUSTOM_GUIDELINES_PATH;
+      else process.env.CUSTOM_GUIDELINES_PATH = previousGuidelines;
+    }
+  });
+
   it("lets module tasks specify files and versions without backend defaults", () => {
     const prompt = renderPrompt(
       "Create validators.ts with Convex 1.44.0",
@@ -452,77 +492,6 @@ describe("attachTimeToFirstTokenUsage", () => {
       cachedInputTokens: undefined,
       raw: {
         timeToFirstTokenMs: 789,
-      },
-    });
-  });
-});
-
-describe("attachWebSearchUsage", () => {
-  it("keeps missing provider telemetry distinguishable from zero requests", () => {
-    const updated = attachWebSearchUsage({
-      usage: undefined,
-    });
-
-    expect(updated.raw).toEqual({});
-  });
-
-  it("records a provider-reported zero when the model did not search", () => {
-    const updated = attachWebSearchUsage({
-      usage: {
-        inputTokens: 10,
-        inputTokenDetails: {
-          noCacheTokens: undefined,
-          cacheReadTokens: undefined,
-          cacheWriteTokens: undefined,
-        },
-        outputTokens: 20,
-        outputTokenDetails: {
-          textTokens: undefined,
-          reasoningTokens: undefined,
-        },
-        totalTokens: 30,
-        raw: {
-          server_tool_use_details: { web_search_requests: 0 },
-        },
-      },
-    });
-
-    expect(updated.raw).toEqual({
-      server_tool_use_details: { web_search_requests: 0 },
-      webSearchRequestCount: 0,
-    });
-  });
-
-  it("preserves provider usage metadata while recording search requests", () => {
-    const usage = {
-      inputTokens: 10,
-      inputTokenDetails: {
-        noCacheTokens: undefined,
-        cacheReadTokens: undefined,
-        cacheWriteTokens: undefined,
-      },
-      outputTokens: 20,
-      outputTokenDetails: {
-        textTokens: undefined,
-        reasoningTokens: undefined,
-      },
-      totalTokens: 30,
-      raw: {
-        cost: 0.12,
-        server_tool_use: { web_search_requests: 2 },
-      },
-    } satisfies LanguageModelUsage;
-
-    const updated = attachWebSearchUsage({
-      usage,
-    });
-
-    expect(updated).toEqual({
-      ...usage,
-      raw: {
-        cost: 0.12,
-        server_tool_use: { web_search_requests: 2 },
-        webSearchRequestCount: 2,
       },
     });
   });
