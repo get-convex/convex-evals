@@ -137,7 +137,13 @@ export async function generateWithWebResearch({
   tracePath?: string;
   responsesApi?: boolean;
   fetch?: FetchFunction;
-}) {
+}): Promise<{
+  text: string;
+  usage: LanguageModelUsage;
+  trace: WebResearchTrace;
+  timeToFirstTokenMs?: number;
+  response: Awaited<ReturnType<typeof streamText>["response"]>;
+}> {
   const startedAt = Date.now();
   const abort = new AbortController();
   const signal = AbortSignal.any([
@@ -164,7 +170,7 @@ export async function generateWithWebResearch({
     partialText: "",
   };
   let lastPersist = 0;
-  const persist = (force = false) => {
+  const persist = (force = false): void => {
     if (!force && Date.now() - lastPersist < 1_000) return;
     saveWebResearchTrace(tracePath, trace, apiKey);
     lastPersist = Date.now();
@@ -175,7 +181,7 @@ export async function generateWithWebResearch({
   let timeToFirstTokenMs: number | undefined;
   const citationKeys = new Set<string>();
 
-  function observe(event: JsonObject) {
+  function observe(event: JsonObject): void {
     const response = object(event.response);
     rawUsage = object(response?.usage ?? event.usage) ?? rawUsage;
     trace.routerMetadata =
@@ -222,11 +228,10 @@ export async function generateWithWebResearch({
       event.type === "response.failed" ||
       event.type === "response.error"
     ) {
+      const message = object(event.error ?? response?.error)?.message;
       throw new InfrastructureError(
         "OpenRouter web response failed: " +
-          String(
-            object(event.error ?? response?.error)?.message ?? "provider error",
-          ),
+          (typeof message === "string" ? message : "provider error"),
       );
     }
   }
@@ -235,8 +240,13 @@ export async function generateWithWebResearch({
     async (
       input: Parameters<FetchFunction>[0],
       init?: Parameters<FetchFunction>[1],
-    ) => {
-      const url = String(input);
+    ): Promise<Response> => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
       if (
         ![
           OPENROUTER_BASE_URL + "/chat/completions",
@@ -250,7 +260,10 @@ export async function generateWithWebResearch({
       if (typeof init?.body !== "string") {
         throw new InfrastructureError("Expected a JSON OpenRouter request.");
       }
-      const request = withWebResearchTools(JSON.parse(init.body));
+      const bodyObject = object(JSON.parse(init.body));
+      if (!bodyObject)
+        throw new InfrastructureError("Expected an OpenRouter request object.");
+      const request = withWebResearchTools(bodyObject);
       const attempt: RequestTrace = {
         startedAt: new Date().toISOString(),
         request,

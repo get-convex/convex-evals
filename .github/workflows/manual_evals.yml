@@ -27,6 +27,14 @@ on:
         options:
           - "true"
           - "false"
+      run_no_guidelines_with_web:
+        description: "Run no_guidelines_with_web (Exa search and fetch)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
       max_concurrency:
         description: "Maximum concurrent model requests per runner"
         required: false
@@ -87,3 +95,19 @@ jobs:
           OUTPUT_TEMPDIR: /tmp/convex-evals-no-guidelines
           EVALS_EXPERIMENT: no_guidelines
         run: bun run runner/index.ts
+
+      - name: Run evaluations (no_guidelines_with_web experiment)
+        if: ${{ inputs.run_no_guidelines_with_web == 'true' }}
+        env:
+          OUTPUT_TEMPDIR: /tmp/convex-evals-no-guidelines-with-web
+          EVALS_EXPERIMENT: no_guidelines_with_web
+        run: bun run runner/index.ts
+
+      - name: Preserve web research traces
+        if: ${{ always() && inputs.run_no_guidelines_with_web == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-research
+          path: /tmp/convex-evals-no-guidelines-with-web/research
+          if-no-files-found: warn
+          retention-days: 30

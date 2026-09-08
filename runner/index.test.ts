@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { rejects } from "node:assert/strict";
 import { buildEvalResult, runEvalsForModel } from "./index.js";
 
 describe("experiment validation before starting a run", () => {
@@ -8,7 +9,7 @@ describe("experiment validation before starting a run", () => {
     delete process.env.DISABLE_CONVEX_REPORTING;
     delete process.env.OPENROUTER_API_KEY;
     try {
-      await expect(
+      await rejects(
         runEvalsForModel({
           experiment: "no_guidelines_with_web",
           get model(): never {
@@ -16,7 +17,8 @@ describe("experiment validation before starting a run", () => {
           },
           tempdir: "unused",
         }),
-      ).rejects.toThrow("requires OPENROUTER_API_KEY");
+        /requires OPENROUTER_API_KEY/,
+      );
     } finally {
       if (previousReporting === undefined)
         delete process.env.DISABLE_CONVEX_REPORTING;
@@ -32,7 +34,7 @@ describe("experiment validation before starting a run", () => {
       const previous = process.env[key];
       process.env[key] = key === "EVALS_NATIVE_HARNESS" ? "claude" : "true";
       try {
-        await expect(
+        await rejects(
           runEvalsForModel({
             experiment: "no_guidelines",
             get model(): never {
@@ -40,7 +42,8 @@ describe("experiment validation before starting a run", () => {
             },
             tempdir: "unused",
           }),
-        ).rejects.toThrow("Native harness experiments have been removed");
+          /Native harness experiments have been removed/,
+        );
       } finally {
         if (previous === undefined) delete process.env[key];
         else process.env[key] = previous;
@@ -54,7 +57,7 @@ describe("experiment validation before starting a run", () => {
   ])(
     "rejects %s before accessing the model or reporting results",
     async (experiment, message) => {
-      await expect(
+      await rejects(
         runEvalsForModel({
           experiment,
           // Accessing the model marks the start of work. Keep this test unable to
@@ -64,7 +67,8 @@ describe("experiment validation before starting a run", () => {
           },
           tempdir: "unused",
         }),
-      ).rejects.toThrow(message);
+        new RegExp(message),
+      );
     },
   );
 });

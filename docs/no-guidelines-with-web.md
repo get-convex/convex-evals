@@ -5,8 +5,9 @@ model can produce better Convex code by seeking public information when it has
 neither the Convex guidelines nor the Convex plugin.
 
 Status: implemented, including the approved schema and reporting support.
-Deploy the updated backend before reporting this experiment; until then, use
-`DISABLE_CONVEX_REPORTING=1`. The old experiments remain retired.
+Release the updated backend before enabling scheduled runs or reporting this
+experiment. Use `DISABLE_CONVEX_REPORTING=1` against a backend that has not been
+updated. The old experiments remain retired.
 
 ## Agreed direction
 
@@ -76,8 +77,25 @@ bun run local:run
 The interactive `bun run evals` menu also includes the experiment. Disable
 reporting until the target backend supports the new schema literal. After
 deployment, local runs may report only to development. A missing OpenRouter key
-fails before model discovery or generation. No scheduled workflow or paid
-comparison matrix is enabled by this change.
+fails before model discovery or generation.
+
+## CI rollout
+
+After the normal release workflow deploys the additive schema change, set the
+repository variable `ENABLE_NO_GUIDELINES_WITH_WEB=true`. The existing periodic
+workflow then runs the selected models under default, `no_guidelines`, and
+`no_guidelines_with_web` conditions. Each model/condition has its own job and
+120-minute timeout; the matrix retains the four-job concurrency limit. Clearing
+the variable stops future scheduled web runs without affecting the baselines.
+
+The manual workflow also has a `run_no_guidelines_with_web` input, disabled by
+default. It can run this condition alone by disabling its two baseline inputs.
+Reporting remains restricted to GitHub Actions on `main`.
+
+Both workflows upload the web condition's `research/` directory as an Actions
+artifact, including after failures, with 30-day retention. Download it before
+expiry for longer-term analysis. Run usage contains the research summary and
+local trace path; the full trace is in the artifact, not in the Convex database.
 
 ## Traces and evidence limits
 

@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { EmptyProviderResponseError, Model } from "./models/modelCodegen.js";
 import { resolveModelDefaults } from "./models/index.js";
 import { WEB_RESEARCH_LIMITS } from "./models/webResearchTools.js";
+import { rejects } from "node:assert/strict";
+import type { WebResearchTrace } from "./models/webResearch.js";
 import { InfrastructureError } from "./convexBackend.js";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -51,7 +53,7 @@ function chatEvents({ cost = true, counters = true } = {}) {
     },
   ];
 }
-function sse(events: unknown[]) {
+function sse(events: unknown[]): Response {
   return new Response(
     events.map((event) => "data: " + JSON.stringify(event) + "\n\n").join("") +
       "data: [DONE]\n\n",
@@ -92,13 +94,15 @@ describe("web research through the real SDK adapters", () => {
   function stub(
     response: () => Response,
     apiKind: "chat" | "responses" = "chat",
-  ) {
+  ): Model {
     globalThis.fetch = Object.assign(
       async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
         const endpoint =
           apiKind === "chat" ? "/chat/completions" : "/responses";
-        expect(String(input)).toBe("https://openrouter.ai/api/v1" + endpoint);
-        requests.push(JSON.parse(String(init?.body)));
+        expect(input).toBe("https://openrouter.ai/api/v1" + endpoint);
+        if (typeof init?.body !== "string")
+          throw new Error("Expected JSON request body");
+        requests.push(JSON.parse(init.body) as Record<string, unknown>);
         requestHeaders.push(new Headers(init?.headers));
         return response();
       },
@@ -111,8 +115,8 @@ describe("web research through the real SDK adapters", () => {
       apiKind,
     });
   }
-  function saved() {
-    return JSON.parse(readFileSync(tracePath, "utf8"));
+  function saved(): WebResearchTrace {
+    return JSON.parse(readFileSync(tracePath, "utf8")) as WebResearchTrace;
   }
 
   it("pins Exa, preserves source excerpts and reported total cost, and needs one API key", async () => {
@@ -123,15 +127,15 @@ describe("web research through the real SDK adapters", () => {
     });
     expect(result.files["convex/tasks.ts"]).toContain("complete = true");
     expect(requests).toHaveLength(1);
-    expect(requests[0]!.tools).toHaveLength(2);
-    expect(requests[0]!.tools).toMatchObject([
+    expect(requests[0].tools).toHaveLength(2);
+    expect(requests[0].tools).toMatchObject([
       { type: "openrouter:web_search", parameters: { engine: "exa" } },
       { type: "openrouter:web_fetch", parameters: { engine: "exa" } },
     ]);
-    expect(requests[0]!.reasoning).toEqual({ effort: "medium" });
-    expect(requests[0]!.max_tokens).toBe(16384);
-    expect(requestHeaders[0]!.get("X-OpenRouter-Metadata")).toBe("enabled");
-    expect(requestHeaders[0]!.get("x-session-id")).toBe("session-web-test");
+    expect(requests[0].reasoning).toEqual({ effort: "medium" });
+    expect(requests[0].max_tokens).toBe(16384);
+    expect(requestHeaders[0].get("X-OpenRouter-Metadata")).toBe("enabled");
+    expect(requestHeaders[0].get("x-session-id")).toBe("session-web-test");
     expect(result.openRouterGenerationId).toBe("response-1");
     expect(result.usage).toMatchObject({
       inputTokens: 40,
@@ -164,14 +168,14 @@ describe("web research through the real SDK adapters", () => {
     });
     expect(result.usage?.raw).not.toHaveProperty("cost");
     expect(result.usage?.raw).not.toHaveProperty("costEstimatedFromPricing");
-    expect(saved().summary.searchRequests).toBeNull();
+    expect(saved().summary?.searchRequests).toBeNull();
     expect(requests).toHaveLength(1);
   });
 
   it("allows the model to answer without searching", async () => {
     const events = chatEvents();
     events.shift();
-    events[1]!.usage!.server_tool_use_details = {
+    events[1].usage!.server_tool_use_details = {
       web_search_requests: 0,
       tool_calls_requested: 0,
       tool_calls_executed: 0,
@@ -181,9 +185,9 @@ describe("web research through the real SDK adapters", () => {
       sessionId: "session-web-test",
       webTracePath: tracePath,
     });
-    expect(saved().summary.searchRequests).toBe(0);
+    expect(saved().summary?.searchRequests).toBe(0);
     expect(saved().citations).toEqual([]);
-    expect(requests[0]!.tool_choice).toBe("auto");
+    expect(requests[0].tool_choice).toBe("auto");
   });
 
   it("retains the provider header ID for retry diagnostics", async () => {
@@ -200,12 +204,13 @@ describe("web research through the real SDK adapters", () => {
 
   it("lets the runner retry a completed but empty provider response", async () => {
     const model = stub(() => sse([chatEvents()[0], chatEvents()[2]]));
-    await expect(
+    await rejects(
       model.generate("Build a backend.", {
         sessionId: "session-web-test",
         webTracePath: tracePath,
       }),
-    ).rejects.toBeInstanceOf(EmptyProviderResponseError);
+      EmptyProviderResponseError,
+    );
     expect(saved().status).toBe("completed");
     expect(saved().partialText).toBe("");
   });
@@ -223,9 +228,9 @@ describe("web research through the real SDK adapters", () => {
         sessionId: "session-web-test",
         moduleOnly,
       });
-      expect(requests[1]!.messages).toEqual(requests[0]!.messages);
-      expect(requests[1]!.tools).toBeUndefined();
-      expect(requestHeaders[1]!.get("X-OpenRouter-Metadata")).toBeNull();
+      expect(requests[1].messages).toEqual(requests[0].messages);
+      expect(requests[1].tools).toBeUndefined();
+      expect(requestHeaders[1].get("X-OpenRouter-Metadata")).toBeNull();
     },
   );
 
@@ -309,10 +314,12 @@ describe("web research through the real SDK adapters", () => {
         observedSearchItems: 1,
         observedFetchItems: 1,
       });
-      expect(saved().routerMetadata.pipeline[0].type).toBe("server_tools");
+      expect(saved().routerMetadata).toMatchObject({
+        pipeline: [{ type: "server_tools" }],
+      });
       expect(result.usage?.raw?.cost).toBe(0.03);
-      expect(requests[0]!.max_output_tokens).toBe(16384);
-      expect(requests[0]!.reasoning).toMatchObject({ effort: "medium" });
+      expect(requests[0].max_output_tokens).toBe(16384);
+      expect(requests[0].reasoning).toMatchObject({ effort: "medium" });
     },
   );
 
@@ -331,12 +338,13 @@ describe("web research through the real SDK adapters", () => {
       });
       const silence = spyOn(console, "error").mockImplementation(() => {});
       try {
-        await expect(
+        await rejects(
           model.generate("Build a backend.", {
             sessionId: "session-web-test",
             webTracePath: tracePath,
           }),
-        ).rejects.toBeInstanceOf(InfrastructureError);
+          InfrastructureError,
+        );
         expect(saved().status).toBe("failed");
         expect(readFileSync(tracePath, "utf8")).not.toContain(
           "test-model-secret",
