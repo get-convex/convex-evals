@@ -27,11 +27,12 @@ Create these functions in `convex/index.ts`:
   - Takes arguments `{ jobId: Id<"jobs">, count: number }`
   - Inserts `count` documents into `deliveries` for that job, with recipients `"recipient-0"` through `"recipient-{count-1}"`
   - Does NOT update the job document
+  - Must still insert the requested count when called directly, including counts above 5
 
 - A public mutation `processFanout` that:
   - Takes arguments `{ jobId: Id<"jobs">, count: number }`
   - Returns `"completed"` or `"rejected"`
-  - Invokes `writeDeliveries` as a nested mutation call, limiting the nested call so that it may write at most 5 documents
+  - Invokes `writeDeliveries` as a nested mutation call with Convex's native per-call document-write limit set to 5
   - If the nested call succeeds, sets the job's status to `"completed"` and returns `"completed"`
   - If the nested call exceeds its write limit, no delivery rows for the job may remain, the job's status must be set to `"rejected"`, and the mutation must return `"rejected"` normally rather than throwing
 
