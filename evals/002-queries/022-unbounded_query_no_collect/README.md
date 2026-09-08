@@ -41,13 +41,42 @@ then `.collect()` would be a reasonable choice.
 
 That is not what this task says.
 
-## Grading rule
+## Grading contract
 
-Behavior tests still verify that the query works for the requested workspace.
+The task stays neutral about retrieval strategy. We are measuring whether the
+model chooses a bounded database read by default. With guidelines, this also
+measures adherence to the explicit bounded-read rule; without guidelines, it
+measures whether the model independently makes that choice.
 
-But the main signal is the AST check:
+The task does not specify a limit or ordering. Any positive finite native bound
+is accepted, including `take(1)`, `take(25)`, or `take(250)`, with either ordering
+or the default order. Returning a native pagination result's `page` is also
+accepted; the task still requires an array, not a pagination envelope.
 
-- if the generated `convex/index.ts` uses `.collect()`, the eval fails
-- if it uses a bounded read pattern instead, it can pass
+Real-backend tests check empty workspaces and nonempty results for populated
+workspaces. Each returned document must match a stored document in the requested
+workspace, including its system fields, without duplicates. Other workspaces
+surround the target in creation order to catch taking a global prefix before
+filtering. There is no requirement to return exactly 100 rows or the newest rows.
 
-This is deliberate. The eval is testing the model's default heuristic, not just whether the returned array has the right contents.
+The bounded-read check invokes only `index:listAuditLogs`, using the generated
+project's real Convex SDK in a separate process. It observes native query streams
+and pagination requests when they are consumed:
+
+- A query stream must carry a positive finite native limit, as `take(n)` supplies.
+- A pagination request must supply a positive finite page size.
+- The returned entries must come from those bounded reads.
+- Unbounded reads fail even if followed by array slicing, or hidden in an imported
+  or internal helper. Unrelated functions and objects with a `collect` method are
+  not rejected just because their source contains that name.
+
+The probe supplies synthetic rows and leaves database correctness to the deployed
+tests. It checks native bounded API selection, not arbitrary JavaScript loop
+termination or worst-case rows/bytes scanned by a filtered query. A timeout bounds
+probe execution. Reading every page until exhaustion is deliberately not made to
+finish in the probe.
+
+Choosing a bounded preview does not prove that users can reach the whole
+collection or that bulk work eventually completes. Those stronger pagination
+and batching requirements are tracked separately in
+[issue #286](https://github.com/get-convex/convex-evals/issues/286).
