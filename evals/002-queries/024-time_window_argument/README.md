@@ -22,13 +22,16 @@ The replacement runs `listActive` through the generated project's Convex SDK in
 the shared WebAssembly sandbox. It observes the native read that is consumed,
 including reads through aliases, imported helpers, and internal queries. The
 read must use the expiration index, the supplied strict lower bound, ascending
-order, and a native limit of at most 100. Synthetic document IDs connect the
+order, and a native limit of at most 100. Point reads may re-fetch those rows
+using either supported `db.get` signature. Synthetic document IDs connect the
 returned rows to that read. Real-backend tests still establish data correctness.
 
 A clock trap is installed before loading the query module. `Date.now()`, bare
 `Date()`, and zero-argument `new Date()` fail when executed, including captured
 module-level reads, helper calls, and errors caught by the query. Deterministic
-conversions such as `new Date(args.now)` are allowed. Uninvoked mutations and
+conversions such as `new Date(args.now)` are allowed. Prototype and instance
+constructor access lead back to the trapped constructor, and reading the `now`
+property descriptor does not expose an untrapped method. Uninvoked mutations and
 helpers are not executed. The probe samples empty, partial, and full results at
 three cutoffs; it does not prove that every possible branch is free of clock reads.
 

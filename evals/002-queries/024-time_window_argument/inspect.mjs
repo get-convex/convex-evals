@@ -1,7 +1,7 @@
 export async function inspect(modules, { timeArgName, now }) {
   const violations = [];
   const streams = new Map();
-  const issuedIds = new Set();
+  const issuedDocs = new Map();
   let reads = 0;
   let sampleSize = 0;
 
@@ -14,20 +14,22 @@ export async function inspect(modules, { timeArgName, now }) {
 
   // Install before loading model modules so captured/module-level clock reads
   // and imported helpers are covered too. Uninvoked mutations never run here.
-  globalThis.Date = new Proxy(Date, {
+  const NativeDate = Date;
+  // Replace the method itself so its descriptor cannot expose an untrapped
+  // now(). Keep parse(), UTC(), and dated construction intact.
+  NativeDate.now = () =>
+    assert(false, "Query read the wall clock with Date.now()");
+  globalThis.Date = new Proxy(NativeDate, {
     apply() {
       assert(false, "Query read the wall clock with Date()");
     },
-    construct(target, args) {
+    construct(target, args, newTarget) {
       assert(args.length > 0, "Query read the wall clock with new Date()");
-      return Reflect.construct(target, args);
-    },
-    get(target, property) {
-      if (property === "now")
-        return () => assert(false, "Query read the wall clock with Date.now()");
-      return Reflect.get(target, property);
+      return Reflect.construct(target, args, newTarget);
     },
   });
+  // Date.prototype and Date instances must lead back to the trapped constructor.
+  NativeDate.prototype.constructor = globalThis.Date;
 
   async function invoke(name, args) {
     const [moduleName, exportName = "default"] = name.split(":");
@@ -80,8 +82,14 @@ export async function inspect(modules, { timeArgName, now }) {
           { length: Math.min(limit, sampleSize) },
           (_, i) => {
             const _id = `probe-${queryId}-${i}`;
-            issuedIds.add(_id);
-            return { _id, _creationTime: i, name: _id, expiresAt: now + i + 1 };
+            const row = {
+              _id,
+              _creationTime: i,
+              name: _id,
+              expiresAt: now + i + 1,
+            };
+            issuedDocs.set(_id, row);
+            return row;
           },
         );
         streams.set(queryId, rows);
@@ -104,6 +112,14 @@ export async function inspect(modules, { timeArgName, now }) {
           done: value === undefined,
         });
       }
+      // A point read can re-fetch a row already supplied by the bounded index
+      // read. It does not establish or substitute for that indexed read.
+      if (op === "1.0/get")
+        return JSON.stringify(
+          !args.isSystem && (args.table === undefined || args.table === "items")
+            ? (issuedDocs.get(args.id) ?? null)
+            : null,
+        );
       if (op === "1.0/runUdf" && args.udfType === "query")
         return JSON.stringify(await invoke(args.name, args.args));
       assert(false, `Unsupported query probe syscall: ${op}`);
@@ -121,7 +137,7 @@ export async function inspect(modules, { timeArgName, now }) {
     now = cutoff;
     sampleSize = size;
     streams.clear();
-    issuedIds.clear();
+    issuedDocs.clear();
     const previousReads = reads;
     const result = await invoke("index:listActive", { [timeArgName]: now });
     assert(violations.length === 0, "Query caught a prohibited read's error");
@@ -129,7 +145,7 @@ export async function inspect(modules, { timeArgName, now }) {
     assert(
       Array.isArray(result) &&
         (size === 0 ? result.length === 0 : result.length > 0) &&
-        result.every((row) => issuedIds.has(row?._id)),
+        result.every((row) => issuedDocs.has(row?._id)),
       "Return the documents from the indexed bounded read",
     );
   }

@@ -39,33 +39,44 @@ database filters still fail, and real-backend tests retain result validation.
 This runtime probe covers representative paths; it is not an exhaustive proof
 about every possible JavaScript branch or computation.
 
+PR review found a bypass through `Date.prototype.constructor`. The clock trap
+now also routes prototype/instance constructor access through the proxy and
+replaces the underlying `now` method so property descriptors cannot expose it.
+Four negative fixtures cover these paths; two positive fixtures preserve
+constructor aliases and deterministic `Date.parse`/`Date.UTC` use.
+
+Review also identified that valid bounded results may be re-fetched with
+`db.get`. The probe now serves those synthetic documents for both supported
+get signatures. Two positive fixtures cover the re-fetch, and a negative fixture
+checks that re-fetching does not hide a clock read.
+
 ## Validation
 
 - Both affected reference answers (022 and 024): 100% through `validateAnswers.ts`
   on disposable local backends.
-- 30 time-window unit fixtures: 10 valid implementations accepted, 20 deliberately
+- 39 time-window unit fixtures: 14 valid implementations accepted, 25 deliberately
   broken implementations rejected. These include both original false negatives,
   aliases/constants, local/imported/internal helpers, renamed time arguments,
   deterministic dates, clock reads in empty/full branches, caught clock errors,
   unbounded scans, unused indexed queries, and incorrect index ranges.
 - Existing 31 bounded-query and sandbox tests pass after the extraction.
-- Final full-pipeline regression run: all 33 cases reached the expected outcomes,
+- Final full-pipeline regression run: all 42 cases reached the expected outcomes,
   with successful installation, deployment, TypeScript, and generated-code lint.
   All three archived Astra answers still score 1/7 (schema only). Direct sandbox
   replay additionally rejects each specifically for its `Date.now()` call.
-- Repository tests: 288 runner/script/grader tests plus 50 evalScores tests pass.
+- Repository tests: 297 runner/script/grader tests plus 50 evalScores tests pass.
   Repository typecheck and lint pass. The shared TypeScript helper passes targeted
   lint; both interpreter modules pass `node --check`. The repository's typed
   ESLint configuration does not support directly linting these `.mjs` files.
 
 An earlier regression run stopped when a disposable backend failed its health
-check. The final 33-case run completed without infrastructure failures.
+check. The final 42-case run completed without infrastructure failures.
 
 All scoring used `DISABLE_CONVEX_REPORTING=1`; no fresh model generations,
 production reporting, historical score changes, or benchmark minting occurred.
 
-Local evidence: `/tmp/astra-audit/time-window-final-regressions/results.json`,
-`/tmp/astra-audit/time-window-answers-final.log`,
+Local evidence: `/tmp/astra-audit/time-window-review-fixes-regressions/results.json`,
+`/tmp/astra-audit/time-window-review-fixes-answers.log`,
 `/tmp/astra-audit/time-window-astra-clock.log`, and
-`/tmp/astra-audit/time-window-tests-final.log`. The disposable regression harness
+`/tmp/astra-audit/time-window-review-fixes-tests.log`. The disposable regression harness
 is `/tmp/astra-audit/time-window-regressions.ts`.

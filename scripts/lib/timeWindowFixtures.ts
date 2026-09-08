@@ -31,6 +31,51 @@ function fixture(
 
 export const timeWindowFixtures = [
   fixture(
+    "bounded-point-refetch",
+    true,
+    `const rows = await ${indexed}.take(100); return await Promise.all(rows.map(async row => (await ctx.db.get("items", row._id))!));`,
+  ),
+  fixture(
+    "bounded-point-refetch-legacy",
+    true,
+    `const rows = await ${indexed}.take(100); return await Promise.all(rows.map(async row => (await ctx.db.get(row._id))!));`,
+  ),
+  fixture(
+    "clock-during-refetch",
+    false,
+    `const rows = await ${indexed}.take(100); return await Promise.all(rows.map(async row => { const doc = await ctx.db.get("items", row._id); Date.now(); return doc!; }));`,
+  ),
+  fixture(
+    "prototype-constructor-clock",
+    false,
+    `(Date.prototype.constructor as typeof Date).now(); return await ${indexed}.take(100);`,
+  ),
+  fixture(
+    "instance-constructor-clock",
+    false,
+    `(new Date(0).constructor as typeof Date).now(); return await ${indexed}.take(100);`,
+  ),
+  fixture(
+    "prototype-constructor-no-args",
+    false,
+    `const Clock = Date.prototype.constructor as typeof Date; new Clock(); return await ${indexed}.take(100);`,
+  ),
+  fixture(
+    "clock-method-descriptor",
+    false,
+    `(Object.getOwnPropertyDescriptor(Date, "now")!.value as () => number)(); return await ${indexed}.take(100);`,
+  ),
+  fixture(
+    "deterministic-constructor-alias",
+    true,
+    `const Clock = new Date(0).constructor as typeof Date; const cutoff = new Clock(args.now).getTime(); return await ${indexed.replace("args.now", "cutoff")}.take(100);`,
+  ),
+  fixture(
+    "deterministic-date-statics",
+    true,
+    `Date.UTC(2020, 0, 1); const cutoff = Date.parse(new Date(args.now).toISOString()); return await ${indexed.replace("args.now", "cutoff")}.take(100);`,
+  ),
+  fixture(
     "clock-in-empty-branch",
     false,
     `const rows = await ${indexed}.take(100); if (rows.length === 0) Date.now(); return rows;`,
