@@ -4,5 +4,8 @@
   "description": "Backend for querying active users and their published posts",
   "dependencies": {
     "convex": "^1.31.2"
+  },
+  "overrides": {
+    "ws": "8.21.0"
   }
 }
