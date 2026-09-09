@@ -163,9 +163,34 @@ export default inspect({${modules.join(",")}}, ${JSON.stringify(input)});`,
           ),
         );
       try {
-        const message = JSON.parse(output) as { error: string } | { result: T };
+        const message = JSON.parse(output) as
+          | { error: string }
+          | {
+              result:
+                | { kind: "bigint" | "number"; value: string }
+                | { kind: "undefined" }
+                | { kind: "json"; value: T };
+            };
         if ("error" in message) reject(new Error(message.error));
-        else resolve(message.result);
+        else {
+          const result = message.result;
+          switch (result.kind) {
+            case "bigint":
+              resolve(BigInt(result.value) as T);
+              break;
+            case "number":
+              resolve(Number(result.value) as T);
+              break;
+            case "undefined":
+              resolve(undefined as T);
+              break;
+            case "json":
+              resolve(result.value);
+              break;
+            default:
+              throw new Error("Unknown query probe result kind");
+          }
+        }
       } catch (error) {
         reject(new Error(`Invalid query probe response: ${String(error)}`));
       }

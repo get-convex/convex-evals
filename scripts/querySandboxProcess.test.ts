@@ -52,6 +52,21 @@ test("sandbox process reports guest exceptions", async () => {
   );
 });
 
+for (const [name, expression, expected] of [
+  ["bigint", "9007199254740993n", 9007199254740993n],
+  ["undefined", "undefined", undefined],
+  ["nan", "NaN", NaN],
+  ["positive-infinity", "Infinity", Infinity],
+  ["negative-infinity", "-Infinity", -Infinity],
+  ["negative-zero", "-0", -0],
+] as const) {
+  test(`sandbox process preserves ${name}`, async () => {
+    expect(await probe(name, `export const value = ${expression};`)).toBe(
+      expected,
+    );
+  });
+}
+
 test("sandbox process keeps host process unavailable", async () => {
   expect(
     await probe("isolation", "export const value = typeof globalThis.process;"),
