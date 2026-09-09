@@ -3,7 +3,7 @@ import { builtinModules } from "node:module";
 import { readFileSync, readdirSync, realpathSync } from "node:fs";
 import { extname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Worker } from "node:worker_threads";
+import { spawn } from "node:child_process";
 import ts from "typescript";
 
 // Only rewrite the SDK-generated export. Authored process.env reads keep using
@@ -127,33 +127,77 @@ export default inspect({${modules.join(",")}}, ${JSON.stringify(input)});`,
     ],
   });
 
-  // The worker runs only our trusted interpreter wrapper. Generated code stays
-  // inside WebAssembly, with no host functions or module loader exposed.
+  // Use Node even when Bun runs the caller: repeated WASM worker creation can
+  // crash Bun on Linux. The child runs only our trusted interpreter wrapper;
+  // generated code stays inside WebAssembly without host functions or loaders.
   return await new Promise((resolve, reject) => {
-    const worker = new Worker(
-      new URL("./querySandboxWorker.mjs", import.meta.url),
-      {
-        workerData: bundle.outputFiles[0].text,
-      },
+    const child = spawn(
+      "node",
+      [fileURLToPath(new URL("./querySandboxWorker.mjs", import.meta.url))],
+      { stdio: ["pipe", "pipe", "pipe"] },
     );
-    const timeout = setTimeout(() => {
-      reject(new Error("Query probe timed out"));
-      void worker.terminate();
-    }, 10_000);
-    worker.once("message", (message: { error: string } | { result: T }) => {
-      clearTimeout(timeout);
-      void worker.terminate();
-      if ("error" in message) reject(new Error(message.error));
-      else resolve(message.result);
+    let output = "";
+    let diagnostics = "";
+    let timedOut = false;
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => (output += chunk));
+    child.stderr.on("data", (chunk: string) => {
+      diagnostics = (diagnostics + chunk).slice(-16_384);
     });
-    worker.once("error", (error: Error) => {
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, 10_000);
+    child.once("error", (error: Error) => {
       clearTimeout(timeout);
       reject(error);
-      void worker.terminate();
     });
-    worker.once("exit", (code) => {
+    child.once("close", (code, signal) => {
       clearTimeout(timeout);
-      reject(new Error(`Query probe exited before reporting (${code})`));
+      if (timedOut) return reject(new Error("Query probe timed out"));
+      if (code !== 0)
+        return reject(
+          new Error(
+            `Query probe exited before reporting (${signal ?? code}): ${diagnostics}`,
+          ),
+        );
+      try {
+        const message = JSON.parse(output) as
+          | { error: string }
+          | {
+              result:
+                | { kind: "bigint" | "number"; value: string }
+                | { kind: "undefined" }
+                | { kind: "json"; value: T };
+            };
+        if ("error" in message) reject(new Error(message.error));
+        else {
+          const result = message.result;
+          switch (result.kind) {
+            case "bigint":
+              resolve(BigInt(result.value) as T);
+              break;
+            case "number":
+              resolve(Number(result.value) as T);
+              break;
+            case "undefined":
+              resolve(undefined as T);
+              break;
+            case "json":
+              resolve(result.value);
+              break;
+            default:
+              throw new Error("Unknown query probe result kind");
+          }
+        }
+      } catch (error) {
+        reject(new Error(`Invalid query probe response: ${String(error)}`));
+      }
     });
+    // A child that fails to start or exits early can close stdin before this
+    // write finishes. Its error/close event above reports the actual failure.
+    child.stdin.on("error", () => {});
+    child.stdin.end(bundle.outputFiles[0].text);
   });
 }
