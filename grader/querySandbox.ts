@@ -4,6 +4,39 @@ import { readFileSync, readdirSync, realpathSync } from "node:fs";
 import { extname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
+import ts from "typescript";
+
+// Only rewrite the SDK-generated export. Authored process.env reads keep using
+// the guest process object, so an env inspector can distinguish the two paths.
+function isolateGeneratedEnv(contents: string, path: string): string {
+  const source = ts.createSourceFile(
+    path,
+    contents,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  for (const statement of source.statements) {
+    if (
+      !ts.isVariableStatement(statement) ||
+      !statement.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
+    )
+      continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (
+        ts.isIdentifier(declaration.name) &&
+        declaration.name.text === "env" &&
+        declaration.initializer
+      ) {
+        return (
+          contents.slice(0, declaration.initializer.getStart(source)) +
+          "globalThis.__convexTypedEnv" +
+          contents.slice(declaration.initializer.end)
+        );
+      }
+    }
+  }
+  throw new Error("The generated server module has no env export to inspect");
+}
 
 function moduleFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -21,6 +54,7 @@ export async function inspectQuery<T>(
   projectDir: string,
   inspectorUrl: URL,
   input: unknown,
+  options: { isolateTypedEnv?: boolean } = {},
 ): Promise<T> {
   const convexDir = realpathSync(join(projectDir, "convex"));
   const packageDir = realpathSync(join(projectDir, "node_modules"));
@@ -32,6 +66,9 @@ export async function inspectQuery<T>(
       .replace(/\.(ts|js)$/, "");
     return `${JSON.stringify(name)}: () => import(${JSON.stringify(path)})`;
   });
+  const defines: Record<string, string> = options.isolateTypedEnv
+    ? {}
+    : { "process.env": "{}" };
   const bundle = await build({
     stdin: {
       contents: `import { inspect } from ${JSON.stringify(inspector)};
@@ -45,9 +82,9 @@ export default inspect({${modules.join(",")}}, ${JSON.stringify(input)});`,
     platform: "neutral",
     mainFields: ["module", "main"],
     conditions: ["import"],
-    // Newer generated Convex server modules export process.env. Supply an empty
-    // guest environment without exposing the host's process or credentials.
-    define: { "process.env": "{}" },
+    // Default to an empty guest environment. Env inspectors install their own
+    // tracked guest objects; neither mode exposes host process or credentials.
+    define: defines,
     target: "es2022",
     logLevel: "silent",
     // External host modules have no loader inside QuickJS. They are never
@@ -73,8 +110,15 @@ export default inspect({${modules.join(",")}}, ${JSON.stringify(input)});`,
               extension === "mjs" || extension === "cjs" ? "js" : extension;
             if (!["js", "ts", "tsx", "jsx", "json"].includes(loader))
               throw new Error("Unsupported probe import type");
+            const contents = readFileSync(path, "utf8");
+            const isGeneratedServer = ["server.js", "server.ts"].some(
+              (name) => path === join(convexDir, "_generated", name),
+            );
             return {
-              contents: readFileSync(path, "utf8"),
+              contents:
+                options.isolateTypedEnv && isGeneratedServer
+                  ? isolateGeneratedEnv(contents, path)
+                  : contents,
               loader: loader as Loader,
             };
           });
