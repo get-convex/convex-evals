@@ -1,4 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
+import { rejects } from "node:assert/strict";
 import {
   mkdirSync,
   mkdtempSync,
@@ -42,12 +43,13 @@ test("sandbox process returns structured values without stdout corruption", asyn
 });
 
 test("sandbox process reports guest exceptions", async () => {
-  await expect(
+  await rejects(
     probe(
       "error",
       `throw new Error("deliberate guest failure"); export const value = 1;`,
     ),
-  ).rejects.toThrow("deliberate guest failure");
+    /deliberate guest failure/,
+  );
 });
 
 test("sandbox process keeps host process unavailable", async () => {
@@ -57,7 +59,8 @@ test("sandbox process keeps host process unavailable", async () => {
 });
 
 test("sandbox process interrupts an infinite guest loop", async () => {
-  await expect(
+  await rejects(
     probe("loop", "while (true) {} export const value = 1;"),
-  ).rejects.toThrow(/interrupted|timed out/);
+    /interrupted|timed out/,
+  );
 }, 15_000);
