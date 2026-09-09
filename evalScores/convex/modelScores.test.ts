@@ -46,6 +46,7 @@ async function createCompletedRun(
       passed: boolean;
       rateLimited?: boolean;
       infrastructureFailure?: boolean;
+      usageRaw?: Record<string, unknown>;
       costUsd?: number;
       durationMs?: number;
       generationDurationMs?: number;
@@ -79,9 +80,11 @@ async function createCompletedRun(
     });
 
     const usage =
-      evalDef.costUsd !== undefined
-        ? { raw: { cost: evalDef.costUsd } }
-        : undefined;
+      evalDef.usageRaw !== undefined
+        ? { raw: evalDef.usageRaw }
+        : evalDef.costUsd !== undefined
+          ? { raw: { cost: evalDef.costUsd } }
+          : undefined;
 
     if (evalDef.rateLimited || evalDef.infrastructureFailure) {
       await t.mutation(internal.evals.completeEval, {
@@ -1089,5 +1092,48 @@ describe("recomputeModelScores", () => {
     expect(results[0].scoreErrorBars.cat1).toBe(0);
     expect(results[0].scoreErrorBars.cat2).toBe(0);
     expect(results[0].totalScoreErrorBar).toBe(0);
+  });
+});
+
+it("publishes web usage from the same completed runs as scores, including failed evals", async () => {
+  const t = convexTest(schema, modules);
+  await createCompletedRun(t, {
+    model: "web-test",
+    experiment: "no_guidelines_with_web",
+    evals: [
+      {
+        category: "cat",
+        name: "search",
+        passed: true,
+        usageRaw: { server_tool_use_details: { web_search_requests: 2 } },
+      },
+      {
+        category: "cat",
+        name: "zero",
+        passed: false,
+        usageRaw: {
+          cost: 0.02,
+          cost_details: { upstream_inference_cost: 0.02 },
+          webResearch: {
+            searchEngine: "exa",
+            fetchEngine: "exa",
+            sourceCitations: 0,
+            requestAttempts: 1,
+          },
+        },
+      },
+    ],
+  });
+  const rows = await t.query(api.runs.leaderboardScores, {
+    experiment: "no_guidelines_with_web",
+  });
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({
+    totalScore: 0.5,
+    averageWebSearchesPerEval: 1,
+    averageWebSearchesEstimated: true,
+    averageWebFetchesPerEval: null,
+    webUsageEvalCount: 2,
+    webSearchTelemetryEvalCount: 1,
   });
 });

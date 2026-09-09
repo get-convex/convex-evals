@@ -5,5 +5,8 @@
     "convex": "1.41.0",
     "@convex-dev/workpool": "0.4.8",
     "convex-helpers": "0.1.111"
+  },
+  "overrides": {
+    "ws": "8.21.0"
   }
 }

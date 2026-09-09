@@ -8,5 +8,8 @@
     "convex-test": "^0.0.43",
     "vitest": "^1.4.0",
     "@edge-runtime/vm": "^3.2.0"
+  },
+  "overrides": {
+    "ws": "8.21.0"
   }
 }

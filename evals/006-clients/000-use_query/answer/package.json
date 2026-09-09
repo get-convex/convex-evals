@@ -11,5 +11,8 @@
     "@types/react": "^18.2.15",
     "@types/react-dom": "^18.2.7",
     "typescript": "^5.0.4"
+  },
+  "overrides": {
+    "ws": "8.21.0"
   }
 }

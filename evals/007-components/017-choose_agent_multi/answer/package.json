@@ -8,5 +8,8 @@
     "ai": "6.0.229",
     "@ai-sdk/provider-utils": "4.0.39",
     "convex-helpers": "0.1.120"
+  },
+  "overrides": {
+    "ws": "8.21.0"
   }
 }

@@ -1,3 +1,4 @@
+import { computeWebUsage } from "./webUsage";
 /**
  * Materialised leaderboard scores per (model, experiment, benchmark) group.
  *
@@ -268,6 +269,9 @@ export const recomputeModelScores = internalMutation({
     }
 
     const row = {
+      ...(args.experiment === "no_guidelines_with_web"
+        ? { webUsage: computeWebUsage(scoredRuns.flatMap((sr) => sr.evals)) }
+        : {}),
       modelId: args.modelId,
       experiment: args.experiment,
       benchmarkVersion: args.benchmarkVersion,

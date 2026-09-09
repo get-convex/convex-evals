@@ -214,6 +214,16 @@ export default defineSchema({
     averageRunDurationMsErrorBar: v.number(),
     averageRunCostUsd: v.union(v.number(), v.null()),
     averageRunCostUsdErrorBar: v.union(v.number(), v.null()),
+    webUsage: v.optional(
+      v.object({
+        evalCount: v.number(),
+        reportedSearchEvalCount: v.number(),
+        inferredZeroSearchEvalCount: v.number(),
+        searchRequests: v.number(),
+        reportedFetchEvalCount: v.number(),
+        fetchRequests: v.number(),
+      }),
+    ),
     scores: v.record(v.string(), v.number()),
     scoreErrorBars: v.record(v.string(), v.number()),
     runCount: v.number(),

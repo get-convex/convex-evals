@@ -4,5 +4,8 @@
   "description": "Backend for fetching and saving external data",
   "dependencies": {
     "convex": "^1.31.2"
+  },
+  "overrides": {
+    "ws": "8.21.0"
   }
 }
