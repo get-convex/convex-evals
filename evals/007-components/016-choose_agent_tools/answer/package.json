@@ -9,5 +9,8 @@
     "@ai-sdk/provider-utils": "4.0.39",
     "convex-helpers": "0.1.120",
     "zod": "4.3.6"
+  },
+  "overrides": {
+    "ws": "8.21.0"
   }
 }

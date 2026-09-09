@@ -6,5 +6,8 @@
     "@convex-dev/presence": "0.3.2",
     "react": "18.3.1",
     "react-dom": "18.3.1"
+  },
+  "overrides": {
+    "ws": "8.21.0"
   }
 }

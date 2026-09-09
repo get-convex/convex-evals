@@ -4,5 +4,8 @@
   "description": "Backend to find teams with deleted admins",
   "dependencies": {
     "convex": "^1.31.2"
+  },
+  "overrides": {
+    "ws": "8.21.0"
   }
 }
