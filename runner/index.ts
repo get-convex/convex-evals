@@ -154,6 +154,33 @@ const SCORE_FAILURE_REASONS: Record<string, string> = {
   "Tests pass": "tests fail",
 };
 
+/** Stop on the first failure, then drain owned work before returning control. */
+export async function runEvalQueue<T>(
+  items: readonly T[],
+  concurrency: number,
+  processItem: (item: T) => Promise<void>,
+): Promise<void> {
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    throw new Error("Eval concurrency must be a positive integer");
+  }
+  const state: { next: number; failure?: { error: unknown } } = { next: 0 };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+      while (!state.failure && state.next < items.length) {
+        const item = items[state.next++];
+        try {
+          await processItem(item);
+        } catch (error) {
+          state.failure ??= { error };
+        }
+      }
+    }),
+  );
+  // Every worker handles its rejection, including failures after the first.
+  // Shared run environment and reporting remain active until they all settle.
+  if (state.failure) throw state.failure.error;
+}
+
 // ── Main (CLI entrypoint) ─────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -367,30 +394,19 @@ export async function runEvalsForModel(
 
     const allResults: EvalIndividualResult[] = [];
 
-    // Process evals with concurrency control
-    const queue = [...filteredPaths];
-    const inFlight = new Set<Promise<void>>();
-
     try {
-      while (queue.length > 0 || inFlight.size > 0) {
-        while (queue.length > 0 && inFlight.size < DEFAULT_MAX_CONCURRENCY) {
-          const evalInfo = queue.shift()!;
-          const promise = processOneEval(
-            model,
-            modelImpl,
-            executionMode,
-            evalInfo,
-            runId,
-            allResults,
-            filteredPaths.length,
-            tempdir,
-          ).finally(() => inFlight.delete(promise));
-          inFlight.add(promise);
-        }
-        if (inFlight.size > 0) {
-          await Promise.race(inFlight);
-        }
-      }
+      await runEvalQueue(filteredPaths, DEFAULT_MAX_CONCURRENCY, (evalInfo) =>
+        processOneEval(
+          model,
+          modelImpl,
+          executionMode,
+          evalInfo,
+          runId,
+          allResults,
+          filteredPaths.length,
+          tempdir,
+        ),
+      );
     } catch (e) {
       if (e instanceof InfrastructureError) {
         const reason = `[infrastructure] ${e.message}`;

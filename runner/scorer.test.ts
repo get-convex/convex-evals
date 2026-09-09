@@ -355,7 +355,10 @@ describe("model tsconfig types sanitization", () => {
     mkdirSync(projectDir, { recursive: true });
     writeFileSync(
       join(projectDir, "tsconfig.json"),
-      JSON.stringify({ compilerOptions: { strict: true, types }, include: ["convex"] }),
+      JSON.stringify({
+        compilerOptions: { strict: true, types },
+        include: ["convex"],
+      }),
     );
   }
 
@@ -369,7 +372,10 @@ describe("model tsconfig types sanitization", () => {
     const projectDir = join(tempDir, "project");
     writeTsconfig(projectDir, ["node", "vite/client"]);
 
-    expect(sanitizeModelTsconfigTypes(projectDir)).toEqual(["node", "vite/client"]);
+    expect(sanitizeModelTsconfigTypes(projectDir)).toEqual([
+      "node",
+      "vite/client",
+    ]);
 
     const parsed = readTsconfig(projectDir);
     expect(parsed.compilerOptions.types).toBeUndefined();
@@ -379,7 +385,9 @@ describe("model tsconfig types sanitization", () => {
   it("keeps types whose package is installed", () => {
     const projectDir = join(tempDir, "project");
     writeTsconfig(projectDir, ["node", "vite/client"]);
-    mkdirSync(join(projectDir, "node_modules", "@types", "node"), { recursive: true });
+    mkdirSync(join(projectDir, "node_modules", "@types", "node"), {
+      recursive: true,
+    });
     mkdirSync(join(projectDir, "node_modules", "vite"), { recursive: true });
 
     expect(sanitizeModelTsconfigTypes(projectDir)).toEqual([]);
@@ -395,7 +403,9 @@ describe("model tsconfig types sanitization", () => {
     writeFileSync(join(projectDir, "tsconfig.json"), original);
 
     expect(sanitizeModelTsconfigTypes(projectDir)).toEqual([]);
-    expect(readFileSync(join(projectDir, "tsconfig.json"), "utf-8")).toBe(original);
+    expect(readFileSync(join(projectDir, "tsconfig.json"), "utf-8")).toBe(
+      original,
+    );
   });
 });
 
@@ -413,7 +423,7 @@ describe("infrastructure step classification", () => {
     expect(
       isInfrastructureStepFailure(
         "install",
-        "Error: Failed to install dependencies:\nerror: package \"not-a-real-package\" not found",
+        'Error: Failed to install dependencies:\nerror: package "not-a-real-package" not found',
       ),
     ).toBe(false);
   });
@@ -543,6 +553,24 @@ describe("infrastructure operation retries", () => {
     ).rejects.toThrow("test child timed out after 0.05s");
     expect(Date.now() - startedAt).toBeLessThan(1_000);
   });
+
+  it("keeps the deadline after the group leader exits with inherited pipes open", async () => {
+    if (process.platform === "win32") return;
+    const startedAt = Date.now();
+
+    // The shell exits successfully without waiting for its background child.
+    // Process exit alone must not end the timeout while that child holds stdio.
+    // eslint-disable-next-line @typescript-eslint/await-thenable
+    await expect(
+      runCommandWithTimeout(
+        ["sh", "-c", "sleep 2 &"],
+        tmpdir(),
+        100,
+        "exited group leader",
+      ),
+    ).rejects.toThrow("exited group leader timed out after 0.1s");
+    expect(Date.now() - startedAt).toBeLessThan(1_000);
+  });
 });
 
 describe("ScoreResult structure", () => {
@@ -576,11 +604,7 @@ describe("withTimeout pattern", () => {
   }
 
   it("resolves when promise completes before timeout", async () => {
-    const result = await withTimeout(
-      Promise.resolve("ok"),
-      1000,
-      "test",
-    );
+    const result = await withTimeout(Promise.resolve("ok"), 1000, "test");
     expect(result).toBe("ok");
   });
 
@@ -598,11 +622,7 @@ describe("withTimeout pattern", () => {
   it("preserves the original error when promise rejects before timeout", async () => {
     // eslint-disable-next-line @typescript-eslint/await-thenable
     await expect(
-      withTimeout(
-        Promise.reject(new Error("original error")),
-        1000,
-        "test",
-      ),
+      withTimeout(Promise.reject(new Error("original error")), 1000, "test"),
     ).rejects.toThrow("original error");
   });
 });

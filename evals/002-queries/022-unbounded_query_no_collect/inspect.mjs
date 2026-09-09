@@ -1,10 +1,21 @@
-export async function inspect(modules, workspaceId) {
+import {
+  candidateProbeFailure,
+  unsupportedProbe,
+} from "../../../grader/probeErrors.mjs";
+
+export async function inspect(
+  modules,
+  workspaceId,
+  { jsonToConvex, convexToJson },
+) {
+  if (!modules.index)
+    candidateProbeFailure("Missing required module convex/index.ts");
   function assert(condition, message) {
     if (!condition) throw new Error(message);
   }
   const bounds = [];
   const streams = new Map();
-  const issuedIds = new Set();
+  const issuedDocs = new Map();
   const violations = [];
   let nextId = 0;
 
@@ -22,14 +33,15 @@ export async function inspect(modules, workspaceId) {
     // the real-backend tests verify those and the actual document contents.
     return Array.from({ length: Math.min(limit, 3) }, () => {
       const id = `probe-${nextId++}`;
-      issuedIds.add(id);
-      return {
+      const row = {
         _id: id,
         _creationTime: nextId,
         workspaceId,
         actor: `actor-${nextId}`,
         action: `action-${nextId}`,
       };
+      issuedDocs.set(id, row);
+      return row;
     });
   }
 
@@ -40,8 +52,8 @@ export async function inspect(modules, workspaceId) {
       typeof module[exportName]?.invokeQuery === "function",
       `Missing query ${name}`,
     );
-    return JSON.parse(
-      await module[exportName].invokeQuery(JSON.stringify([args])),
+    return jsonToConvex(
+      JSON.parse(await module[exportName].invokeQuery(JSON.stringify([args]))),
     );
   }
 
@@ -50,6 +62,7 @@ export async function inspect(modules, workspaceId) {
   // imported helpers, and unrelated exports do not confuse the check. In the SDK,
   // take(n) adds a native limit operator before collecting the bounded stream.
   globalThis.Convex = {
+    ...globalThis.Convex,
     syscall(op, jsonArgs) {
       const args = JSON.parse(jsonArgs);
       if (op === "1.0/queryStream") {
@@ -65,7 +78,7 @@ export async function inspect(modules, workspaceId) {
         streams.delete(args.queryId);
         return "null";
       }
-      throw new Error(`Unsupported query probe syscall: ${op}`);
+      unsupportedProbe(`Unsupported query probe syscall: ${op}`);
     },
     async asyncSyscall(op, jsonArgs) {
       const args = JSON.parse(jsonArgs);
@@ -88,9 +101,18 @@ export async function inspect(modules, workspaceId) {
         });
       }
       if (op === "1.0/runUdf" && args.udfType === "query") {
-        return JSON.stringify(await invoke(args.name, args.args));
+        return JSON.stringify(convexToJson(await invoke(args.name, args.args)));
       }
-      throw new Error(`Unsupported query probe syscall: ${op}`);
+      // Re-fetching an already issued row keeps the read finite and preserves
+      // its provenance. Both table-scoped and legacy SDK signatures are valid.
+      if (op === "1.0/get")
+        return JSON.stringify(
+          !args.isSystem &&
+            (args.table === undefined || args.table === "auditLogs")
+            ? (issuedDocs.get(args.id) ?? null)
+            : null,
+        );
+      unsupportedProbe(`Unsupported query probe syscall: ${op}`);
     },
   };
 
@@ -105,7 +127,7 @@ export async function inspect(modules, workspaceId) {
     "Return entries from the bounded read",
   );
   assert(
-    result.every((row) => issuedIds.has(row?._id)),
+    result.every((row) => issuedDocs.has(row?._id)),
     "Return entries from the bounded read",
   );
   return { bounds };

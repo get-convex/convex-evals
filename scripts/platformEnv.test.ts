@@ -11,21 +11,23 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { isDeepStrictEqual } from "node:util";
 import {
-  expectedSupportConfig,
-  inspectTypedAppEnv,
-  supportConfigCases,
-} from "../evals/005-idioms/006-typed_env/checks";
-import { typedEnvFixtures } from "./lib/typedEnvFixtures";
+  expectedDeploymentInfo,
+  deploymentInfoMatches,
+  inspectPlatformEnv,
+  platformEnvCases,
+} from "../evals/005-idioms/009-platform_env_urls/checks";
+import { platformEnvFixtures } from "./lib/platformEnvFixtures";
 
-const root = mkdtempSync(join(tmpdir(), "typed-env-"));
+const root = mkdtempSync(join(tmpdir(), "platform-env-"));
 // Native handles need a real deployed address. The stub is never used to supply
 // candidate results: nested queries must execute the bundled fixture helper.
 const nativeReference = join(root, "native-reference");
-cpSync(resolve("evals/005-idioms/006-typed_env/answer"), nativeReference, {
-  recursive: true,
-});
+cpSync(
+  resolve("evals/005-idioms/009-platform_env_urls/answer"),
+  nativeReference,
+  { recursive: true },
+);
 writeFileSync(
   join(nativeReference, "convex/helper.ts"),
   `import { internalQuery } from "./_generated/server";
@@ -33,11 +35,13 @@ export const readInfo = internalQuery({ args: {}, handler: async () => null });`
 );
 const test = nativeProbeTest(nativeReference);
 afterAll(() => rmSync(root, { recursive: true, force: true }));
-for (const fixture of typedEnvFixtures) {
-  test(`typed env execution: ${fixture.name}`, async () => {
+for (const fixture of platformEnvFixtures) {
+  test(`platform env execution: ${fixture.name}`, async () => {
     const projectDir = join(root, fixture.name);
     cpSync(
-      resolve("evals/005-idioms/006-typed_env/answer/convex/_generated"),
+      resolve(
+        "evals/005-idioms/009-platform_env_urls/answer/convex/_generated",
+      ),
       join(projectDir, "convex/_generated"),
       { recursive: true },
     );
@@ -65,8 +69,8 @@ for (const fixture of typedEnvFixtures) {
     let failure: unknown;
     const reads = new Set<string>();
     try {
-      for (const env of supportConfigCases("unit")) {
-        const actual = await inspectTypedAppEnv(projectDir, env);
+      for (const env of platformEnvCases("unit")) {
+        const actual = await inspectPlatformEnv(projectDir, env);
         if (fixture.valid && fixture.name.endsWith("-special-values")) {
           const extras = actual.result as unknown as Record<string, unknown>;
           expect(extras.tally).toBe(1n);
@@ -77,16 +81,7 @@ for (const fixture of typedEnvFixtures) {
             1, 2, 3,
           ]);
         }
-        if (
-          !isDeepStrictEqual(
-            {
-              supportEmail: actual.result?.supportEmail,
-              deploymentStage: actual.result?.deploymentStage,
-              isConfigured: actual.result?.isConfigured,
-            },
-            expectedSupportConfig(env),
-          )
-        )
+        if (!deploymentInfoMatches(actual.result, expectedDeploymentInfo(env)))
           throw new Error(
             "Returned configuration did not match typed env values",
           );
@@ -97,12 +92,16 @@ for (const fixture of typedEnvFixtures) {
     }
     if (fixture.probeValid) {
       expect(failure).toBeUndefined();
-      expect([...reads].sort()).toEqual(["DEPLOYMENT_STAGE", "SUPPORT_EMAIL"]);
+      expect([...reads].sort()).toEqual([
+        "CONVEX_CLOUD_URL",
+        "CONVEX_SITE_URL",
+        "PUBLIC_APP_NAME",
+      ]);
     } else {
       if (!(failure instanceof Error))
         throw new Error("Expected the probe to reject this fixture");
       expect(failure.message).toMatch(
-        /Missing query|useStaleSnapshot.*only supported in mutations|Returned configuration did not match|Read app variable .* through process.env/,
+        /Missing query|useStaleSnapshot.*only supported in mutations|Returned configuration did not match|Read environment variable .* through process.env/,
       );
     }
   }, 15_000);

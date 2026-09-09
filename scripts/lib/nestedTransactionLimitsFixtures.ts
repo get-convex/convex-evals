@@ -110,6 +110,37 @@ const uncapped = reference.replace(
 // The same complete programs feed the sandbox unit suite and local full-pipeline
 // regressions. Every valid alternative must also work on a real Convex backend.
 export const nestedTransactionLimitsFixtures = [
+  fixture(
+    "native-function-handle",
+    true,
+    'import { createFunctionHandle } from "convex/server";\n' +
+      reference.replace(
+        "internal.index.writeDeliveries,",
+        "await createFunctionHandle(internal.index.writeDeliveries),",
+      ),
+  ),
+  fixture(
+    "wrong-limit-through-function-handle",
+    false,
+    'import { createFunctionHandle } from "convex/server";\n' +
+      reference
+        .replace(
+          "internal.index.writeDeliveries,",
+          "await createFunctionHandle(internal.index.writeDeliveries),",
+        )
+        .replace(options, "{ transactionLimits: { documentsWritten: 6 } }"),
+  ),
+  fixture(
+    "wrong-count-through-function-handle",
+    false,
+    'import { createFunctionHandle } from "convex/server";\n' +
+      reference
+        .replace(
+          "internal.index.writeDeliveries,",
+          "await createFunctionHandle(internal.index.writeDeliveries),",
+        )
+        .replace(args, "{ jobId: args.jobId, count: 0 }"),
+  ),
   ...optionFixtures.map((f) =>
     fixture(
       f.name,

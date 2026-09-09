@@ -138,7 +138,11 @@ async function getFunctionSpec(adminClient: any) {
 
 export async function compareFunctionSpec(
   skip: (note?: string) => void,
-  options: { ignoreReturns?: boolean; publicOnly?: boolean } = {},
+  options: {
+    ignoreReturns?: boolean;
+    publicOnly?: boolean;
+    allowAdditionalFunctions?: boolean;
+  } = {},
 ) {
   if (!answerAdminClient) {
     skip("Answer backend not available");
@@ -163,7 +167,20 @@ export async function compareFunctionSpec(
     }
     return entries;
   };
-  expect(normalize(responseFunctionSpec)).toEqual(normalize(answerFunctionSpec));
+  const expected = normalize(answerFunctionSpec);
+  let actual = normalize(responseFunctionSpec);
+  if (
+    options.allowAdditionalFunctions &&
+    Array.isArray(expected) &&
+    Array.isArray(actual)
+  ) {
+    // Some tasks specify required entry points without restricting helper
+    // exports. Retain every required function's full spec so a missing entry,
+    // wrong visibility, wrong function kind, or wrong args still fails.
+    const required = new Set(expected.map((entry: any) => entry.identifier));
+    actual = actual.filter((entry: any) => required.has(entry.identifier));
+  }
+  expect(actual).toEqual(expected);
 }
 
 /**
@@ -221,7 +238,7 @@ export function hasIndexForPrefix(
     fieldNames?: string[];
   }[];
   return indexes.some((idx) => {
-    const idxFields = (idx.fields ?? idx.fieldNames ?? []);
+    const idxFields = idx.fields ?? idx.fieldNames ?? [];
     if (!Array.isArray(idxFields)) return false;
     if (idxFields.length < fieldsPrefix.length) return false;
     for (let i = 0; i < fieldsPrefix.length; i++) {

@@ -10,22 +10,25 @@ export async function inspect(
 ) {
   const nativeConvex = globalThis.Convex;
   const functionNames = new Map();
-  const appKeys = new Set(["SUPPORT_EMAIL", "DEPLOYMENT_STAGE"]);
+  const keys = new Set([
+    "CONVEX_SITE_URL",
+    "CONVEX_CLOUD_URL",
+    "PUBLIC_APP_NAME",
+  ]);
   const reads = new Set();
   const violations = [];
   function record(key, typed) {
-    if (!appKeys.has(key)) return;
-    if (typed) reads.add(key);
-    else {
-      const message = `Read app variable ${key} through process.env`;
+    if (typed) {
+      if (keys.has(key)) reads.add(key);
+    } else if (typeof key === "string") {
+      // This task forbids every raw variable, unlike the app-env task's
+      // narrower restriction to its two named application variables.
+      const message = `Read environment variable ${key} through process.env`;
       violations.push(message);
       throw new Error(message);
     }
   }
   function trackedEnv(typed) {
-    // Convex exposes env values through property reads, not enumerable own
-    // properties. Match that distinction so spread and `in` behave as they do
-    // on the backend instead of accidentally making a broken answer work here.
     return new Proxy(
       {},
       {
@@ -38,12 +41,10 @@ export async function inspect(
       },
     );
   }
-  // Install before importing model modules, including module-level reads and
-  // helper imports. The generated server export alone receives the typed object.
-  // These guest objects contain only synthetic test values, never host env vars.
+  // Convex exposes env values by property reads, not enumerable own properties.
+  // Install before imports so module-level and imported helper reads count too.
   globalThis.process = { env: trackedEnv(false) };
   globalThis.__convexTypedEnv = trackedEnv(true);
-
   async function invoke(name, args, required = false) {
     const [moduleName, exportName = "default"] = name.split(":");
     if (!modules[moduleName]) {
@@ -52,7 +53,7 @@ export async function inspect(
           `Missing required module convex/${moduleName}.ts`,
         );
       unsupportedProbe(
-        `The typed-env probe cannot load query module ${moduleName}`,
+        `The platform-env probe cannot load query module ${moduleName}`,
       );
     }
     const module = await modules[moduleName]();
@@ -70,7 +71,7 @@ export async function inspect(
         const name = args.name ?? functionNames.get(args.functionHandle);
         if (!name)
           unsupportedProbe(
-            "The typed-env probe cannot resolve this function address",
+            "The platform-env probe cannot resolve this function address",
           );
         // Convex owns handle serialization; remember the explicitly named target.
         const result = await nativeConvex.asyncSyscall(op, jsonArgs);
@@ -84,7 +85,7 @@ export async function inspect(
         const name = args.name ?? functionNames.get(args.functionHandle);
         if (!name)
           unsupportedProbe(
-            "The typed-env probe cannot resolve this nested query",
+            "The platform-env probe cannot resolve this nested query",
           );
         // Native nested execution would escape the synthetic typed/raw env
         // objects. Invoke bundled helpers in this same instrumented context.
@@ -95,9 +96,7 @@ export async function inspect(
       return await nativeConvex.asyncSyscall(op, jsonArgs);
     },
   };
-
-  const result = await invoke("config:getSupportConfig", {}, true);
-  // Catch-and-fallback code must not hide a prohibited process.env read.
+  const result = await invoke("deployment:getDeploymentInfo", {}, true);
   if (violations.length) throw new Error(violations.join("; "));
   return { result, reads: [...reads].sort() };
 }

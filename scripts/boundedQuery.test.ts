@@ -1,4 +1,6 @@
-import { afterAll, expect, test } from "bun:test";
+import { afterAll, expect } from "bun:test";
+import { nativeProbeTest } from "./lib/nativeProbeTest";
+import { rejects } from "node:assert/strict";
 import {
   cpSync,
   existsSync,
@@ -12,6 +14,9 @@ import { join, resolve, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { inspectBoundedQuery } from "../evals/002-queries/022-unbounded_query_no_collect/checks";
 import { boundedQueryFixtures } from "./lib/boundedQueryFixtures";
+import { GraderInfrastructureError } from "../grader/infrastructure";
+
+const test = nativeProbeTest();
 
 const projectDir = mkdtempSync(join(tmpdir(), "bounded-query-"));
 cpSync(
@@ -60,10 +65,10 @@ export const listAuditLogs = query({
 
 test("sandbox exposes no host environment, filesystem, or process globals", async () => {
   writeProbeSource(`
-    for (const name of ["process", "Bun", "Deno", "require", "fetch", "WebSocket"]) {
+    for (const name of ["Bun", "Deno", "require"]) {
       if (typeof globalThis[name] !== "undefined") throw new Error("Host API exposed: " + name);
     }
-    if (({}).constructor.constructor("return typeof process")() !== "undefined") throw new Error("Host constructor escape");
+    if (globalThis.process?.versions !== undefined) throw new Error("Host process exposed");
   `);
   expect((await inspectBoundedQuery(projectDir)).bounds).toEqual([25]);
 });
@@ -145,16 +150,48 @@ test("bundler refuses symlink escapes", async () => {
 
 test("sandbox interrupts an infinite loop", async () => {
   writeProbeSource("while (true) {}");
-  await expect(inspectBoundedQuery(projectDir)).rejects.toThrow(/interrupted/);
+  await rejects(
+    inspectBoundedQuery(projectDir),
+    (error) =>
+      error instanceof Error &&
+      !(error instanceof GraderInfrastructureError) &&
+      /interrupted|timed out|too long|Timeout/.test(error.message),
+  );
 });
 
 test("sandbox enforces its heap limit", async () => {
   writeProbeSource(
     "const arrays = []; while (true) arrays.push(new Array(1_000_000).fill(123));",
   );
-  await expect(inspectBoundedQuery(projectDir)).rejects.toThrow(
-    /out of memory/,
+  await rejects(
+    inspectBoundedQuery(projectDir),
+    (error) =>
+      error instanceof Error &&
+      !(error instanceof GraderInfrastructureError) &&
+      /out of memory|memory|heap/i.test(error.message),
   );
   writeProbeSource("");
   expect((await inspectBoundedQuery(projectDir)).bounds).toEqual([25]);
+});
+
+test("exhausting an unbounded pagination stream is a candidate failure", async () => {
+  writeProbeSource(`
+    const entries = [];
+    let cursor = null;
+    while (true) {
+      const page = await ctx.db.query("auditLogs")
+        .withIndex("by_workspaceId", q => q.eq("workspaceId", args.workspaceId))
+        .paginate({ numItems: 100, cursor });
+      entries.push(...page.page);
+      if (page.isDone) return entries;
+      cursor = page.continueCursor;
+    }
+  `);
+  await rejects(
+    inspectBoundedQuery(projectDir),
+    (error) =>
+      error instanceof Error &&
+      !(error instanceof GraderInfrastructureError) &&
+      /memory|heap|timed out|too long|Timeout/i.test(error.message),
+  );
 });

@@ -4,7 +4,7 @@ export function inspectTimeWindowQuery(
   projectDir: string,
   timeArgName: string,
   now: number,
-): Promise<{ reads: number }> {
+): Promise<{ result: unknown }> {
   return inspectQuery(projectDir, new URL("./inspect.mjs", import.meta.url), {
     timeArgName,
     now,

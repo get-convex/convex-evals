@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
+import { failGraderInfrastructure } from "../../../grader/infrastructure";
 
 export interface Inspection {
   typeErrors: string[];
@@ -27,7 +28,17 @@ export function inspectValidators(projectDir: string): Inspection {
       maxBuffer: 1_000_000,
     },
   );
-  if (result.error) throw result.error;
+  if (result.error) {
+    const code = (result.error as NodeJS.ErrnoException).code;
+    // Resource limits can be consumed by candidate code. Failure to start the
+    // trusted Node process at all cannot establish anything about the answer.
+    if (code !== "ETIMEDOUT" && code !== "ENOBUFS")
+      failGraderInfrastructure(
+        `Could not start validator inspection: ${String(result.error)}`,
+        "validator_process",
+      );
+    throw result.error;
+  }
   if (result.status !== 0) {
     throw new Error(
       `Validator module failed: ${result.stderr || result.stdout}`,

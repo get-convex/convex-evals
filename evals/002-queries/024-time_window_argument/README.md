@@ -1,48 +1,48 @@
-# Time-window query grading
+# Caller-controlled time
 
 ## Why this matters
 
-Time passing does not rerun a subscribed Convex query. Reading `Date.now()` in
-`listActive` can leave expired items visible and reduce cache reuse. This task
-intentionally leaves the argument name and signature unspecified: the model must
-choose a caller-supplied timestamp. The original design is recorded in
-[issue #214](https://github.com/get-convex/convex-evals/issues/214).
+Convex subscriptions react to data changes, not merely to time passing. A query
+that compares expiration timestamps with its own clock can leave stale results
+visible. The task now explicitly asks for a caller-supplied timestamp, including
+historical and future cutoffs, so that the query result follows an observable
+input. The model chooses the argument name. This measures implementation of the
+requested behavior; it does not measure spontaneous strategy selection.
 
-The task, reference answer, schema, and six existing API/data tests are unchanged.
-Those tests discover the timestamp argument by type, then check multiple cutoffs,
-the strict expiration boundary, ordering, the 100-item cap, and empty results.
+See [Convex's time-dependent query guidance](https://docs.convex.dev/understanding/best-practices#dont-use-datenow-in-queries)
+and the original design discussion in [issue #214](https://github.com/get-convex/convex-evals/issues/214).
 
-## Correcting the source check
+## Grading
 
-The former whole-file AST check rejected a correct query when its builder was
-stored in a variable before `.take(100)`. It also rejected `Date.now()` in an
-unrelated mutation. Neither changes the query's behavior.
+The six API/data tests check the supplied timestamp argument, strict expiration
+boundary, multiple cutoffs, ascending ordering, the first 100 results, and empty
+results. They run the original candidate on a real Convex backend.
 
-The replacement runs `listActive` through the generated project's Convex SDK in
-the shared WebAssembly sandbox. It observes the native read that is consumed,
-including reads through aliases, imported helpers, and internal queries. The
-read must use the expiration index, the supplied strict lower bound, ascending
-order, and a native limit of at most 100. Point reads may re-fetch those rows
-using either supported `db.get` signature. Synthetic document IDs connect the
-returned rows to that read. Real-backend tests still establish data correctness.
+The seventh check observes clock reads while invoking the query over 105 real
+rows at cutoffs that produce full, partial, and empty results. It also runs in
+Convex's native runtime through the shared one-off query runner. It installs
+clock traps before importing candidate modules, including captured and imported
+helpers. Same-project nested query helpers remain in the trapped context.
+Database operations run on the actual backend, without a simulated query builder
+or synthetic document IDs.
 
-A clock trap is installed before loading the query module. `Date.now()`, bare
-`Date()`, and zero-argument `new Date()` fail when executed, including captured
-module-level reads, helper calls, and errors caught by the query. Deterministic
-conversions such as `new Date(args.now)` are allowed. Prototype and instance
-constructor access lead back to the trapped constructor, and reading the `now`
-property descriptor does not expose an untrapped method. Uninvoked mutations and
-helpers are not executed. The probe samples empty, partial, and full results at
-three cutoffs; it does not prove that every possible branch is free of clock reads.
+The probe observes clock reads; it does not mandate an index, a native limit
+operator, or a particular filtering method. The live tests remain responsible
+for the returned count, cutoff and ordering. A bounded iterator, pagination,
+and a correctly capped alternative can satisfy this task. Access-pattern
+selection belongs to the dedicated evals that declare that measurement.
 
-Database filters and unbounded reads remain rejected. Array method names are no
-longer blanket-banned: harmless transformations of an already correct bounded
-result do not establish a database scan. Incorrect results still fail the
-deployed tests. A disconnected indexed query cannot justify an unbounded read.
+The checks distinguish reading the current time from deterministic conversion
+of an explicitly supplied date or timestamp. A caught prohibited clock read still
+fails. An unsupported probe operation is an infrastructure failure, not a model
+score. No AI grader is used.
 
-## Sandbox reuse
+## Evidence limits
 
-The sandbox and its worker were moved from eval 022 into `grader/`. Both evals
-use the same import restrictions, empty environment, absent host APIs, memory
-limit, and worker timeout. The existing bounded-query fixtures and sandbox
-security tests cover the extraction. No new dependency or AI grader is added.
+Finite examples do not prove that every possible branch is free of clock reads.
+A pass establishes the observed caller-time behavior and runtime checks, not
+complete pagination, a frontend timer, automatic subscription refresh, or
+production-scale read efficiency.
+
+See [the independent review record](../../../docs/query-probe-review.md) for
+counterexamples, decisions, and validation evidence.

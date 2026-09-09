@@ -19,11 +19,8 @@ beforeEach(async () => {
 });
 
 /**
- * The task deliberately does not dictate the query's arguments: choosing to
- * take the current time as a caller-supplied argument (rather than reading
- * the wall clock) IS the concept under test. Discover the numeric argument
- * the solution declared - whatever it is named - and drive every behavioral
- * test through it.
+ * The task requires a caller-supplied timestamp but leaves its name open.
+ * Discover the declared numeric argument and use it for every behavioral test.
  */
 async function getTimeArgName(): Promise<string> {
   const spec = (await responseAdminClient.query(
@@ -39,10 +36,9 @@ async function getTimeArgName(): Promise<string> {
   if (typeof args === "string") {
     args = JSON.parse(args);
   }
-  expect(
-    args?.type,
-    "listActive must declare an arguments object",
-  ).toBe("object");
+  expect(args?.type, "listActive must declare an arguments object").toBe(
+    "object",
+  );
   const fields = Object.entries(args.value ?? {}) as [string, any][];
   const numericFields = fields.filter(([, field]) =>
     ["number", "float64"].includes(field?.fieldType?.type),
@@ -147,14 +143,24 @@ test("returns an empty array when everything has expired", async () => {
 });
 
 test(
-  "listActive consumes an indexed bounded read without reading the wall clock",
+  "listActive handles empty, partial, and full results without reading the wall clock",
   { timeout: 15_000 },
   async () => {
     const timeArgName = await getTimeArgName();
-    await inspectTimeWindowQuery(
-      getLatestOutputProjectDir("002-queries", "024-time_window_argument"),
-      timeArgName,
-      NOW,
+    await addDocuments(
+      responseAdminClient,
+      "items",
+      Array.from({ length: 105 }, (_, i) => ({
+        name: `item-${i + 1}`,
+        expiresAt: NOW + (i + 1) * 10,
+      })),
     );
+    for (const cutoff of [NOW, NOW + 1025, NOW + 1050]) {
+      await inspectTimeWindowQuery(
+        getLatestOutputProjectDir("002-queries", "024-time_window_argument"),
+        timeArgName,
+        cutoff,
+      );
+    }
   },
 );

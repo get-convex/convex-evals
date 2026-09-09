@@ -20,16 +20,146 @@ function fixture(
   extra = "",
   files: Record<string, string> = {},
   timeArgName = "now",
+  probeValid = true,
 ) {
   return {
     name,
     valid,
+    probeValid,
     timeArgName,
     files: { "convex/index.ts": source(body, extra, timeArgName), ...files },
   };
 }
 
+// The execution probe owns only the no-clock rule. Real-backend behavior tests
+// separately reject wrong cutoffs, ordering, caps, and disconnected results.
+function clockFixture(
+  name: string,
+  body: string,
+  extra = "",
+  files: Record<string, string> = {},
+) {
+  return fixture(name, false, body, extra, files, "now", false);
+}
+
+const temporalDeclaration = `declare const Temporal: {
+  Now: {
+    instant(this: void): { epochMilliseconds: number };
+    plainDateTimeISO(): unknown;
+    zonedDateTimeISO(): unknown;
+    plainDateISO(): unknown;
+    plainTimeISO(): unknown;
+    timeZoneId(): string;
+  };
+  Instant: { fromEpochMilliseconds(value: number): { epochMilliseconds: number } };
+};`;
+
 export const timeWindowFixtures = [
+  ...[
+    "instant",
+    "plainDateTimeISO",
+    "zonedDateTimeISO",
+    "plainDateISO",
+    "plainTimeISO",
+  ].map((method) =>
+    clockFixture(
+      `temporal-now-${method}`,
+      `Temporal.Now.${method}(); return await ${indexed}.take(100);`,
+      temporalDeclaration,
+    ),
+  ),
+  clockFixture(
+    "temporal-now-alias",
+    `const { instant } = Temporal.Now; instant(); return await ${indexed}.take(100);`,
+    temporalDeclaration,
+  ),
+  clockFixture(
+    "temporal-now-descriptor",
+    `(Object.getOwnPropertyDescriptor(Temporal.Now, "instant")!.value as () => unknown)(); return await ${indexed}.take(100);`,
+    temporalDeclaration,
+  ),
+  fixture(
+    "temporal-explicit-instant-and-timezone",
+    true,
+    `Temporal.Now.timeZoneId(); const cutoff = Temporal.Instant.fromEpochMilliseconds(args.now).epochMilliseconds; return await ${indexed.replace("args.now", "cutoff")}.take(100);`,
+    temporalDeclaration,
+  ),
+  clockFixture(
+    "intl-default-format",
+    `new Intl.DateTimeFormat("en").format(); return await ${indexed}.take(100);`,
+  ),
+  clockFixture(
+    "intl-undefined-format",
+    `new Intl.DateTimeFormat("en").format(undefined); return await ${indexed}.take(100);`,
+  ),
+  clockFixture(
+    "intl-default-parts",
+    `new Intl.DateTimeFormat("en").formatToParts(); return await ${indexed}.take(100);`,
+  ),
+  clockFixture(
+    "intl-format-descriptor",
+    `const formatter = new Intl.DateTimeFormat("en"); const getFormat = Object.getOwnPropertyDescriptor(Intl.DateTimeFormat.prototype, "format")!.get!.bind(formatter) as () => (date?: number) => string; getFormat()(); return await ${indexed}.take(100);`,
+  ),
+  fixture(
+    "intl-explicit-timestamps",
+    true,
+    `const formatter = new Intl.DateTimeFormat("en"); if (formatter.format !== formatter.format) throw new Error("Bound formatter identity changed"); formatter.format(args.now); formatter.formatToParts(args.now); const getFormat = Object.getOwnPropertyDescriptor(Intl.DateTimeFormat.prototype, "format")!.get!.bind(formatter) as () => (date?: number) => string; getFormat()(args.now); return await ${indexed}.take(100);`,
+  ),
+  clockFixture(
+    "performance-time-origin",
+    `void performance.timeOrigin; return await ${indexed}.take(100);`,
+  ),
+  clockFixture(
+    "performance-origin-descriptor",
+    `const origin = Object.getOwnPropertyDescriptor(Performance.prototype, "timeOrigin")!.get!.bind(performance) as () => number; origin(); return await ${indexed}.take(100);`,
+  ),
+  clockFixture(
+    "performance-to-json",
+    `performance.toJSON(); return await ${indexed}.take(100);`,
+  ),
+  clockFixture(
+    "performance-to-json-alias",
+    `const asJSON = performance.toJSON.bind(performance); asJSON(); return await ${indexed}.take(100);`,
+  ),
+  fixture(
+    "performance-duration-only",
+    true,
+    `const start = performance.now(); const rows = await ${indexed}.take(100); console.log(performance.now() - start); return rows;`,
+  ),
+  fixture(
+    "bounded-async-iteration",
+    true,
+    `const rows = []; for await (const row of ${indexed}) { rows.push(row); if (rows.length === 100) break; } return rows;`,
+  ),
+  fixture(
+    "native-pagination-page",
+    true,
+    `const result = await ${indexed}.paginate({ numItems: 100, cursor: null }); return result.page;`,
+  ),
+  fixture(
+    "pagination-point-refetch",
+    true,
+    `const result = await ${indexed}.paginate({ numItems: 100, cursor: null }); return await Promise.all(result.page.map(async row => (await ctx.db.get("items", row._id))!));`,
+  ),
+  fixture(
+    "pagination-wrong-cutoff",
+    false,
+    `const result = await ${indexed.replace("args.now", "0")}.paginate({ numItems: 100, cursor: null }); return result.page;`,
+  ),
+  fixture(
+    "pagination-database-filter",
+    true,
+    `const result = await ctx.db.query("items").withIndex("by_expiresAt").filter(q => q.gt(q.field("expiresAt"), args.now)).paginate({ numItems: 100, cursor: null }); return result.page;`,
+  ),
+  clockFixture(
+    "pagination-clock-read",
+    `const result = await ${indexed}.paginate({ numItems: 100, cursor: null }); Date.now(); return result.page;`,
+  ),
+  fixture(
+    "pagination-disconnected-read",
+    false,
+    `await ${indexed}.paginate({ numItems: 100, cursor: null }); return [];`,
+  ),
   fixture(
     "bounded-point-refetch",
     true,
@@ -40,29 +170,24 @@ export const timeWindowFixtures = [
     true,
     `const rows = await ${indexed}.take(100); return await Promise.all(rows.map(async row => (await ctx.db.get(row._id))!));`,
   ),
-  fixture(
+  clockFixture(
     "clock-during-refetch",
-    false,
     `const rows = await ${indexed}.take(100); return await Promise.all(rows.map(async row => { const doc = await ctx.db.get("items", row._id); Date.now(); return doc!; }));`,
   ),
-  fixture(
+  clockFixture(
     "prototype-constructor-clock",
-    false,
     `(Date.prototype.constructor as typeof Date).now(); return await ${indexed}.take(100);`,
   ),
-  fixture(
+  clockFixture(
     "instance-constructor-clock",
-    false,
     `(new Date(0).constructor as typeof Date).now(); return await ${indexed}.take(100);`,
   ),
-  fixture(
+  clockFixture(
     "prototype-constructor-no-args",
-    false,
     `const Clock = Date.prototype.constructor as typeof Date; new Clock(); return await ${indexed}.take(100);`,
   ),
-  fixture(
+  clockFixture(
     "clock-method-descriptor",
-    false,
     `(Object.getOwnPropertyDescriptor(Date, "now")!.value as () => number)(); return await ${indexed}.take(100);`,
   ),
   fixture(
@@ -75,14 +200,12 @@ export const timeWindowFixtures = [
     true,
     `Date.UTC(2020, 0, 1); const cutoff = Date.parse(new Date(args.now).toISOString()); return await ${indexed.replace("args.now", "cutoff")}.take(100);`,
   ),
-  fixture(
+  clockFixture(
     "clock-in-empty-branch",
-    false,
     `const rows = await ${indexed}.take(100); if (rows.length === 0) Date.now(); return rows;`,
   ),
-  fixture(
+  clockFixture(
     "clock-in-full-branch",
-    false,
     `const rows = await ${indexed}.take(100); if (rows.length === 100) Date.now(); return rows;`,
   ),
   fixture("reference", true, `return await ${indexed}.take(100);`),
@@ -144,69 +267,61 @@ export const timeWindowFixtures = [
     {},
     "cutoff",
   ),
-  fixture("date-now", false, `Date.now(); return await ${indexed}.take(100);`),
-  fixture("bare-date", false, `Date(); return await ${indexed}.take(100);`),
-  fixture(
+  clockFixture("date-now", `Date.now(); return await ${indexed}.take(100);`),
+  clockFixture("bare-date", `Date(); return await ${indexed}.take(100);`),
+  clockFixture(
     "zero-argument-date",
-    false,
     `new Date(); return await ${indexed}.take(100);`,
   ),
-  fixture(
+  clockFixture(
     "global-clock",
-    false,
     `globalThis.Date.now(); return await ${indexed}.take(100);`,
   ),
-  fixture(
+  clockFixture(
     "aliased-clock",
-    false,
     `const { now: clock } = Date; clock(); return await ${indexed}.take(100);`,
   ),
-  fixture(
+  clockFixture(
     "caught-clock-error",
-    false,
     `try { Date.now(); } catch {} return await ${indexed}.take(100);`,
   ),
-  fixture(
+  clockFixture(
     "module-clock",
-    false,
     `void captured; return await ${indexed}.take(100);`,
     "const captured = Date.now();",
   ),
-  fixture(
+  clockFixture(
     "local-clock-helper",
-    false,
     `clock(); return await ${indexed}.take(100);`,
     "function clock() { return Date.now(); }",
   ),
-  fixture(
+  clockFixture(
     "imported-clock-helper",
-    false,
     `clock(); return await ${indexed}.take(100);`,
     'import { clock } from "./helpers";',
     {
       "convex/helpers.ts": "export function clock() { return Date.now(); }",
     },
   ),
-  fixture(
+  clockFixture(
     "internal-clock-helper",
-    false,
     "return await ctx.runQuery(internal.index.readActive, args);",
     `export const readActive = internalQuery({ args: { now: v.number() }, handler: async (ctx,args) => { Date.now(); return await ${indexed}.take(100); } });`,
   ),
   fixture("unbounded-collect", false, `return await ${indexed}.collect();`),
   fixture(
     "collect-then-slice",
-    false,
+    true,
     `return (await ${indexed}.collect()).slice(0,100);`,
   ),
   fixture(
     "unused-indexed-query",
-    false,
+    true,
     `${indexed}; return (await ctx.db.query("items").collect()).filter(row => row.expiresAt > args.now).sort((a,b) => a.expiresAt-b.expiresAt).slice(0,100);`,
   ),
   fixture(
     "database-filter",
-    false,
+    true,
     'return await ctx.db.query("items").withIndex("by_expiresAt").filter(q => q.gt(q.field("expiresAt"),args.now)).take(100);',
   ),
   fixture(
