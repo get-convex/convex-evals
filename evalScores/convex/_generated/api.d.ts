@@ -25,6 +25,7 @@ import type * as runMaintenance from "../runMaintenance.js";
 import type * as runs from "../runs.js";
 import type * as scoringUtils from "../scoringUtils.js";
 import type * as steps from "../steps.js";
+import type * as webUsage from "../webUsage.js";
 
 import type {
   ApiFromModules,
@@ -50,6 +51,7 @@ declare const fullApi: ApiFromModules<{
   runs: typeof runs;
   scoringUtils: typeof scoringUtils;
   steps: typeof steps;
+  webUsage: typeof webUsage;
 }>;
 
 /**
