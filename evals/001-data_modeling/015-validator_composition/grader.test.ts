@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { getLatestOutputProjectDir } from "../../../grader/outputDir";
 import {
   assertValidator,
@@ -8,25 +8,36 @@ import {
 } from "./checks";
 
 describe("native object-validator composition", () => {
-  let inspection: Inspection;
+  let outcome: { value: Inspection } | { error: unknown } | undefined;
 
-  beforeAll(() => {
-    const outputDir = getLatestOutputProjectDir(
-      "001-data_modeling",
-      "015-validator_composition",
-    );
-    inspection = inspectValidators(outputDir);
-  }, 25_000);
+  function inspection(): Inspection {
+    // Candidate execution belongs to an assertion, not a setup hook. A broken
+    // module should fail these tests, rather than skip the suite as a grader
+    // setup failure. Cache errors too so a timeout runs only once.
+    if (!outcome) {
+      try {
+        const outputDir = getLatestOutputProjectDir(
+          "001-data_modeling",
+          "015-validator_composition",
+        );
+        outcome = { value: inspectValidators(outputDir) };
+      } catch (error) {
+        outcome = { error };
+      }
+    }
+    if ("error" in outcome) throw outcome.error;
+    return outcome.value;
+  }
 
   test("the module typechecks", () => {
-    expect(inspection.typeErrors).toEqual([]);
-  });
+    expect(inspection().typeErrors).toEqual([]);
+  }, 25_000);
 
   for (const name of Object.keys(expectedShapes) as Array<
     keyof typeof expectedShapes
   >) {
     test(`${name} has the requested shape and provenance`, () => {
-      assertValidator(inspection, name);
-    });
+      assertValidator(inspection(), name);
+    }, 25_000);
   }
 });

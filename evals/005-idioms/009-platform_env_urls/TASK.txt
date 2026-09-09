@@ -11,4 +11,6 @@ Create `convex/deployment.ts` with a public query `getDeploymentInfo` that:
   - `cloudUrl`: this deployment's client URL (the `.convex.cloud` address in production)
   - `appName`: the configured `PUBLIC_APP_NAME`, or `null` when it is not set
 
+An empty string is a configured app name and must be returned unchanged. Return `null` only when `PUBLIC_APP_NAME` is absent.
+
 No schema is required.

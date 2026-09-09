@@ -1,4 +1,5 @@
-import { afterAll, expect, test } from "bun:test";
+import { afterAll, expect } from "bun:test";
+import { nativeProbeTest } from "./lib/nativeProbeTest";
 import {
   cpSync,
   mkdtempSync,
@@ -11,6 +12,10 @@ import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { inspectNestedWriteLimit } from "../evals/005-idioms/008-nested_transaction_limits/checks";
 import { nestedTransactionLimitsFixtures } from "./lib/nestedTransactionLimitsFixtures";
+
+const test = nativeProbeTest(
+  "evals/005-idioms/008-nested_transaction_limits/answer",
+);
 
 const root = mkdtempSync(join(tmpdir(), "nested-write-limit-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));

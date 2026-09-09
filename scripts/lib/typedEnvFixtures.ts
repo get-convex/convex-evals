@@ -47,8 +47,129 @@ function fixture(
   };
 }
 
+// These extra fields are valid Convex values even though ordinary JSON cannot
+// represent them. They must survive both direct and nested query probe results.
+const fieldsWithSpecialValues = `{ ...${fields}, tally: 1n, notANumber: NaN, negativeZero: -0, bytes: new Uint8Array([1, 2, 3]).buffer }`;
+
+function nativeHelperFixtures(returnValue = fields, suffix = "") {
+  return ["named", "snapshot", "handle"].flatMap((mode) =>
+    (mode === "snapshot" ? ["typed"] : ["typed", "raw", "raw-caught"]).map(
+      (access) => {
+        const rawRead = "void process.env.SUPPORT_EMAIL;";
+        const beforeReturn =
+          access === "typed"
+            ? ""
+            : access === "raw-caught"
+              ? `try { ${rawRead} } catch {}`
+              : rawRead;
+        const target =
+          mode === "handle"
+            ? "await createFunctionHandle(internal.helper.readInfo)"
+            : "internal.helper.readInfo";
+        const options =
+          mode === "snapshot" ? ", { useStaleSnapshot: true }" : "";
+        const imports =
+          'import { internal } from "./_generated/api";' +
+          (mode === "handle"
+            ? '\nimport { createFunctionHandle } from "convex/server";'
+            : "");
+        return fixture(
+          `native-helper-${mode}-${access}${suffix}`,
+          access === "typed" && mode !== "snapshot",
+          query(
+            `return await ctx.runQuery(${target}, {}${options});`,
+            imports,
+          ).replace(
+            "async () =>",
+            'async (ctx): Promise<{ supportEmail: string | null; deploymentStage: "dev" | "preview" | "prod"; isConfigured: boolean }> =>',
+          ),
+          {
+            "convex/helper.ts": `import { env, internalQuery } from "./_generated/server";
+declare const process: { env: Record<string, string | undefined> };
+export const readInfo = internalQuery({ args: {}, handler: async () => {
+  ${beforeReturn}
+  return ${returnValue};
+} });`,
+          },
+        );
+      },
+    ),
+  );
+}
+
 export const typedEnvFixtures = [
+  fixture(
+    "optional-auth-read",
+    true,
+    query(`void await ctx.auth.getUserIdentity(); return ${fields};`).replace(
+      "async () =>",
+      "async (ctx) =>",
+    ),
+  ),
+  fixture(
+    "ordinary-native-db-read",
+    true,
+    query(
+      `await ctx.db.query("envProbeNotes").take(1); return ${fields};`,
+    ).replace("async () =>", "async (ctx) =>"),
+  ),
+  ...nativeHelperFixtures(),
+  fixture(
+    "additional-convex-special-values",
+    true,
+    query(`return ${fieldsWithSpecialValues};`),
+  ),
+  ...nativeHelperFixtures(fieldsWithSpecialValues, "-special-values").filter(
+    (item) =>
+      /(?:named-typed|handle-typed|handle-raw-caught)-special-values$/.test(
+        item.name,
+      ),
+  ),
+  fixture(
+    "missing-required-export",
+    false,
+    reference.replace("getSupportConfig", "renamedInfo"),
+  ),
   fixture("reference", true, reference),
+  fixture(
+    "additional-returned-field",
+    true,
+    query(`return { ...${fields}, label: "Support configuration" };`),
+  ),
+  fixture(
+    "public-query-helper",
+    true,
+    `import { query } from "./_generated/server";
+import { api } from "./_generated/api";
+export const getSupportConfig = query({
+  args: {},
+  handler: async (ctx): Promise<{ supportEmail: string | null; deploymentStage: "dev" | "preview" | "prod"; isConfigured: boolean }> => ctx.runQuery(api.helper.readInfo, {}),
+});`,
+    { "convex/helper.ts": reference.replace("getSupportConfig", "readInfo") },
+  ),
+  // The execution probe can call internal functions and does not validate
+  // arguments. The deployed API-spec check must reject these contract errors.
+  fixture(
+    "required-entrypoint-is-internal",
+    false,
+    reference.replace("query, env", "internalQuery as query, env"),
+    { "convex/helper.ts": reference.replace("getSupportConfig", "readInfo") },
+    true,
+  ),
+  fixture(
+    "required-entrypoint-has-arguments",
+    false,
+    `import { v } from "convex/values";\n${reference.replace("args: {},", "args: { extra: v.string() },")}`,
+    {},
+    true,
+  ),
+  fixture(
+    "console-timing",
+    true,
+    query(
+      `console.time("typed-env"); const result = ${fields}; console.timeEnd("typed-env"); return result;`,
+    ),
+  ),
   fixture("typescript-codegen", true, reference, {
     "convex.json": '{ "codegen": { "fileType": "ts" } }',
   }),
@@ -230,11 +351,16 @@ export function readConfig() { return ${fields.replaceAll("env.", "process.env."
     query(`try { void process.env.SUPPORT_EMAIL; } catch {} return ${fields};`),
   ),
   fixture(
-    "raw-descriptor",
-    false,
+    "raw-descriptor-no-value",
+    true,
     query(
       `Object.getOwnPropertyDescriptor(process.env, "SUPPORT_EMAIL"); return ${fields};`,
     ),
+  ),
+  fixture(
+    "raw-membership-no-value",
+    true,
+    query(`void ("SUPPORT_EMAIL" in process.env); return ${fields};`),
   ),
   fixture(
     "empty-string-as-unset",

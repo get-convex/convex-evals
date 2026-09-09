@@ -12,4 +12,6 @@ Create `convex/config.ts` with a public query `getSupportConfig` that:
   - `deploymentStage`: the configured deployment stage, or `"dev"` when it is not set
   - `isConfigured`: `true` when `SUPPORT_EMAIL` is set, otherwise `false`
 
+An empty `SUPPORT_EMAIL` is configured: return an empty string for `supportEmail` and `true` for `isConfigured`. Use the fallback values only when the corresponding variable is absent.
+
 No schema is required.

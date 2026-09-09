@@ -1,153 +1,181 @@
-export async function inspect(modules, { timeArgName, now }) {
-  const violations = [];
-  const streams = new Map();
-  const issuedDocs = new Map();
-  let reads = 0;
-  let sampleSize = 0;
+import {
+  candidateProbeFailure,
+  unsupportedProbe,
+} from "../../../grader/probeErrors.mjs";
 
-  function assert(condition, message) {
-    if (!condition) {
-      violations.push(message);
-      throw new Error(message);
-    }
+export async function inspect(
+  modules,
+  { timeArgName, now },
+  { jsonToConvex, convexToJson },
+) {
+  if (!modules.index)
+    candidateProbeFailure("Missing required module convex/index.ts");
+  const violations = [];
+  const nativeConvex = globalThis.Convex;
+  const functionNames = new Map();
+
+  function clockRead(message) {
+    violations.push(message);
+    throw new Error(message);
   }
 
-  // Install before loading model modules so captured/module-level clock reads
-  // and imported helpers are covered too. Uninvoked mutations never run here.
+  // Install before importing candidate modules so aliases and imported helpers
+  // see the same clock restriction. Deterministic date conversion remains valid.
   const NativeDate = Date;
-  // Replace the method itself so its descriptor cannot expose an untrapped
-  // now(). Keep parse(), UTC(), and dated construction intact.
-  NativeDate.now = () =>
-    assert(false, "Query read the wall clock with Date.now()");
+  NativeDate.now = () => clockRead("Query read the wall clock with Date.now()");
   globalThis.Date = new Proxy(NativeDate, {
     apply() {
-      assert(false, "Query read the wall clock with Date()");
+      clockRead("Query read the wall clock with Date()");
     },
     construct(target, args, newTarget) {
-      assert(args.length > 0, "Query read the wall clock with new Date()");
+      if (args.length === 0)
+        clockRead("Query read the wall clock with new Date()");
       return Reflect.construct(target, args, newTarget);
     },
   });
-  // Date.prototype and Date instances must lead back to the trapped constructor.
   NativeDate.prototype.constructor = globalThis.Date;
+
+  function trapMethod(object, name, readsClock = () => true) {
+    const descriptor = Object.getOwnPropertyDescriptor(object, name);
+    if (!descriptor || typeof descriptor.value !== "function")
+      unsupportedProbe(`Clock probe cannot instrument method ${name}`);
+    Object.defineProperty(object, name, {
+      ...descriptor,
+      value: new Proxy(descriptor.value, {
+        apply(target, receiver, args) {
+          if (readsClock(args))
+            clockRead(`Query read the wall clock with ${name}()`);
+          return Reflect.apply(target, receiver, args);
+        },
+      }),
+    });
+  }
+
+  // Temporal bypasses Date.now. Its Now namespace also has timeZoneId(),
+  // which does not read a timestamp and must remain usable.
+  if (globalThis.Temporal?.Now) {
+    for (const name of [
+      "instant",
+      "plainDateTimeISO",
+      "zonedDateTimeISO",
+      "plainDateISO",
+      "plainTimeISO",
+    ]) {
+      if (typeof globalThis.Temporal.Now[name] === "function")
+        trapMethod(globalThis.Temporal.Now, name);
+    }
+  }
+
+  // Intl uses the current instant only when its timestamp is omitted/undefined.
+  // Preserve native bound-function identity and allow explicit date formatting.
+  const dateTimeFormat = globalThis.Intl?.DateTimeFormat?.prototype;
+  if (dateTimeFormat) {
+    const descriptor = Object.getOwnPropertyDescriptor(
+      dateTimeFormat,
+      "format",
+    );
+    if (typeof descriptor?.get !== "function")
+      unsupportedProbe(
+        "Clock probe cannot instrument Intl.DateTimeFormat.format",
+      );
+    const boundFormats = new WeakMap();
+    Object.defineProperty(dateTimeFormat, "format", {
+      ...descriptor,
+      get() {
+        const nativeFormat = Reflect.apply(descriptor.get, this, []);
+        if (!boundFormats.has(nativeFormat)) {
+          boundFormats.set(
+            nativeFormat,
+            new Proxy(nativeFormat, {
+              apply(target, receiver, args) {
+                if (args[0] === undefined)
+                  clockRead("Query read the wall clock with Intl.format()");
+                return Reflect.apply(target, receiver, args);
+              },
+            }),
+          );
+        }
+        return boundFormats.get(nativeFormat);
+      },
+    });
+    trapMethod(
+      dateTimeFormat,
+      "formatToParts",
+      (args) => args[0] === undefined,
+    );
+  }
+
+  // performance.now() measures elapsed time. Its epoch-valued timeOrigin and
+  // toJSON() expose wall time, including through prototype/descriptor access.
+  if (globalThis.performance) {
+    for (const name of ["timeOrigin", "toJSON"]) {
+      let owner = globalThis.performance;
+      while (owner && !Object.hasOwn(owner, name))
+        owner = Object.getPrototypeOf(owner);
+      if (!owner) continue;
+      if (name === "toJSON") {
+        trapMethod(owner, name);
+      } else {
+        const descriptor = Object.getOwnPropertyDescriptor(owner, name);
+        if (typeof descriptor.get !== "function")
+          unsupportedProbe(
+            "Clock probe cannot instrument performance.timeOrigin",
+          );
+        Object.defineProperty(owner, name, {
+          ...descriptor,
+          get: new Proxy(descriptor.get, {
+            apply() {
+              clockRead(
+                "Query read the wall clock with performance.timeOrigin",
+              );
+            },
+          }),
+        });
+      }
+    }
+  }
 
   async function invoke(name, args) {
     const [moduleName, exportName = "default"] = name.split(":");
+    if (!modules[moduleName])
+      unsupportedProbe(`Clock probe cannot load query module ${moduleName}`);
     const module = await modules[moduleName]();
-    assert(
-      typeof module[exportName]?.invokeQuery === "function",
-      `Missing query ${name}`,
-    );
-    return JSON.parse(
-      await module[exportName].invokeQuery(JSON.stringify([args])),
+    if (typeof module[exportName]?.invokeQuery !== "function")
+      throw new Error(`Missing query ${name}`);
+    return jsonToConvex(
+      JSON.parse(await module[exportName].invokeQuery(JSON.stringify([args]))),
     );
   }
 
   globalThis.Convex = {
-    syscall(op, jsonArgs) {
-      const args = JSON.parse(jsonArgs);
-      if (op === "1.0/queryStream") {
-        const { source, operators } = args.query;
-        assert(
-          source.type === "IndexRange" &&
-            source.indexName === "items.by_expiresAt",
-          "Consume the items expiration index",
-        );
-        assert(
-          source.range.some(
-            (bound) =>
-              bound.fieldPath === "expiresAt" &&
-              bound.type === "Gt" &&
-              bound.value === now,
-          ),
-          "Use the caller's timestamp as the strict index lower bound",
-        );
-        assert(
-          source.order === null || source.order === "asc",
-          "Read the soonest-expiring items first",
-        );
-        assert(
-          operators.every((operator) => "limit" in operator) &&
-            operators.some(
-              ({ limit }) =>
-                Number.isSafeInteger(limit) && limit > 0 && limit <= 100,
-            ),
-          "Consume a native bounded read without a database filter",
-        );
-        const queryId = reads++;
-        const limit = Math.min(...operators.map(({ limit }) => limit));
-        // The deployed tests verify real documents and ordering. Synthetic IDs
-        // establish that this bounded read actually supplies the returned rows.
-        const rows = Array.from(
-          { length: Math.min(limit, sampleSize) },
-          (_, i) => {
-            const _id = `probe-${queryId}-${i}`;
-            const row = {
-              _id,
-              _creationTime: i,
-              name: _id,
-              expiresAt: now + i + 1,
-            };
-            issuedDocs.set(_id, row);
-            return row;
-          },
-        );
-        streams.set(queryId, rows);
-        return JSON.stringify({ queryId });
-      }
-      if (op === "1.0/queryCleanup") {
-        streams.delete(args.queryId);
-        return "null";
-      }
-      assert(false, `Unsupported query probe syscall: ${op}`);
-    },
+    ...nativeConvex,
     async asyncSyscall(op, jsonArgs) {
       const args = JSON.parse(jsonArgs);
-      if (op === "1.0/queryStreamNext") {
-        const remaining = streams.get(args.queryId);
-        assert(remaining, "Unknown query stream");
-        const value = remaining.shift();
-        return JSON.stringify({
-          value: value ?? null,
-          done: value === undefined,
-        });
+      if (op === "1.0/createFunctionHandle") {
+        if (!args.name)
+          unsupportedProbe("Clock probe cannot resolve this function address");
+        const result = await nativeConvex.asyncSyscall(op, jsonArgs);
+        functionNames.set(JSON.parse(result), args.name);
+        return result;
       }
-      // A point read can re-fetch a row already supplied by the bounded index
-      // read. It does not establish or substitute for that indexed read.
-      if (op === "1.0/get")
-        return JSON.stringify(
-          !args.isSystem && (args.table === undefined || args.table === "items")
-            ? (issuedDocs.get(args.id) ?? null)
-            : null,
-        );
-      if (op === "1.0/runUdf" && args.udfType === "query")
-        return JSON.stringify(await invoke(args.name, args.args));
-      assert(false, `Unsupported query probe syscall: ${op}`);
+      if (
+        op === "1.0/runUdf" &&
+        ["query", "snapshotQuery"].includes(args.udfType)
+      ) {
+        const name = args.name ?? functionNames.get(args.functionHandle);
+        if (!name)
+          unsupportedProbe("Clock probe cannot resolve this nested query");
+        // Keep same-project query helpers in the trapped context. Letting a
+        // native nested query run separately would restore its untrapped Date.
+        return JSON.stringify(convexToJson(await invoke(name, args.args)));
+      }
+      // Database semantics belong to Convex. The one-off transaction is never
+      // committed; seeded rows exercise empty, partial and full results.
+      return await nativeConvex.asyncSyscall(op, jsonArgs);
     },
   };
 
-  // Exercise empty, partial, and full result branches at different cutoffs.
-  // This is a runtime check over representative paths, not a proof about every
-  // possible branch. The deployed tests independently verify actual data.
-  for (const [cutoff, size] of [
-    [now, 0],
-    [now + 1500, 3],
-    [now - 6000, 100],
-  ]) {
-    now = cutoff;
-    sampleSize = size;
-    streams.clear();
-    issuedDocs.clear();
-    const previousReads = reads;
-    const result = await invoke("index:listActive", { [timeArgName]: now });
-    assert(violations.length === 0, "Query caught a prohibited read's error");
-    assert(reads > previousReads, "No indexed bounded read was consumed");
-    assert(
-      Array.isArray(result) &&
-        (size === 0 ? result.length === 0 : result.length > 0) &&
-        result.every((row) => issuedDocs.has(row?._id)),
-      "Return the documents from the indexed bounded read",
-    );
-  }
-  return { reads };
+  const result = await invoke("index:listActive", { [timeArgName]: now });
+  if (violations.length) throw new Error(violations.join("; "));
+  return { result };
 }

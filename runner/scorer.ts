@@ -8,9 +8,12 @@ import {
   writeFileSync,
   readdirSync,
   readFileSync,
+  mkdtempSync,
+  rmSync,
 } from "fs";
 import { join, resolve, relative } from "path";
 import { platform, tmpdir } from "os";
+import { fileURLToPath } from "node:url";
 import { $ } from "bun";
 import {
   withConvexBackend,
@@ -26,6 +29,10 @@ import {
 } from "./logging.js";
 import { recordStep, completeEval, uploadEvalOutput } from "./reporting.js";
 import type { LanguageModelUsage } from "ai";
+import {
+  GRADER_EVENTS_PATH_ENV,
+  type GraderEvent,
+} from "../grader/infrastructure.js";
 
 // ── Timeout constants (ms) ───────────────────────────────────────────
 
@@ -107,53 +114,52 @@ export async function runCommandWithTimeout(
   cwd: string,
   timeoutMs: number,
   label: string,
+  env?: Record<string, string>,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const proc = Bun.spawn(command, {
     cwd,
+    env,
     detached: true,
     stdout: "pipe",
     stderr: "pipe",
   });
   const stdoutPromise = new Response(proc.stdout).text();
   const stderrPromise = new Response(proc.stderr).text();
+  const completed = Promise.all([proc.exited, stdoutPromise, stderrPromise]);
 
   let timer: ReturnType<typeof setTimeout>;
   try {
-    const exitCode = await Promise.race([
-      proc.exited,
+    const [exitCode, stdout, stderr] = await Promise.race([
+      completed,
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           reject(new Error(`${label} timed out after ${timeoutMs / 1000}s`));
         }, timeoutMs);
       }),
     ]);
-    const [stdout, stderr] = await Promise.all([
-      stdoutPromise,
-      stderrPromise,
-    ]);
     return { exitCode, stdout, stderr };
   } catch (error) {
-    if (proc.exitCode === null) {
-      try {
-        if (platform() === "win32") {
-          proc.kill("SIGKILL");
-        } else {
-          // detached starts a new POSIX process group. Kill the whole group so
-          // lifecycle children cannot keep mutating the project during retry.
-          process.kill(-proc.pid, "SIGKILL");
-        }
-      } catch {
+    try {
+      if (platform() === "win32") {
+        if (proc.exitCode === null) proc.kill("SIGKILL");
+      } else {
+        // The leader may have exited while a descendant still holds its pipes.
+        // Kill the owned process group even after the leader has exited.
+        process.kill(-proc.pid, "SIGKILL");
+      }
+    } catch {
+      if (proc.exitCode === null) {
         try {
           proc.kill("SIGKILL");
         } catch {
           // The process exited between the status check and the signal.
         }
       }
-      await proc.exited;
     }
+    if (proc.exitCode === null) await proc.exited;
     // A lifecycle descendant may still hold an inherited pipe on platforms
     // without process-group signals. Never let stream draining mask the timeout.
-    void Promise.all([stdoutPromise, stderrPromise]).catch(() => {});
+    void completed.catch(() => {});
     throw error;
   } finally {
     clearTimeout(timer!);
@@ -500,6 +506,40 @@ class ScoringContext {
     }
   }
 
+  /** Preserve an unscored attempt without completing it as a model failure. */
+  async reportInfrastructureFailure(error: InfrastructureError): Promise<void> {
+    appendLog(
+      this.runLogPath,
+      `[infrastructure] ${error.name}: ${error.message}`,
+    );
+    try {
+      writeFileSync(
+        join(this.outputProjectDir, "grader-error.json"),
+        JSON.stringify(
+          {
+            kind: "infrastructure_error",
+            score: null,
+            eval: this.evalPrefix,
+            message: error.message,
+            usage: this.usage,
+          },
+          null,
+          2,
+        ) + "\n",
+      );
+    } catch (artifactError) {
+      // A disk failure must not replace the InfrastructureError that invalidates
+      // the run, even when it also prevents us from preserving local evidence.
+      appendLog(
+        this.runLogPath,
+        `[infrastructure] Could not save grader error: ${String(artifactError)}`,
+      );
+    }
+    if (this.evalId) {
+      await uploadEvalOutput(this.evalId, this.outputProjectDir);
+    }
+  }
+
   /** Report final eval completion (called after all steps). */
   async reportCompletion(testsRatio: number): Promise<void> {
     if (!this.evalId) return;
@@ -803,6 +843,10 @@ async function runFileTestsStep(
       }
     }
   } catch (e) {
+    if (e instanceof InfrastructureError) {
+      await ctx.reportInfrastructureFailure(e);
+      throw e;
+    }
     if (e instanceof TestsFailedError) {
       testsRatio = e.ratio;
       vitestStdout = e.vitestStdout;
@@ -860,25 +904,39 @@ async function runTestsStep(
 
   logInfo(`[${ctx.evalPrefix}] Setting up answer backend`);
 
-  await runCommandStep(
+  const answerInstall = await runCommandStep(
     ctx.runLogPath,
     () => installDependencies(answerProjectDir),
     "answer-bun",
     "(answer) bun install",
     "(answer) ",
   );
+  if (!answerInstall.passed) {
+    const error = new InfrastructureError(
+      `[grader setup] Reference answer install failed: ${answerInstall.error}`,
+    );
+    await ctx.reportInfrastructureFailure(error);
+    throw error;
+  }
 
   await withConvexBackend(answerBackendDir, async (answerBackend) => {
     logInfo(
       `[${ctx.evalPrefix}] Deploying answer backend on port ${answerBackend.port}`,
     );
-    await runCommandStep(
+    const answerDeploy = await runCommandStep(
       ctx.runLogPath,
       () => deploy(answerBackend, answerProjectDir),
       "answer-convex-dev",
       "(answer) convex dev",
       "(answer) ",
     );
+    if (!answerDeploy.passed) {
+      const error = new InfrastructureError(
+        `[grader setup] Reference answer deploy failed: ${answerDeploy.error}`,
+      );
+      await ctx.reportInfrastructureFailure(error);
+      throw error;
+    }
 
     const testFile = resolve(join(evalPath, "grader.test.ts"));
     const stepStart = Date.now();
@@ -923,6 +981,10 @@ async function runTestsStep(
         }
       }
     } catch (e) {
+      if (e instanceof InfrastructureError) {
+        await ctx.reportInfrastructureFailure(e);
+        throw e;
+      }
       if (e instanceof TestsFailedError) {
         testsRatio = e.ratio;
         vitestStdout = e.vitestStdout;
@@ -1240,53 +1302,184 @@ async function runTests(
   return executeVitest(env, testFile);
 }
 
+function objectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** A completed assertion report is necessary, but not sufficient, for a score. */
+export function evaluateVitestReport(
+  report: unknown,
+  events: unknown[],
+  exitCode: number,
+): number {
+  const completions: Extract<GraderEvent, { kind: "vitest-end" }>[] = [];
+  for (const event of events) {
+    if (!objectRecord(event)) {
+      throw new InfrastructureError("Malformed grader event");
+    }
+    if (
+      event.kind === "infrastructure" &&
+      typeof event.code === "string" &&
+      typeof event.message === "string"
+    ) {
+      throw new InfrastructureError(`[grader:${event.code}] ${event.message}`);
+    }
+    if (
+      event.kind !== "vitest-end" ||
+      !["passed", "failed", "interrupted"].includes(String(event.reason)) ||
+      !Array.isArray(event.unhandledErrors) ||
+      !event.unhandledErrors.every((error) => typeof error === "string")
+    ) {
+      throw new InfrastructureError("Malformed grader event");
+    }
+    completions.push(event as (typeof completions)[number]);
+  }
+  if (completions.length !== 1) {
+    throw new InfrastructureError(
+      "Vitest did not report one completed grader run",
+    );
+  }
+  const completion = completions[0];
+  if (
+    completion.reason === "interrupted" ||
+    completion.unhandledErrors.length
+  ) {
+    throw new InfrastructureError(
+      `Vitest ${completion.reason}; unhandled errors: ${completion.unhandledErrors.join("\n")}`,
+    );
+  }
+
+  if (!objectRecord(report)) {
+    throw new InfrastructureError(
+      "Missing or malformed Vitest assertion report",
+    );
+  }
+  const total = report.numTotalTests;
+  const passed = report.numPassedTests;
+  const failed = report.numFailedTests;
+  if (
+    typeof total !== "number" ||
+    !Number.isInteger(total) ||
+    total <= 0 ||
+    typeof passed !== "number" ||
+    !Number.isInteger(passed) ||
+    passed < 0 ||
+    passed > total ||
+    typeof failed !== "number" ||
+    !Number.isInteger(failed) ||
+    failed < 0 ||
+    passed + failed > total ||
+    typeof report.success !== "boolean" ||
+    !Array.isArray(report.testResults)
+  ) {
+    throw new InfrastructureError("Incomplete Vitest assertion report");
+  }
+  const assertions: Record<string, unknown>[] = [];
+  for (const suite of report.testResults) {
+    if (!objectRecord(suite) || !Array.isArray(suite.assertionResults)) {
+      throw new InfrastructureError("Malformed Vitest test suite report");
+    }
+    for (const assertion of suite.assertionResults) {
+      if (!objectRecord(assertion) || typeof assertion.status !== "string") {
+        throw new InfrastructureError("Malformed Vitest assertion result");
+      }
+      assertions.push(assertion);
+    }
+  }
+  if (
+    assertions.length !== total ||
+    assertions.filter((assertion) => assertion.status === "passed").length !==
+      passed ||
+    assertions.filter((assertion) => assertion.status === "failed").length !==
+      failed
+  ) {
+    throw new InfrastructureError(
+      "Vitest assertion counts disagree with its report",
+    );
+  }
+  // Exit 1 is normal for failed assertions. Any other nonzero exit, or exit 1
+  // without a failed assertion, means the test process did not produce a score.
+  if (
+    (exitCode !== 0 && (exitCode !== 1 || failed === 0)) ||
+    (exitCode === 0 && failed > 0) ||
+    (passed === total && (!report.success || completion.reason !== "passed"))
+  ) {
+    throw new InfrastructureError(
+      `Vitest exited ${exitCode} without a consistent assertion result`,
+    );
+  }
+  return passed / total;
+}
+
 async function executeVitest(
   env: Record<string, string>,
   testFile: string,
 ): Promise<{ ratio: number; stdout: string; cmd: string }> {
-  const tmpJsonPath = join(
-    tmpdir(),
-    `vitest-${Date.now()}-${Math.random().toString(36).slice(2)}.json`,
-  );
-
-  // Vitest treats the file argument as a name filter. Without this exclusion,
-  // local agent worktrees containing the same eval path are also discovered
-  // and run against the same backend, corrupting each other's test data.
-  const cmd = `bunx vitest run ${testFile} --exclude '**/.claude/worktrees/**' --reporter=json --outputFile ${tmpJsonPath} --reporter=default --no-color`;
-  const result = await withTimeout(
-    $`bunx vitest run ${testFile} --exclude '**/.claude/worktrees/**' --reporter=json --outputFile ${tmpJsonPath} --reporter=default --no-color`
-      .env(env)
-      .nothrow()
-      .quiet(),
-    TIMEOUTS.vitest,
-    "vitest",
-  );
-
-  const stdout = result.text();
-
-  let ratio = 0;
+  // The runner creates this outside candidate output. A trusted inspector and
+  // reporter share it; model strings, thrown messages, and stdout cannot mark a
+  // result as infrastructure. Each invocation has a fresh completion handshake.
+  let resultDir: string;
   try {
-    const jsonContent = readFileSync(tmpJsonPath, "utf-8");
-    const parsed = JSON.parse(jsonContent) as {
-      numTotalTests?: number;
-      numPassedTests?: number;
-    };
-    const total = parsed.numTotalTests ?? 0;
-    const passed = parsed.numPassedTests ?? 0;
-    ratio = total > 0 ? passed / total : 0;
-  } catch (e) {
-    if (result.exitCode !== 0) {
-      throw new Error(`Tests failed:\n${stdout}`);
-    }
-    throw new Error(
-      `Failed to parse test results from ${tmpJsonPath}: ${String(e)}`,
+    resultDir = mkdtempSync(join(tmpdir(), "convex-eval-grader-"));
+  } catch (error) {
+    throw new InfrastructureError(
+      `[grader] Could not create result directory: ${String(error)}`,
+    );
+  }
+  const tmpJsonPath = join(resultDir, "assertions.json");
+  const eventsPath = join(resultDir, "events.jsonl");
+  const reporterPath = fileURLToPath(
+    new URL("./graderReporter.ts", import.meta.url),
+  );
+
+  // Vitest treats the file argument as a name filter. Exclude local agent
+  // worktrees so duplicate graders cannot corrupt each other's backend data.
+  const command = [
+    "bunx",
+    "vitest",
+    "run",
+    testFile,
+    "--exclude",
+    "**/.claude/worktrees/**",
+    "--reporter=json",
+    "--outputFile",
+    tmpJsonPath,
+    "--reporter=default",
+    "--reporter",
+    reporterPath,
+    "--no-color",
+  ];
+  const cmd = command.map((arg) => JSON.stringify(arg)).join(" ");
+  let stdout = "";
+  let ratio: number;
+  try {
+    writeFileSync(eventsPath, "");
+    const result = await runCommandWithTimeout(
+      command,
+      process.cwd(),
+      TIMEOUTS.vitest,
+      "vitest",
+      { ...env, [GRADER_EVENTS_PATH_ENV]: eventsPath },
+    );
+    stdout = [result.stdout, result.stderr].filter(Boolean).join("\n");
+    const events = readFileSync(eventsPath, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as unknown);
+    const report: unknown = JSON.parse(readFileSync(tmpJsonPath, "utf8"));
+    ratio = evaluateVitestReport(report, events, result.exitCode);
+  } catch (error) {
+    // Do not convert machinery errors into TestsFailedError or a zero score.
+    // Preserve both command streams for local evidence and the failed run.
+    throw new InfrastructureError(
+      `[grader] ${String(error)}\n[cmd] ${cmd}${stdout ? `\n${stdout}` : ""}`,
     );
   } finally {
     try {
-      const { unlinkSync } = await import("fs");
-      unlinkSync(tmpJsonPath);
+      rmSync(resultDir, { recursive: true, force: true });
     } catch {
-      /* ignore */
+      // Temporary evidence cleanup must not turn an unscored grader error
+      // into a generic exception that the caller would score as a test failure.
     }
   }
 
@@ -1298,7 +1491,6 @@ async function executeVitest(
       cmd,
     );
   }
-
   return { ratio, stdout, cmd };
 }
 

@@ -2,7 +2,6 @@ import { afterAll, expect, test } from "vitest";
 import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 import { randomUUID } from "node:crypto";
-import { isDeepStrictEqual } from "node:util";
 import {
   adminKey,
   cloudUrl,
@@ -52,12 +51,20 @@ async function expectConfig(env: AppEnv): Promise<void> {
   // A fresh HTTP query avoids client-side subscription caching after updates.
   await pollUntil(
     async () => {
-      latest = await new ConvexHttpClient(cloudUrl).query(getSupportConfig, {});
-      return isDeepStrictEqual(latest, expected);
+      const actual = await new ConvexHttpClient(cloudUrl).query(
+        getSupportConfig,
+        {},
+      );
+      latest = actual;
+      return (
+        actual?.supportEmail === expected.supportEmail &&
+        actual?.deploymentStage === expected.deploymentStage &&
+        actual?.isConfigured === expected.isConfigured
+      );
     },
     { timeoutMs: 5_000, intervalMs: 100 },
   ).catch((error) => {
-    expect(latest, `Config after env update (${String(error)})`).toEqual(
+    expect(latest, `Config after env update (${String(error)})`).toMatchObject(
       expected,
     );
   });
@@ -71,7 +78,11 @@ test(
   "public query returns defaults when optional env vars are absent",
   { timeout: 10_000 },
   async ({ skip }) => {
-    await compareFunctionSpec(skip, { ignoreReturns: true, publicOnly: true });
+    await compareFunctionSpec(skip, {
+      ignoreReturns: true,
+      publicOnly: true,
+      allowAdditionalFunctions: true,
+    });
     await setAppEnv({});
     await expectConfig({});
   },
@@ -112,7 +123,7 @@ test(
     // Real deployment updates above independently check freshness on the backend.
     for (const env of supportConfigCases(randomUUID())) {
       const inspected = await inspectTypedAppEnv(projectDir(), env);
-      expect(inspected.result).toEqual(expectedSupportConfig(env));
+      expect(inspected.result).toMatchObject(expectedSupportConfig(env));
       inspected.reads.forEach((key) => reads.add(key));
     }
     expect([...reads].sort()).toEqual(["DEPLOYMENT_STAGE", "SUPPORT_EMAIL"]);

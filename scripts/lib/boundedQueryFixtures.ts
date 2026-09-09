@@ -42,6 +42,16 @@ fixture(
 );
 fixture("take-25-default-order", true, `return await ${query}.take(25);`);
 fixture(
+  "bounded-point-refetch",
+  true,
+  `const rows = await ${query}.take(100); return await Promise.all(rows.map(async row => (await ctx.db.get("auditLogs", row._id))!));`,
+);
+fixture(
+  "bounded-point-refetch-legacy",
+  true,
+  `const rows = await ${query}.take(100); return await Promise.all(rows.map(async row => (await ctx.db.get(row._id))!));`,
+);
+fixture(
   "take-250-descending",
   true,
   `return await ${query}.order("desc").take(250);`,

@@ -1,4 +1,17 @@
-export async function inspect(modules, { job }) {
+import {
+  candidateProbeFailure,
+  unsupportedProbe,
+} from "../../../grader/probeErrors.mjs";
+
+export async function inspect(
+  modules,
+  { job },
+  { jsonToConvex, convexToJson },
+) {
+  if (!modules.index)
+    candidateProbeFailure("Missing required module convex/index.ts");
+  const nativeConvex = globalThis.Convex;
+  const functionNames = new Map();
   function assert(condition, message) {
     if (!condition) throw new Error(message);
   }
@@ -11,7 +24,9 @@ export async function inspect(modules, { job }) {
       typeof module[exportName]?.[method] === "function",
       `Missing ${udfType} ${name}`,
     );
-    return JSON.parse(await module[exportName][method](JSON.stringify([args])));
+    return jsonToConvex(
+      JSON.parse(await module[exportName][method](JSON.stringify([args]))),
+    );
   }
 
   let calls = 0;
@@ -30,7 +45,7 @@ export async function inspect(modules, { job }) {
     function unsupportedOperation(op) {
       const message = `Unsupported nested-limit probe syscall: ${op}`;
       unsupported.push(message);
-      throw new Error(message);
+      unsupportedProbe(message);
     }
 
     // Only one pending job and no deliveries exist in this scenario. Permit
@@ -110,6 +125,7 @@ export async function inspect(modules, { job }) {
     }
 
     globalThis.Convex = {
+      ...nativeConvex,
       syscall(op, jsonArgs) {
         const args = JSON.parse(jsonArgs);
         if (op === "1.0/queryStream") {
@@ -132,6 +148,15 @@ export async function inspect(modules, { job }) {
       },
       async asyncSyscall(op, jsonArgs) {
         const args = JSON.parse(jsonArgs);
+        if (op === "1.0/createFunctionHandle") {
+          // Let Convex produce its own opaque handle. Remember the explicit
+          // SDK address instead of deriving a module name from handle text.
+          if (!args.name || !nativeConvex?.asyncSyscall)
+            return unsupportedOperation("function handle target");
+          const result = await nativeConvex.asyncSyscall(op, jsonArgs);
+          functionNames.set(JSON.parse(result), args.name);
+          return result;
+        }
         if (op === "1.0/queryStreamNext") {
           const value = streams.get(args.queryId)?.shift();
           return JSON.stringify({
@@ -149,10 +174,9 @@ export async function inspect(modules, { job }) {
           });
         }
         if (op === "1.0/runUdf") {
-          if (
-            args.udfType === "mutation" &&
-            args.name === "index:writeDeliveries"
-          ) {
+          const name = args.name ?? functionNames.get(args.functionHandle);
+          if (!name) return unsupportedOperation("nested function address");
+          if (args.udfType === "mutation" && name === "index:writeDeliveries") {
             // These are the serialized options consumed by the real Convex SDK,
             // after aliases, computed properties and imported helpers execute.
             observeCall(args);
@@ -161,9 +185,9 @@ export async function inspect(modules, { job }) {
             // assertions, including direct child calls and parent persistence.
             return await new Promise(() => {});
           }
-          if (args.name && ["mutation", "query"].includes(args.udfType))
+          if (["mutation", "query"].includes(args.udfType))
             return JSON.stringify(
-              await invoke(args.name, args.args, args.udfType),
+              convexToJson(await invoke(name, args.args, args.udfType)),
             );
         }
         // Allow ordinary job checks/updates before the nested call, including
