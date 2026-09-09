@@ -446,3 +446,74 @@ export const consolidateJuly20Benchmark = internalMutation({
     });
   },
 });
+
+// Audited 111-eval runs from main SHA 39065c99202097e2a80f690c22daf39fb6605d9c.
+// The suite hash was computed from that exact clean checkout. Never absorb
+// other runs just because they share the unminted bucket or eval count.
+const SEPTEMBER_WEB_BENCHMARK =
+  "6209c4a70d36b76ff4235b9da5f99933c8c65428e150d5445da5aadbf3d9c74a";
+const SEPTEMBER_WEB_RUNS = {
+  "1": [
+    "jn7aztmg9pdt4dfh6xbbg0dfh58e0tgt",
+    "jn7aapr9c0zz8m5mwx8tggt9c18e0zr1",
+    "jn78g06cqn6x1b61rr06hq0yxn8e1gx1",
+    "jn75fmf35pe1xankkgjj8swzrd8e044p",
+    "jn76rgsnvqnsrfh5hbmf0qg9zx8e11n4",
+    "jn784qv2x41mqywrhg0etrgvs58e1qsc",
+    "jn7dhsfdghh3bqd9pbd378h2198e1txq",
+    "jn7dzeh87rhnmv6r0skqt8xh6d8e1h51",
+  ],
+  "2": [
+    "jn742gnhe9f06h2w3ft0p3wxx18e0t1r",
+    "jn7fzkhqz6gcyzsn8325dbdcj98e0y1g",
+    "jn716v8ce7gtnp2d0bsbs0v10d8e0nth",
+    "jn7dg1y5d8n2j2952bksnkbakd8e224k",
+    "jn7ej51sjx85hxjs7txqjgy6c58e3d30",
+    "jn78p47gd0s077wytmwddd7r458e2ab9",
+    "jn71spxs8wpd37tp7e6a85fs0x8e2zd4",
+    "jn76kkkbtqjbp50ah5mxbvez8s8e28b5",
+  ],
+  "3": [
+    "jn7e3ewhs4y8s76c64y19kyzjd8e3z2d",
+    "jn74eapf7w7sd9g27fq9vheaq98e3vvz",
+    "jn71c6hjc21mw0xt9grbmjdng18e264y",
+    "jn72km9y3d7f9mde66rfz82pvx8e3qce",
+    "jn7ash3daah3sg6w9h3e5fqsys8e3qqz",
+    "jn70ny3tzb5bmycd2wdchvazd98e3gtd",
+    "jn753q5xnkn026mgsy2rd9dyj18e2336",
+    "jn71qq2nk39dkc0w73r355kqrx8e37dx",
+  ],
+} as const;
+
+export const publishSeptemberWebRuns = internalMutation({
+  args: { repetition: v.union(v.literal(1), v.literal(2), v.literal(3)) },
+  returns: v.object({
+    updated: v.number(),
+    alreadyAssigned: v.number(),
+    scoreGroupsQueued: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const runIds = SEPTEMBER_WEB_RUNS[args.repetition].map(
+      (id) => id as Id<"runs">,
+    );
+    // Check actual results as well as the plan before publishing this allowlist.
+    for (const id of runIds) {
+      const evals = await ctx.db
+        .query("evals")
+        .withIndex("by_runId", (q) => q.eq("runId", id))
+        .take(112);
+      if (
+        evals.length !== 111 ||
+        evals.some(
+          (e) => e.status.kind !== "passed" && e.status.kind !== "failed",
+        )
+      ) {
+        throw new Error(`Run ${id} does not have exactly 111 terminal evals`);
+      }
+    }
+    return await backfillCompletedRunsToBenchmark(ctx, {
+      version: SEPTEMBER_WEB_BENCHMARK,
+      runIds,
+    });
+  },
+});

@@ -1,3 +1,4 @@
+import { combineWebUsage, webUsageAverages } from "./webUsage";
 import { internalMutation, query, type QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -24,6 +25,7 @@ type ScoreSummary = {
 
 type LeaderboardScoreRow = Pick<
   Doc<"modelScores">,
+  | "webUsage"
   | "modelId"
   | "totalScore"
   | "totalScoreErrorBar"
@@ -54,6 +56,11 @@ const leaderboardScoreValidator = v.object({
   averageRunDurationMsErrorBar: v.number(),
   averageRunCostUsd: v.union(v.number(), v.null()),
   averageRunCostUsdErrorBar: v.union(v.number(), v.null()),
+  averageWebSearchesPerEval: v.union(v.number(), v.null()),
+  averageWebSearchesEstimated: v.boolean(),
+  averageWebFetchesPerEval: v.union(v.number(), v.null()),
+  webSearchTelemetryEvalCount: v.number(),
+  webUsageEvalCount: v.number(),
   scores: v.record(v.string(), v.number()),
   scoreErrorBars: v.record(v.string(), v.number()),
   runCount: v.number(),
@@ -162,6 +169,7 @@ function combineModelScoreRows(
   }
 
   return {
+    webUsage: combineWebUsage(rows.map((row) => row.webUsage)),
     modelId: latest.modelId,
     totalScore: totalScore.mean,
     totalScoreErrorBar: totalScore.stdDev,
@@ -805,6 +813,7 @@ export const leaderboardScores = query({
       totalScoreErrorBar: r.totalScoreErrorBar,
       averageRunDurationMs: r.averageRunDurationMs,
       averageRunDurationMsErrorBar: r.averageRunDurationMsErrorBar,
+      ...webUsageAverages(r.webUsage),
       averageRunCostUsd: r.averageRunCostUsd,
       averageRunCostUsdErrorBar: r.averageRunCostUsdErrorBar,
       scores: r.scores,
