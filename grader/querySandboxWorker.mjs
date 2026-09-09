@@ -1,10 +1,12 @@
-import { parentPort, workerData } from "node:worker_threads";
 import {
   newQuickJSWASMModule,
   shouldInterruptAfterDeadline,
 } from "quickjs-emscripten";
 
 try {
+  process.stdin.setEncoding("utf8");
+  let source = "";
+  for await (const chunk of process.stdin) source += chunk;
   const quickjs = await newQuickJSWASMModule();
   const runtime = quickjs.newRuntime();
   runtime.setMemoryLimit(64 * 1024 * 1024);
@@ -13,7 +15,7 @@ try {
   const context = runtime.newContext();
   const promise = context.unwrapResult(
     context.evalCode(
-      `globalThis.console = { log() {}, warn() {}, error() {}, info() {}, debug() {} };\n${workerData}\nprobeBundle.default;`,
+      `globalThis.console = { log() {}, warn() {}, error() {}, info() {}, debug() {} };\n${source}\nprobeBundle.default;`,
     ),
   );
   const jobs = runtime.executePendingJobs();
@@ -22,13 +24,13 @@ try {
   if (state.type === "rejected")
     throw new Error(JSON.stringify(context.dump(state.error)));
   if (state.type !== "fulfilled") throw new Error("Probe did not finish");
-  parentPort.postMessage({ result: context.dump(state.value) });
+  process.stdout.write(JSON.stringify({ result: context.dump(state.value) }));
 } catch (error) {
-  parentPort.postMessage({
-    error: `Query probe failed: ${String(error)}`,
-  });
+  process.stdout.write(
+    JSON.stringify({ error: `Query probe failed: ${String(error)}` }),
+  );
 }
 
-// The parent terminates this worker after receiving its result, discarding the
-// entire WASM instance. This also handles memory exhaustion: QuickJS can fail
+// Exiting the child discards the entire WASM instance without individual handle
+// cleanup. This also handles memory exhaustion: QuickJS can fail
 // during individual handle cleanup after an OOM in a nested async function.
