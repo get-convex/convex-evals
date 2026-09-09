@@ -6,7 +6,9 @@
 2026-09-09 follow-up: the nested-limit correction is implemented and validated,
 including the native-call task clarification and execution-based grading. See
 [its validation report](../reports/openai/gpt-6-astra/local_nested_transaction_limits_2026-09-08.md).
-The remaining changes are proposals. Historical results and benchmark versions
+The typed application env correction is also implemented and validated;
+see [its validation report](../reports/openai/gpt-6-astra/local_typed_env_2026-09-09.md).
+The other changes remain proposals. Historical results and benchmark versions
 are unchanged.
 
 ## Conclusion
@@ -172,8 +174,8 @@ these concrete checks with an AI pass/fail judgment.
 
 1. Completed: replace nested-limit source matching with executed native-call
    inspection and retain real-backend rollback checks. See the validation report.
-2. Correct typed application env and platform env grading, sharing only the
-   justified instrumentation; preserve their distinct capability claims.
+2. Typed application env grading is corrected. Next, review platform env grading;
+   share only justified instrumentation and preserve their distinct claims.
 3. Review the proposed time-window and missing-user contract clarifications,
    then add the cascade dependency-graph cases. Do not silently rewrite past
    task interpretations.
