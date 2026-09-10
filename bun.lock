@@ -34,7 +34,7 @@
       "devDependencies": {
         "@ai-sdk/provider-utils": "4.0.50",
         "@convex-dev/action-cache": "0.3.1",
-        "@convex-dev/agent": "0.6.4",
+        "@convex-dev/agent": "0.7.2",
         "@convex-dev/aggregate": "0.3.1",
         "@convex-dev/presence": "0.3.2",
         "@convex-dev/rate-limiter": "0.3.2",
@@ -107,7 +107,7 @@
 
     "@convex-dev/action-cache": ["@convex-dev/action-cache@0.3.1", "", { "peerDependencies": { "convex": "^1.24.8" } }, "sha512-HTN/GXyX4t89xxsMXeacMDtQi2jEzQrrlLTtTV1L87Odxz7N8EQHIuI9HOug0dIsz6Gd1VybYbjT1Buv8jarLw=="],
 
-    "@convex-dev/agent": ["@convex-dev/agent@0.6.4", "", { "optionalDependencies": { "@ungap/structured-clone": "^1.3.0" }, "peerDependencies": { "@ai-sdk/provider-utils": "^4.0.6", "ai": "^6.0.35", "convex": "^1.24.8", "convex-helpers": "^0.1.103", "react": "^18.3.1 || ^19.0.0" }, "optionalPeers": ["react"] }, "sha512-e93KDIxIo9WAFt6maQya66/uM44WhmoaaB34eIrdZS2YPkSkXDJpAcx0cNcRHrjAS2GhqgGtquSUh+Gl+Kv/xA=="],
+    "@convex-dev/agent": ["@convex-dev/agent@0.7.2", "", { "optionalDependencies": { "@ungap/structured-clone": "^1.3.0" }, "peerDependencies": { "@ai-sdk/provider": "^4.0.0", "@ai-sdk/provider-utils": "^5.0.0", "ai": "^7.0.0", "convex": "^1.24.8", "convex-helpers": "^0.1.103", "react": "^18.3.1 || ^19.0.0" }, "optionalPeers": ["react"] }, "sha512-TdsOfQ6znHz2Ha+6z5iNFa9qBPF+vi0GNYECQpjLBFbPWSmVNd51y6a8zMUspBnvHd5TTCWHpycr5xgjtjs3tw=="],
 
     "@convex-dev/aggregate": ["@convex-dev/aggregate@0.3.1", "", { "dependencies": { "@convex-dev/batch-worker": "0.3.3", "convex-helpers": "0.1.122" }, "peerDependencies": { "convex": "^1.43.0" } }, "sha512-BYjgZjsAm+rHc3OxyZwUn+A4cl/dRbMSsHSNsdTZuwP4EXd6NV3AAIKa+tI9C4LD++I8N4fXscmiTz+manFnQA=="],
 
