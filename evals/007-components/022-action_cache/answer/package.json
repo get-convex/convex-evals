@@ -1,0 +1,11 @@
+{
+  "name": "convexbot",
+  "version": "1.0.0",
+  "dependencies": {
+    "convex": "1.41.0",
+    "@convex-dev/action-cache": "0.3.1"
+  },
+  "overrides": {
+    "ws": "8.21.0"
+  }
+}

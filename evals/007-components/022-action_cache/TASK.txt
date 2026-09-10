@@ -1,0 +1,48 @@
+Implement a persistent product-description cache using @convex-dev/action-cache.
+The expensive generator below stands in for an external API. Do not call any
+external service, change the generator, or add application tables.
+
+Pin convex to 1.41.0 and @convex-dev/action-cache to 0.3.1 in package.json.
+Mount the Action Cache component under its default name actionCache in
+convex/convex.config.ts.
+
+Include this internal action in convex/index.ts (add imports; equivalent type
+annotations are fine, but preserve its arguments and behaviour):
+
+```ts
+export const generateDescription = internalAction({
+  args: { productId: v.string(), language: v.string() },
+  handler: async (_ctx, args): Promise<{ text: string; generationId: string }> => ({
+    text: `${args.productId}:${args.language}`,
+    generationId: crypto.randomUUID(),
+  }),
+});
+```
+
+Expose one public action in convex/index.ts:
+- getDescription({ productId: string, language: string, maxAgeMs?: number })
+  returns the generator's { text, generationId } result.
+- Reuse a persistent cached result for the same productId and language across
+  separate calls. Different products and languages have separate entries.
+- Default TTL is one hour (3,600,000 milliseconds).
+- maxAgeMs, when supplied, overrides TTL for this fetch. It controls freshness,
+  not cache identity: never pass it to the generator or include it in the key.
+  Inputs for maxAgeMs will be finite and nonnegative. Zero requires a fresh
+  generation. Respect the shorter of an entry's original TTL and the current
+  request's TTL, as the component does.
+- Return the cached generationId on a hit; let the component invoke the
+  generator on a miss or expiry. Do not implement a separate cache.
+
+Minimal API reference for @convex-dev/action-cache 0.3.1:
+- Import ActionCache from "@convex-dev/action-cache".
+- Import the component definition from
+  "@convex-dev/action-cache/convex.config" and mount it with app.use(...)
+  on a defineApp() instance. Its default generated name is actionCache.
+- new ActionCache(components.actionCache, { action: internal.index.generateDescription,
+  ttl: 3_600_000 }) creates a client. An optional name changes its namespace.
+- await cache.fetch(ctx, generatorArgs, { ttl: optionalOverride }) reads or
+  generates a value. The final options argument is optional. Cache keys use
+  namespace and generatorArgs. TTLs are in milliseconds; omitted overrides
+  use the configured default. A shorter TTL can expire an existing entry.
+- Give getDescription's handler an explicit Promise return type to avoid
+  circular inference through generated internal references.
