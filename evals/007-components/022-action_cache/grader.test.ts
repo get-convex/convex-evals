@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import { anyApi } from "convex/server";
 import {
   compareFunctionSpec,
+  getSchema,
   responseAdminClient,
   readOutputFile,
   responseClient,
@@ -12,6 +13,19 @@ const EVAL_NAME = "022-action_cache";
 
 test("public action contract", async ({ skip }) => {
   await compareFunctionSpec(skip, { ignoreReturns: true, publicOnly: true });
+});
+
+test("required internal generator contract", async ({ skip }) => {
+  await compareFunctionSpec(skip, {
+    ignoreReturns: true,
+    allowAdditionalFunctions: true,
+  });
+});
+
+test("no application tables", async () => {
+  const schema = await getSchema(responseAdminClient);
+  // A missing schema and defineSchema({}) are both valid table-free apps.
+  expect(schema?.tables ?? []).toEqual([]);
 });
 
 test("pins and mounts Action Cache", () => {

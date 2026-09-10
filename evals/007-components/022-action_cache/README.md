@@ -19,7 +19,7 @@ src/client/index.ts and src/component/lib.ts.
 
 ## Validation
 
-Canonical answer: full local backend pipeline, 5/5 grader tests passed.
+Canonical answer: full local backend pipeline, 7/7 grader tests passed.
 Negative controls also deployed and reached the grader:
 
 - Ignoring maxAgeMs failed the expiry and stored-TTL checks.
@@ -28,8 +28,12 @@ Negative controls also deployed and reached the grader:
 
 No model generation or production reporting was used for these checks.
 
-Astra pilot (one run per condition): default 5/5 and no_guidelines 5/5.
+Astra pilot (one run per condition): default 7/7 and no_guidelines 7/7.
 Both outputs deployed, typechecked, and linted successfully. Both preserved the
 supplied generator and passed maxAgeMs as a fetch option, separately from the
 generator arguments. Both added returns validators, accepted by the grader.
 This is a small task/grader smoke test, not an estimate of guideline benefit.
+
+After review, both saved model outputs were regraded without new generation.
+The grader also checks the required internal API and accepts either a missing
+root schema or an explicitly empty one. Extra internal helpers remain allowed.
