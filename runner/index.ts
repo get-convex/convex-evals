@@ -46,6 +46,7 @@ import {
   isWebResearchExperiment,
   validateExperimentConfiguration,
 } from "./experiments.js";
+import { WebResearchProviderError } from "./models/webResearch.js";
 import { requireWebResearchApiKey } from "./models/webResearchTools.js";
 import { computeBenchmarkDefinition } from "./benchmark.js";
 import {
@@ -651,8 +652,16 @@ async function processOneEval(
       };
       break;
     } catch (e) {
-      // Infrastructure failures always abort immediately - no retry.
-      if (e instanceof InfrastructureError) throw e;
+      // Only classified transient web errors may retry. Exhaustion still aborts
+      // the run, rather than recording an infrastructure failure as a model zero.
+      if (
+        e instanceof InfrastructureError &&
+        !(
+          e instanceof WebResearchProviderError &&
+          e.canRetry(attempt, PROVIDER_MAX_RETRIES)
+        )
+      )
+        throw e;
 
       lastError = e;
       const errorStr = String(e);
@@ -672,13 +681,17 @@ async function processOneEval(
         openRouterGenerationId:
           e instanceof EmptyProviderResponseError
             ? e.openRouterGenerationId
-            : undefined,
+            : e instanceof WebResearchProviderError
+              ? e.generationId
+              : undefined,
       });
       logInfo(
         `[${evalPathStr}] Provider attempt ${attempt + 1}: session=${requestSessionId} generation=${
           e instanceof EmptyProviderResponseError
             ? (e.openRouterGenerationId ?? "unavailable")
-            : "unavailable"
+            : e instanceof WebResearchProviderError
+              ? (e.generationId ?? "unavailable")
+              : "unavailable"
         } outcome=${providerAttempts[providerAttempts.length - 1].outcome}`,
       );
 
@@ -803,6 +816,7 @@ function isRateLimitError(errorStr: string): boolean {
 
 /** Detect empty/capacity/network failures that are safe to retry. */
 function isTransientProviderError(error: unknown): boolean {
+  if (error instanceof WebResearchProviderError) return error.canRetry(0, 1);
   if (error instanceof EmptyProviderResponseError) return true;
   const lower = String(error).toLowerCase();
   return (

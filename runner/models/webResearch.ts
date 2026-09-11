@@ -12,6 +12,29 @@ import {
   withWebResearchTools,
 } from "./webResearchTools.js";
 
+// Stream errors arrive after HTTP 200, so the SDK's HTTP retries do not help.
+// Keep them as infrastructure failures after retry exhaustion, never model zeros.
+export class WebResearchProviderError extends InfrastructureError {
+  constructor(
+    message: string,
+    readonly code?: number,
+    readonly errorType?: string,
+    readonly generationId?: string,
+  ) {
+    super(
+      `OpenRouter web response failed: ${message} (code=${code ?? "unknown"}, type=${errorType ?? "unknown"}, generation=${generationId ?? "unknown"})`,
+    );
+  }
+
+  canRetry(attempt: number, maxRetries: number): boolean {
+    return (
+      attempt < maxRetries &&
+      this.code !== undefined &&
+      [408, 429, 500, 502, 503, 504].includes(this.code)
+    );
+  }
+}
+
 type JsonObject = Record<string, unknown>;
 type RequestTrace = {
   startedAt: string;
@@ -228,10 +251,23 @@ export async function generateWithWebResearch({
       event.type === "response.failed" ||
       event.type === "response.error"
     ) {
-      const message = object(event.error ?? response?.error)?.message;
-      throw new InfrastructureError(
-        "OpenRouter web response failed: " +
-          (typeof message === "string" ? message : "provider error"),
+      const error = object(event.error ?? response?.error);
+      const message = error?.message;
+      const code = error?.code;
+      const errorType = object(error?.metadata)?.error_type;
+      const generationId = event.id ?? response?.id;
+      throw new WebResearchProviderError(
+        (typeof message === "string" ? message : "provider error").replaceAll(
+          apiKey,
+          "[redacted]",
+        ),
+        typeof code === "number" ? code : undefined,
+        typeof errorType === "string"
+          ? errorType.replaceAll(apiKey, "[redacted]")
+          : undefined,
+        typeof generationId === "string"
+          ? generationId.replaceAll(apiKey, "[redacted]")
+          : undefined,
       );
     }
   }
@@ -396,6 +432,7 @@ export async function generateWithWebResearch({
       error instanceof Error ? error.message : String(error)
     ).replaceAll(apiKey, "[redacted]");
     abort.abort(error);
+    if (error instanceof WebResearchProviderError) throw error;
     throw new InfrastructureError(
       "OpenRouter web generation failed: " + trace.error,
     );
