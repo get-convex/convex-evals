@@ -3,7 +3,10 @@ import { EmptyProviderResponseError, Model } from "./models/modelCodegen.js";
 import { resolveModelDefaults } from "./models/index.js";
 import { WEB_RESEARCH_LIMITS } from "./models/webResearchTools.js";
 import { rejects } from "node:assert/strict";
-import type { WebResearchTrace } from "./models/webResearch.js";
+import {
+  WebResearchProviderError,
+  type WebResearchTrace,
+} from "./models/webResearch.js";
 import { InfrastructureError } from "./convexBackend.js";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -320,6 +323,51 @@ describe("web research through the real SDK adapters", () => {
       expect(result.usage?.raw?.cost).toBe(0.03);
       expect(requests[0].max_output_tokens).toBe(16384);
       expect(requests[0].reasoning).toMatchObject({ effort: "medium" });
+    },
+  );
+
+  it.each([400, 402, 504])(
+    "preserves streamed %i details and bounds retries",
+    async (code) => {
+      const model = stub(() =>
+        sse([
+          {
+            error: {
+              code,
+              message: "Server tool request failed",
+              metadata: {
+                error_type: code === 504 ? "timeout" : "invalid_request",
+              },
+            },
+            id: "gen-test",
+          },
+        ]),
+      );
+      const silence = spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await rejects(
+          model.generate("Build a backend.", {
+            sessionId: "session-web-error",
+            webTracePath: tracePath,
+          }),
+          (error: unknown) => {
+            expect(error).toBeInstanceOf(WebResearchProviderError);
+            const failure = error as WebResearchProviderError;
+            expect(failure.code).toBe(code);
+            expect(failure.generationId).toBe("gen-test");
+            expect(failure.canRetry(0, 2)).toBe(code === 504);
+            expect(failure.canRetry(1, 2)).toBe(code === 504);
+            expect(failure.canRetry(2, 2)).toBe(false);
+            expect(failure).toBeInstanceOf(InfrastructureError);
+            return true;
+          },
+        );
+        expect(requests).toHaveLength(1);
+        expect(saved().error).toContain(`code=${code}`);
+        expect(saved().error).toContain("generation=gen-test");
+      } finally {
+        silence.mockRestore();
+      }
     },
   );
 
