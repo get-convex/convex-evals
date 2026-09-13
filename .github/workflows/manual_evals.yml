@@ -48,7 +48,9 @@ on:
 jobs:
   run-evals:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    # Full web suites at concurrency 1 can exceed two hours with provider retries.
+    # Keep per-eval limits unchanged; allow the complete suite to finish.
+    timeout-minutes: 240
 
     env:
       ENVIRONMENT: ci
