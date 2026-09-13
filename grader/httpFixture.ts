@@ -65,6 +65,10 @@ export async function startHttpFixture(): Promise<HttpFixture> {
         server.close((error) =>
           error === undefined ? resolve() : reject(error),
         );
+        // Assertions have finished. Do not let a lingering backend connection
+        // or unfinished request keep the grader's afterAll hook waiting.
+        // Stop accepting connections first so none can arrive after this call.
+        server.closeAllConnections();
       }),
   };
 }
