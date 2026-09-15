@@ -126,10 +126,14 @@ The trace is explicitly marked `provider-visible-only`:
 - Cost is exactly what OpenRouter reports. If absent, it stays unknown: a model
   token-price estimate would omit search/fetch charges. Failed requests without
   usage cannot be included in a measured total. `usage.raw.providerUsageScope`
-  identifies successful-attempt-only or unavailable usage;
+  identifies successful-attempt-only or unavailable usage for web runs;
   `providerUsageExcludesFailedAttempts` flags omitted failed attempts. The runner
   also prints this limitation on web failures. These flags do not estimate
   missing charges or claim coverage of OpenRouter's internal retries.
+
+Known socket failures (`ECONNRESET`, `EPIPE`, `ETIMEDOUT`, and `UND_ERR_SOCKET`)
+use the same bounded retries as interrupted streams. Runner aborts and local
+limits remain non-retryable.
 
 These API paths have different trace visibility. Do not call citations a complete
 research history, or interpret missing search metadata as zero searches. The raw

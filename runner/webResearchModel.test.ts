@@ -406,6 +406,52 @@ describe("web research through the real SDK adapters", () => {
     },
   );
 
+  it.each(["ECONNRESET", "EPIPE", "ETIMEDOUT", "UND_ERR_SOCKET"])(
+    "retries a stream failure with transport code %s",
+    async (code) => {
+      const model = stub(
+        () =>
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.error(
+                  new TypeError("terminated", {
+                    cause: Object.assign(new Error("socket failure"), { code }),
+                  }),
+                );
+              },
+            }),
+            {
+              headers: {
+                "Content-Type": "text/event-stream",
+                "x-generation-id": "gen-socket",
+              },
+            },
+          ),
+      );
+      const silence = spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await rejects(
+          model.generate("Build a backend.", {
+            sessionId: "socket",
+            webTracePath: tracePath,
+          }),
+          (error: unknown) => {
+            expect(error).toBeInstanceOf(WebResearchProviderError);
+            const failure = error as WebResearchProviderError;
+            expect(failure.generationId).toBe("gen-socket");
+            expect(failure.canRetry(0, 2)).toBe(true);
+            expect(failure.canRetry(2, 2)).toBe(false);
+            return true;
+          },
+        );
+        expect(saved().status).toBe("failed");
+      } finally {
+        silence.mockRestore();
+      }
+    },
+  );
+
   it.each(["provider error", "truncated stream", "oversized stream"])(
     "preserves traces and classifies %s as infrastructure failure",
     async (kind) => {

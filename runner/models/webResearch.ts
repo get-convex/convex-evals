@@ -36,6 +36,27 @@ export class WebResearchProviderError extends InfrastructureError {
   }
 }
 
+function isTransportError(error: unknown): boolean {
+  // Match transport codes, not arbitrary provider messages or our own limits.
+  // Fetch implementations often wrap the socket error in `cause`.
+  for (
+    let depth = 0;
+    depth < 5 && error && typeof error === "object";
+    depth++
+  ) {
+    const value = error as { code?: unknown; cause?: unknown };
+    if (
+      typeof value.code === "string" &&
+      ["ECONNRESET", "EPIPE", "ETIMEDOUT", "UND_ERR_SOCKET"].includes(
+        value.code,
+      )
+    )
+      return true;
+    error = value.cause;
+  }
+  return false;
+}
+
 type JsonObject = Record<string, unknown>;
 type RequestTrace = {
   startedAt: string;
@@ -446,6 +467,14 @@ export async function generateWithWebResearch({
     trace.status = "completed";
     return { text, usage: reportedUsage, trace, timeToFirstTokenMs, response };
   } catch (error) {
+    if (!signal.aborted && isTransportError(error)) {
+      error = new WebResearchProviderError(
+        "Transport interrupted the response stream",
+        undefined,
+        "interrupted_stream",
+        generationId,
+      );
+    }
     trace.status = "failed";
     trace.error = (
       error instanceof Error ? error.message : String(error)

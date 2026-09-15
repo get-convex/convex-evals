@@ -657,6 +657,7 @@ async function processOneEval(
           usage,
           sessionId: requestSessionId,
           attempts: providerAttempts,
+          webResearch: isWebResearchExperiment(process.env.EVALS_EXPERIMENT),
         }),
         rawResponse,
       };
@@ -718,6 +719,9 @@ async function processOneEval(
               usage: undefined,
               sessionId: requestSessionId,
               attempts: providerAttempts,
+              webResearch: isWebResearchExperiment(
+                process.env.EVALS_EXPERIMENT,
+              ),
             }),
           });
         throw e;
@@ -789,6 +793,7 @@ async function processOneEval(
     usage: undefined,
     sessionId: requestSessionId,
     attempts: providerAttempts,
+    webResearch: isWebResearchExperiment(process.env.EVALS_EXPERIMENT),
   });
   console.error(`[${evalPathStr}] ERROR: ${errorStr}`);
   allResults.push({

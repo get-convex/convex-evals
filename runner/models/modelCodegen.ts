@@ -342,10 +342,12 @@ export function attachProviderObservabilityUsage({
   usage,
   sessionId,
   attempts,
+  webResearch = false,
 }: {
   usage: LanguageModelUsage | undefined;
   sessionId: string;
   attempts: ProviderAttempt[];
+  webResearch?: boolean;
 }): LanguageModelUsage {
   const raw =
     usage?.raw && typeof usage.raw === "object"
@@ -380,12 +382,18 @@ export function attachProviderObservabilityUsage({
           }
         : {}),
       providerAttempts: attempts,
-      // Do not present a recovered attempt's cost as the total retry bill.
-      // Failed attempts can be billed even when their usage is absent.
-      providerUsageScope: usage ? "successful_attempt_only" : "unavailable",
-      providerUsageExcludesFailedAttempts: attempts.some(
-        (attempt) => attempt.outcome !== "success",
-      ),
+      // Web retries can incur hidden server-tool charges. This coverage marker
+      // is web-specific; baseline cost accounting also drives model scheduling.
+      ...(webResearch
+        ? {
+            providerUsageScope: usage
+              ? "successful_attempt_only"
+              : "unavailable",
+            providerUsageExcludesFailedAttempts: attempts.some(
+              (attempt) => attempt.outcome !== "success",
+            ),
+          }
+        : {}),
     },
   };
 }
