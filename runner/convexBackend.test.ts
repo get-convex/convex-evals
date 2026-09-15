@@ -20,6 +20,42 @@ describe("ADMIN_KEY", () => {
 });
 
 describe("release fetch retries", () => {
+  it.each([undefined, "test-token"])(
+    "uses optional GitHub API authentication (%s)",
+    async (token) => {
+      const fetchImpl = (async (url, init) => {
+        expect(url).toBe(
+          "https://api.github.com/repos/get-convex/convex-backend/releases?per_page=50",
+        );
+        const headers = new Headers(init?.headers);
+        expect(headers.get("Authorization")).toBe(
+          token ? `Bearer ${token}` : null,
+        );
+        return Response.json([]);
+      }) as typeof fetch;
+      await fetchConvexReleasesWithRetry(
+        fetchImpl,
+        async () => {},
+        token ?? "",
+      );
+    },
+  );
+
+  it("keeps rate-limit evidence in exhausted 403 errors", async () => {
+    const fetchImpl = (async () =>
+      new Response(null, {
+        status: 403,
+        headers: {
+          "x-ratelimit-remaining": "0",
+          "x-ratelimit-reset": "123456",
+        },
+      })) as unknown as typeof fetch;
+    // eslint-disable-next-line @typescript-eslint/await-thenable
+    await expect(
+      fetchConvexReleasesWithRetry(fetchImpl, async () => {}, ""),
+    ).rejects.toThrow("rate limit remaining=0, reset=123456");
+  });
+
   it("backs off through transient 504s and returns the recovered response", async () => {
     const statuses = [504, 504, 200];
     const delays: number[] = [];

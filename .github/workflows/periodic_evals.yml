@@ -5,6 +5,9 @@ on:
     - cron: "0 */4 * * *" # Run every 4 hours
   workflow_dispatch: # Allow manual triggering
 
+permissions:
+  contents: read
+
 jobs:
   setup:
     runs-on: ubuntu-latest
@@ -62,6 +65,7 @@ jobs:
 
     env:
       ENVIRONMENT: ci
+      GITHUB_TOKEN: ${{ github.token }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 
     steps:

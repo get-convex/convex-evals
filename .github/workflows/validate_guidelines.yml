@@ -19,12 +19,16 @@ on:
         default: "main"
         type: string
 
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 240
     env:
       ENVIRONMENT: ci
+      GITHUB_TOKEN: ${{ github.token }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 
     steps:

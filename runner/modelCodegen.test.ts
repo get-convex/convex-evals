@@ -1,5 +1,8 @@
 import { describe, it, expect } from "bun:test";
 import type { LanguageModelUsage } from "ai";
+import { computeRunCostUsd } from "../evalScores/convex/scoringUtils.js";
+import type { Doc } from "../evalScores/convex/_generated/dataModel.js";
+import { computeCostMinimumIntervalMs } from "../scripts/modelScheduling.js";
 import {
   attachTimeToFirstTokenUsage,
   attachProviderObservabilityUsage,
@@ -11,6 +14,44 @@ import {
 } from "./models/modelCodegen.js";
 
 describe("provider observability", () => {
+  it.each([false, true])(
+    "scopes incomplete retry accounting to web runs (web=%s)",
+    (webResearch) => {
+      const usage = attachProviderObservabilityUsage({
+        usage: undefined,
+        sessionId: "fixture",
+        attempts: [],
+      });
+      usage.raw = { cost: 50 };
+      const observed = attachProviderObservabilityUsage({
+        usage,
+        sessionId: "fixture",
+        webResearch,
+        attempts: [
+          { attempt: 1, durationMs: 1, outcome: "empty_response" },
+          { attempt: 2, durationMs: 1, outcome: "success" },
+        ],
+      });
+      const cost = computeRunCostUsd([
+        {
+          status: { kind: "passed", durationMs: 1, usage: observed },
+        } as Doc<"evals">,
+      ]);
+      if (webResearch) {
+        expect(cost).toBeNull();
+        expect(observed.raw?.providerUsageExcludesFailedAttempts).toBe(true);
+      } else {
+        expect(
+          observed.raw?.providerUsageExcludesFailedAttempts,
+        ).toBeUndefined();
+        expect(cost).toBe(50);
+        expect(computeCostMinimumIntervalMs(cost)).toBe(
+          14 * 24 * 60 * 60 * 1000,
+        );
+      }
+    },
+  );
+
   it("extracts OpenRouter's generation ID case-insensitively", () => {
     expect(
       extractOpenRouterGenerationId({

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { combineWebUsage, computeWebUsage, webUsageAverages } from "./webUsage";
 import type { Doc } from "./_generated/dataModel";
+import { computeRunCostUsd } from "./scoringUtils";
 const evalWith = (
   raw: Record<string, unknown>,
 ): Pick<Doc<"evals">, "status"> => ({
@@ -17,6 +18,47 @@ const zeroEvidence = {
   },
 };
 describe("web usage coverage", () => {
+  it.each([
+    zeroEvidence,
+    {
+      cost: 0.25,
+      server_tool_use_details: {
+        web_search_requests: 3,
+        web_fetch_requests: 2,
+      },
+    },
+  ])(
+    "excludes recovered-attempt telemetry without treating it as zero: %j",
+    (raw) => {
+      const evals = [
+        evalWith({
+          cost: 0.5,
+          server_tool_use_details: {
+            web_search_requests: 1,
+            web_fetch_requests: 1,
+          },
+        }),
+        evalWith({ ...raw, providerUsageExcludesFailedAttempts: true }),
+      ];
+      expect(computeRunCostUsd(evals as Doc<"evals">[])).toBeNull();
+      expect(webUsageAverages(computeWebUsage(evals))).toMatchObject({
+        averageWebSearchesPerEval: null,
+        averageWebFetchesPerEval: null,
+        webUsageEvalCount: 2,
+        webSearchTelemetryEvalCount: 1,
+      });
+      expect(computeWebUsage(evals).inferredZeroSearchEvalCount).toBe(0);
+    },
+  );
+
+  it("retains ordinary costs when no failed attempts were excluded", () => {
+    const evals = [
+      evalWith({ cost: 0.5 }),
+      evalWith({ cost: 0.25, providerUsageExcludesFailedAttempts: false }),
+    ];
+    expect(computeRunCostUsd(evals as Doc<"evals">[])).toBe(0.75);
+  });
+
   it("includes explicit and inferred zero-use evals in the denominator", () => {
     const usage = computeWebUsage([
       evalWith({

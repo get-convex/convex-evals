@@ -342,10 +342,12 @@ export function attachProviderObservabilityUsage({
   usage,
   sessionId,
   attempts,
+  webResearch = false,
 }: {
   usage: LanguageModelUsage | undefined;
   sessionId: string;
   attempts: ProviderAttempt[];
+  webResearch?: boolean;
 }): LanguageModelUsage {
   const raw =
     usage?.raw && typeof usage.raw === "object"
@@ -380,6 +382,18 @@ export function attachProviderObservabilityUsage({
           }
         : {}),
       providerAttempts: attempts,
+      // Web retries can incur hidden server-tool charges. This coverage marker
+      // is web-specific; baseline cost accounting also drives model scheduling.
+      ...(webResearch
+        ? {
+            providerUsageScope: usage
+              ? "successful_attempt_only"
+              : "unavailable",
+            providerUsageExcludesFailedAttempts: attempts.some(
+              (attempt) => attempt.outcome !== "success",
+            ),
+          }
+        : {}),
     },
   };
 }

@@ -36,6 +36,9 @@ export function computeWebUsage(
     if (status.kind !== "passed" && status.kind !== "failed") continue;
     result.evalCount++;
     const raw = record(status.usage?.raw);
+    // Keep the denominator, but neither count partial retry telemetry nor infer
+    // zero from its successful response. Coverage averages must remain unknown.
+    if (raw.providerUsageExcludesFailedAttempts === true) continue;
     const research = record(raw.webResearch);
     const counters = record(raw.server_tool_use_details ?? raw.server_tool_use);
     const searches = count(

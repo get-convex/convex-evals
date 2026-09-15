@@ -29,10 +29,32 @@ export class WebResearchProviderError extends InfrastructureError {
   canRetry(attempt: number, maxRetries: number): boolean {
     return (
       attempt < maxRetries &&
-      this.code !== undefined &&
-      [408, 429, 500, 502, 503, 504].includes(this.code)
+      (this.errorType === "interrupted_stream" ||
+        (this.code !== undefined &&
+          [408, 429, 500, 502, 503, 504].includes(this.code)))
     );
   }
+}
+
+function isTransportError(error: unknown): boolean {
+  // Match transport codes, not arbitrary provider messages or our own limits.
+  // Fetch implementations often wrap the socket error in `cause`.
+  for (
+    let depth = 0;
+    depth < 5 && error && typeof error === "object";
+    depth++
+  ) {
+    const value = error as { code?: unknown; cause?: unknown };
+    if (
+      typeof value.code === "string" &&
+      ["ECONNRESET", "EPIPE", "ETIMEDOUT", "UND_ERR_SOCKET"].includes(
+        value.code,
+      )
+    )
+      return true;
+    error = value.cause;
+  }
+  return false;
 }
 
 type JsonObject = Record<string, unknown>;
@@ -200,12 +222,16 @@ export async function generateWithWebResearch({
   };
   let rawUsage: JsonObject | undefined;
   let finished = false;
+  let generationId: string | undefined;
   let responseBytes = 0;
   let timeToFirstTokenMs: number | undefined;
   const citationKeys = new Set<string>();
 
   function observe(event: JsonObject): void {
     const response = object(event.response);
+    const id = response?.id ?? event.id;
+    if (typeof id === "string")
+      generationId = id.replaceAll(apiKey, "[redacted]");
     rawUsage = object(response?.usage ?? event.usage) ?? rawUsage;
     trace.routerMetadata =
       event.openrouter_metadata ??
@@ -368,8 +394,11 @@ export async function generateWithWebResearch({
       const responseHeaders = new Headers({
         "Content-Type": "text/event-stream",
       });
-      const generationId = response.headers.get("x-generation-id");
-      if (generationId) responseHeaders.set("x-generation-id", generationId);
+      const headerId = response.headers.get("x-generation-id");
+      if (headerId) {
+        generationId = headerId.replaceAll(apiKey, "[redacted]");
+        responseHeaders.set("x-generation-id", headerId);
+      }
       return new Response(body, {
         status: response.status,
         headers: responseHeaders,
@@ -402,9 +431,20 @@ export async function generateWithWebResearch({
         persist();
       }
     }
-    if (signal.aborted || !finished) {
+    if (signal.aborted) {
       throw new InfrastructureError(
-        "OpenRouter web generation ended before completion.",
+        "OpenRouter web generation exceeded its deadline or was aborted.",
+      );
+    }
+    if (!finished) {
+      // HTTP 200 can end cleanly while the server tool loop is still running.
+      // Retry the generation within the runner's existing budget, but never
+      // grade this partial answer or treat our own deadline as retryable.
+      throw new WebResearchProviderError(
+        "Stream ended without a completion event",
+        undefined,
+        "interrupted_stream",
+        generationId,
       );
     }
     const [text, usage, finishReason, response] = await Promise.all([
@@ -427,6 +467,14 @@ export async function generateWithWebResearch({
     trace.status = "completed";
     return { text, usage: reportedUsage, trace, timeToFirstTokenMs, response };
   } catch (error) {
+    if (!signal.aborted && isTransportError(error)) {
+      error = new WebResearchProviderError(
+        "Transport interrupted the response stream",
+        undefined,
+        "interrupted_stream",
+        generationId,
+      );
+    }
     trace.status = "failed";
     trace.error = (
       error instanceof Error ? error.message : String(error)
