@@ -56,7 +56,10 @@ output-token allowance across those hidden steps. Keep this distinction in mind
 when interpreting a comparison with the baseline. SDK model retries remain at
 five; the server tool limits apply per request, including a retried request.
 
-API errors, invalid or interrupted streams, and timeouts fail as infrastructure
+Streams that end without a completion event get up to two runner retries, like
+explicit transient provider errors. Each attempt retains its own trace and
+generation ID when available. Partial text is never graded. Exhausted retries,
+API errors, invalid streams, and timeouts fail as infrastructure
 errors. Page-specific failures handled inside OpenRouter's loop can be returned
 to the model; Chat Completions does not expose enough detail to classify every
 internal search or fetch failure independently.
@@ -122,7 +125,11 @@ The trace is explicitly marked `provider-visible-only`:
   provider-reported request counts; neither is inferred from prose or citations.
 - Cost is exactly what OpenRouter reports. If absent, it stays unknown: a model
   token-price estimate would omit search/fetch charges. Failed requests without
-  usage cannot be included in a measured total.
+  usage cannot be included in a measured total. `usage.raw.providerUsageScope`
+  identifies successful-attempt-only or unavailable usage;
+  `providerUsageExcludesFailedAttempts` flags omitted failed attempts. The runner
+  also prints this limitation on web failures. These flags do not estimate
+  missing charges or claim coverage of OpenRouter's internal retries.
 
 These API paths have different trace visibility. Do not call citations a complete
 research history, or interpret missing search metadata as zero searches. The raw

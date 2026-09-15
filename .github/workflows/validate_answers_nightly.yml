@@ -29,6 +29,10 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Run validate:answers
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          OUTPUT_TEMPDIR: ${{ runner.temp }}/validate-answers
+          DISABLE_CONVEX_REPORTING: "1"
         run: |
           set -o pipefail
           bun run validate:answers 2>&1 | tee validate-answers.log
@@ -38,10 +42,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: validate-answers-log
-          path: validate-answers.log
+          path: |
+            validate-answers.log
+            ${{ runner.temp }}/validate-answers/**/run.log
+            ${{ runner.temp }}/validate-answers/**/backend.*.log
 
       - name: Open or update tracking issue on failure
-        if: failure()
+        if: failure() && github.ref == 'refs/heads/main'
         uses: actions/github-script@v7
         with:
           script: |
@@ -103,7 +110,7 @@ jobs:
             }
 
       - name: Close tracking issue when passing again
-        if: success()
+        if: success() && github.ref == 'refs/heads/main'
         uses: actions/github-script@v7
         with:
           script: |

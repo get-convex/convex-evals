@@ -180,6 +180,7 @@ const RELEASE_FETCH_BASE_DELAY_MS = 5_000;
 export async function fetchConvexReleasesWithRetry(
   fetchImpl: typeof fetch = fetch,
   sleep: (ms: number) => Promise<unknown> = Bun.sleep,
+  githubToken: string | undefined = process.env.GITHUB_TOKEN,
 ): Promise<GitHubRelease[]> {
   let lastFailure = "unknown error";
 
@@ -187,11 +188,22 @@ export async function fetchConvexReleasesWithRetry(
     try {
       const resp = await fetchImpl(RELEASES_URL, {
         signal: AbortSignal.timeout(RELEASE_FETCH_TIMEOUT_MS),
+        // Authenticate only the fixed GitHub API endpoint, never asset redirects.
+        headers: {
+          Accept: "application/vnd.github+json",
+          ...(githubToken ? { Authorization: `Bearer ${githubToken}` } : {}),
+        },
       });
       if (resp.ok) {
         return (await resp.json()) as GitHubRelease[];
       }
       lastFailure = `HTTP ${resp.status}`;
+      if (resp.status === 403 || resp.status === 429) {
+        const remaining = resp.headers.get("x-ratelimit-remaining");
+        const reset = resp.headers.get("x-ratelimit-reset");
+        if (remaining !== null)
+          lastFailure += ` (rate limit remaining=${remaining}, reset=${reset ?? "unknown"})`;
+      }
     } catch (error) {
       lastFailure = String(error);
     }

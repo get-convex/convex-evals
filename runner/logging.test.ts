@@ -1,5 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach, jest, spyOn } from "bun:test";
-import { mkdtempSync, readFileSync, existsSync } from "fs";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  jest,
+  spyOn,
+} from "bun:test";
+import { mkdtempSync, readFileSync, existsSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { rmSync } from "fs";
@@ -9,9 +17,34 @@ import {
   appendLogBlock,
   logCmdResults,
   logInfo,
+  logFailureDetails,
   logVitestResults,
   runCommandStep,
 } from "./logging.js";
+
+describe("failure diagnostics", () => {
+  it("prints a bounded tail with the assertion and tolerates a missing log", () => {
+    const dir = mkdtempSync(join(tmpdir(), "failure-log-"));
+    const logPath = join(dir, "run.log");
+    const output = spyOn(console, "log").mockImplementation(() => {});
+    try {
+      writeFileSync(
+        logPath,
+        "old output".repeat(2000) + "\nAssertionError: expected 1, received 2",
+      );
+      logFailureDetails(logPath);
+      expect(output.mock.calls[1][0]).toHaveLength(12_000);
+      expect(output.mock.calls[1][0]).toEndWith(
+        "AssertionError: expected 1, received 2",
+      );
+      logFailureDetails(join(dir, "missing.log"));
+      expect(output.mock.calls.at(-1)?.[0]).toBe("Grader log unavailable.");
+    } finally {
+      output.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("sanitizeOutput", () => {
   it("strips CSI escape sequences", () => {
@@ -126,11 +159,7 @@ describe("logCmdResults", () => {
 
   it("logs command name and stdout", () => {
     const logPath = join(tempDir, "test.log");
-    logCmdResults(
-      logPath,
-      [{ cmd: "npm test", stdout: "all good" }],
-      "cmd",
-    );
+    logCmdResults(logPath, [{ cmd: "npm test", stdout: "all good" }], "cmd");
     const content = readFileSync(logPath, "utf-8");
     expect(content).toContain("[cmd] npm test");
     expect(content).toContain("all good");

@@ -33,7 +33,7 @@ import {
   resolveModel,
   preflightOpenRouterEndpoint,
 } from "./models/openRouterDiscovery.js";
-import { logInfo } from "./logging.js";
+import { logInfo, logFailureDetails } from "./logging.js";
 import {
   Model,
   EmptyProviderResponseError,
@@ -454,6 +454,16 @@ export async function runEvalsForModel(
       executionMode === "answer" &&
       allResults.some((result) => !result.passed)
     ) {
+      // Put failure details after the summary so the nightly issue's log tail
+      // contains the assertion, rather than only unrelated passing evals.
+      for (const result of allResults.filter((result) => !result.passed)) {
+        if (!result.directory_path) continue;
+        const logPath = join(result.directory_path, "run.log");
+        logInfo(
+          `Failed answer: ${result.category}/${result.name} (${result.failure_reason})`,
+        );
+        logFailureDetails(logPath);
+      }
       const reason =
         "[answer_validation] Canonical answers must pass all evals";
       if (runId) {
@@ -652,17 +662,6 @@ async function processOneEval(
       };
       break;
     } catch (e) {
-      // Only classified transient web errors may retry. Exhaustion still aborts
-      // the run, rather than recording an infrastructure failure as a model zero.
-      if (
-        e instanceof InfrastructureError &&
-        !(
-          e instanceof WebResearchProviderError &&
-          e.canRetry(attempt, PROVIDER_MAX_RETRIES)
-        )
-      )
-        throw e;
-
       lastError = e;
       const errorStr = String(e);
       const rateLimited = isRateLimitError(errorStr);
@@ -694,6 +693,35 @@ async function processOneEval(
               : "unavailable"
         } outcome=${providerAttempts[providerAttempts.length - 1].outcome}`,
       );
+
+      if (e instanceof WebResearchProviderError) {
+        logInfo(
+          `[${evalPathStr}] Failed-attempt usage and charges are excluded from reported totals; consult the research trace.`,
+        );
+      }
+      // Record the final attempt before aborting, keeping the whole run invalid
+      // rather than publishing an infrastructure failure as a model zero.
+      if (
+        e instanceof InfrastructureError &&
+        !(
+          e instanceof WebResearchProviderError &&
+          e.canRetry(attempt, PROVIDER_MAX_RETRIES)
+        )
+      ) {
+        if (evalId)
+          await completeEval(evalId, {
+            kind: "failed",
+            failureReason: `[infrastructure] ${e.message}`,
+            durationMs: Date.now() - evalStartTime,
+            generationDurationMs: Date.now() - evalStartTime,
+            usage: attachProviderObservabilityUsage({
+              usage: undefined,
+              sessionId: requestSessionId,
+              attempts: providerAttempts,
+            }),
+          });
+        throw e;
+      }
 
       if (transient && attempt < PROVIDER_MAX_RETRIES) {
         const delayMs =

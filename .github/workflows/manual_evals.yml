@@ -45,6 +45,9 @@ on:
           - "2"
           - "4"
 
+permissions:
+  contents: read
+
 jobs:
   run-evals:
     runs-on: ubuntu-latest
@@ -54,6 +57,7 @@ jobs:
 
     env:
       ENVIRONMENT: ci
+      GITHUB_TOKEN: ${{ github.token }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       OPENROUTER_CONCURRENCY: ${{ inputs.max_concurrency }}
 

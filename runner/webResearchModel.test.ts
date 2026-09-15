@@ -371,6 +371,41 @@ describe("web research through the real SDK adapters", () => {
     },
   );
 
+  it.each([false, true])(
+    "retries a truncated stream with partial text (DONE marker=%s)",
+    async (done) => {
+      const model = stub(() => {
+        const events = chatEvents().slice(0, 2);
+        return new Response(
+          events
+            .map((event) => "data: " + JSON.stringify(event) + "\n\n")
+            .join("") + (done ? "data: [DONE]\n\n" : ""),
+          {
+            headers: { "Content-Type": "text/event-stream" },
+          },
+        );
+      });
+      await rejects(
+        model.generate("Build a backend.", {
+          sessionId: "session-truncated",
+          webTracePath: tracePath,
+        }),
+        (error: unknown) => {
+          expect(error).toBeInstanceOf(WebResearchProviderError);
+          const failure = error as WebResearchProviderError;
+          expect(failure.errorType).toBe("interrupted_stream");
+          expect(failure.generationId).toBe("response-1");
+          expect(failure.canRetry(0, 2)).toBe(true);
+          expect(failure.canRetry(1, 2)).toBe(true);
+          expect(failure.canRetry(2, 2)).toBe(false);
+          return true;
+        },
+      );
+      expect(saved().status).toBe("failed");
+      expect(saved().partialText).toBe(answer);
+    },
+  );
+
   it.each(["provider error", "truncated stream", "oversized stream"])(
     "preserves traces and classifies %s as infrastructure failure",
     async (kind) => {

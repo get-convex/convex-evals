@@ -380,6 +380,12 @@ export function attachProviderObservabilityUsage({
           }
         : {}),
       providerAttempts: attempts,
+      // Do not present a recovered attempt's cost as the total retry bill.
+      // Failed attempts can be billed even when their usage is absent.
+      providerUsageScope: usage ? "successful_attempt_only" : "unavailable",
+      providerUsageExcludesFailedAttempts: attempts.some(
+        (attempt) => attempt.outcome !== "success",
+      ),
     },
   };
 }

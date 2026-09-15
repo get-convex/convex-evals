@@ -1,7 +1,7 @@
 /**
  * Logging utilities for evaluation runs.
  */
-import { appendFileSync } from "fs";
+import { appendFileSync, readFileSync } from "fs";
 
 /** Remove ANSI escape codes from text. */
 export function sanitizeOutput(text: string): string {
@@ -58,6 +58,18 @@ export function logCmdResults(
 /** Print an info message to stdout. */
 export function logInfo(message: string): void {
   console.log(message);
+}
+
+/** Surface the diagnostic tail in CI while the artifact retains the full log. */
+export function logFailureDetails(logPath: string): void {
+  logInfo(`Full grader log: ${logPath}`);
+  try {
+    const content = sanitizeOutput(readFileSync(logPath, "utf8"));
+    logInfo(content.slice(-12_000));
+  } catch {
+    // Missing diagnostics must not replace the original validation failure.
+    logInfo("Grader log unavailable.");
+  }
 }
 
 /** Log vitest results to a file. */
