@@ -51,6 +51,21 @@ export function getEvalCostUsd(evalDoc: Doc<"evals">): number {
 }
 
 export function computeRunCostUsd(evals: Doc<"evals">[]): number | null {
+  // A successful retry's cost excludes earlier failed requests. Dropping only
+  // that eval would still make the remaining sum look like a complete run bill.
+  if (
+    evals.some(({ status }) => {
+      if (status.kind !== "passed" && status.kind !== "failed") return false;
+      const raw: unknown = status.usage?.raw;
+      return (
+        raw !== null &&
+        typeof raw === "object" &&
+        "providerUsageExcludesFailedAttempts" in raw &&
+        raw.providerUsageExcludesFailedAttempts === true
+      );
+    })
+  )
+    return null;
   const withCost = evals.filter((e) => {
     if (e.status.kind !== "passed" && e.status.kind !== "failed") return false;
     const raw = e.status.usage?.raw;
