@@ -15,6 +15,7 @@ import { join, resolve, relative } from "path";
 import { platform, tmpdir } from "os";
 import { fileURLToPath } from "node:url";
 import { $ } from "bun";
+import { parseConfigFileTextToJson } from "typescript";
 import {
   withConvexBackend,
   ADMIN_KEY,
@@ -356,9 +357,17 @@ export function sanitizeModelTsconfigTypes(projectDir: string): string[] {
 
     let parsed: Tsconfig;
     try {
-      parsed = JSON.parse(readFileSync(tsconfigPath, "utf-8")) as Tsconfig;
+      // tsconfig accepts comments and trailing commas. Using JSON.parse here
+      // made equivalent configurations receive different type cleanup.
+      const result = parseConfigFileTextToJson(
+        tsconfigPath,
+        readFileSync(tsconfigPath, "utf-8"),
+      );
+      // The parser can recover partial configs; never rewrite invalid input.
+      if (result.error) continue;
+      parsed = result.config as Tsconfig;
     } catch {
-      continue; // Non-strict JSON (comments/trailing commas) — leave untouched.
+      continue;
     }
 
     const types = parsed.compilerOptions?.types;

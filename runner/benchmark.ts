@@ -8,7 +8,8 @@ import { SYSTEM_PROMPT } from "./models/index.js";
  * means. Eval directories, guidelines, and the system prompt are hashed
  * automatically below.
  */
-export const BENCHMARK_PROTOCOL_VERSION = "2";
+// JSONC type cleanup changes which otherwise-correct generated projects pass.
+export const BENCHMARK_PROTOCOL_VERSION = "3";
 
 export interface BenchmarkDefinition {
   version: string;

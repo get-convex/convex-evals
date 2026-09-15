@@ -396,6 +396,50 @@ describe("model tsconfig types sanitization", () => {
     expect(parsed.compilerOptions.types).toEqual(["node", "vite/client"]);
   });
 
+  for (const configDir of [".", "convex"]) {
+    it(`cleans JSONC like JSON in ${configDir}/tsconfig.json`, () => {
+      const projectDir = join(tempDir, "project");
+      const directory = join(projectDir, configDir);
+      mkdirSync(directory, { recursive: true });
+      mkdirSync(join(projectDir, "node_modules", "@types", "node"), {
+        recursive: true,
+      });
+      const configPath = join(directory, "tsconfig.json");
+      const config = {
+        compilerOptions: { strict: true, types: ["node", "vite/client"] },
+        include: ["convex"],
+      };
+      writeFileSync(configPath, JSON.stringify(config));
+      const jsonRemoved = sanitizeModelTsconfigTypes(projectDir);
+      const jsonResult = readFileSync(configPath, "utf-8");
+
+      writeFileSync(configPath, `{
+        // Valid tsconfig syntax must not bypass missing-type cleanup.
+        "compilerOptions": {
+          "strict": true,
+          "types": ["node", "vite/client",],
+        },
+        "include": ["convex"],
+      }`);
+      expect(sanitizeModelTsconfigTypes(projectDir)).toEqual(jsonRemoved);
+      expect(jsonRemoved).toEqual(["vite/client"]);
+      expect(readFileSync(configPath, "utf-8")).toBe(jsonResult);
+      const cleaned = JSON.parse(jsonResult) as TestTsconfig;
+      expect(cleaned.compilerOptions.types).toEqual(["node"]);
+    });
+  }
+
+  it("does not rewrite a malformed config recovered by the parser", () => {
+    const projectDir = join(tempDir, "project");
+    mkdirSync(projectDir, { recursive: true });
+    const configPath = join(projectDir, "tsconfig.json");
+    const original = '{"compilerOptions":{"types":["missing"]},';
+    writeFileSync(configPath, original);
+
+    expect(sanitizeModelTsconfigTypes(projectDir)).toEqual([]);
+    expect(readFileSync(configPath, "utf-8")).toBe(original);
+  });
+
   it("leaves a tsconfig without a types allowlist untouched", () => {
     const projectDir = join(tempDir, "project");
     mkdirSync(projectDir, { recursive: true });
