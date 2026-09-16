@@ -70,12 +70,16 @@ describe("web research through the real SDK adapters", () => {
   let originalFetch: typeof fetch;
   let previousExperiment: string | undefined;
   let previousGuidelines: string | undefined;
+  let previousReporting: string | undefined;
   let dir: string;
   let tracePath: string;
   let requests: Array<Record<string, unknown>>;
   let requestHeaders: Headers[];
   beforeEach(() => {
     originalFetch = globalThis.fetch;
+    previousReporting = process.env.DISABLE_CONVEX_REPORTING;
+    // Historical server-tool diagnostics must never publish into the reset experiment.
+    process.env.DISABLE_CONVEX_REPORTING = "1";
     previousExperiment = process.env.EVALS_EXPERIMENT;
     previousGuidelines = process.env.CUSTOM_GUIDELINES_PATH;
     process.env.EVALS_EXPERIMENT = "no_guidelines_with_web";
@@ -87,6 +91,9 @@ describe("web research through the real SDK adapters", () => {
   });
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    if (previousReporting === undefined)
+      delete process.env.DISABLE_CONVEX_REPORTING;
+    else process.env.DISABLE_CONVEX_REPORTING = previousReporting;
     if (previousExperiment === undefined) delete process.env.EVALS_EXPERIMENT;
     else process.env.EVALS_EXPERIMENT = previousExperiment;
     if (previousGuidelines === undefined)

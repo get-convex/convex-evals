@@ -4,10 +4,22 @@
 model can produce better Convex code by seeking public information when it has
 neither the Convex guidelines nor the Convex plugin.
 
-Status: implemented, including the approved schema and reporting support.
-Release the updated backend before enabling scheduled runs or reporting this
-experiment. Use `DISABLE_CONVEX_REPORTING=1` against a backend that has not been
-updated. The old experiments remain retired.
+## Current rollout
+
+The replacement implementation uses client-owned function calls to Exa so the
+harness records every dispatched search and page fetch itself. It reuses
+`no_guidelines_with_web` after deleting the old runs; no schema change is needed.
+Use `CLIENT_WEB_TOOLS=1` and `DISABLE_CONVEX_REPORTING=1` for local pilots, with
+both `OPENROUTER_API_KEY` and a development `EXA_API_KEY` configured.
+
+See [implementation and local commands](client-web-pilot.md),
+[validation results](client-web-integration-validation.md), and
+[production rollout gates](client-web-rollout.md). The schedule remains paused
+pending approval. Published runs cannot fall back to the old server-tool path.
+
+The sections below describe the historical server-tool implementation and its
+original limits. They are retained for interpreting archived traces, not as the
+replacement rollout instructions.
 
 ## Agreed direction
 

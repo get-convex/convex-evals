@@ -15,6 +15,7 @@
  *   CONVEX_AUTH_TOKEN - auth token for the Convex backend
  *   CUSTOM_GUIDELINES_PATH - path to custom guidelines markdown file
  */
+import { validateClientWebRun } from "./models/clientWebResearch";
 import { readdirSync, readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -629,7 +630,7 @@ async function processOneEval(
             model.name,
             category,
             name,
-            `attempt-${attempt + 1}.json`,
+            `attempt-${attempt + 1}.${process.env.CLIENT_WEB_TOOLS === "1" ? "jsonl" : "json"}`,
           )
         : undefined;
       if (webTracePath)
@@ -895,8 +896,8 @@ function parseExecutionMode(value: string | undefined): ExecutionMode {
 }
 
 function validateWebResearchRun(experiment: string | undefined): void {
-  if (!isWebResearchExperiment(experiment)) return;
-  requireWebResearchApiKey();
+  if (isWebResearchExperiment(experiment)) requireWebResearchApiKey();
+  validateClientWebRun(experiment);
 }
 
 function readExpectedFiles(evalPath: string): Record<string, string> {

@@ -78,6 +78,10 @@ jobs:
       - name: Create temp directory
         run: mkdir -p /tmp/convex-evals
 
+      - name: Disable reporting on branch pilots
+        if: github.ref != 'refs/heads/main'
+        run: echo "DISABLE_CONVEX_REPORTING=1" >> "$GITHUB_ENV"
+
       - name: Set main-branch-only environment variables
         if: github.ref == 'refs/heads/main'
         run: |
@@ -105,6 +109,9 @@ jobs:
       - name: Run evaluations (no_guidelines_with_web experiment)
         if: ${{ inputs.run_no_guidelines_with_web == 'true' }}
         env:
+          CLIENT_WEB_TOOLS: "1"
+          ENABLE_CLIENT_WEB_PRODUCTION: ${{ vars.ENABLE_CLIENT_WEB_PRODUCTION }}
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
           OUTPUT_TEMPDIR: /tmp/convex-evals-no-guidelines-with-web
           EVALS_EXPERIMENT: no_guidelines_with_web
         run: bun run runner/index.ts

@@ -3,6 +3,10 @@
  *
  * Uses the Vercel AI SDK as a unified interface across providers.
  */
+import {
+  generateWithClientWeb,
+  validateClientWebRun,
+} from "./clientWebResearch";
 import { streamText, type LanguageModel, type LanguageModelUsage } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
@@ -426,9 +430,34 @@ export class Model {
     rawResponse: string;
     openRouterGenerationId?: string;
   }> {
+    validateClientWebRun(process.env.EVALS_EXPERIMENT);
     const userPrompt = renderPrompt(prompt, request.moduleOnly);
     const maxTokens = getMaxOutputTokens(this.resolved);
     const languageModel = this.languageModel;
+
+    if (process.env.CLIENT_WEB_TOOLS === "1") {
+      if (this.resolved.apiKind !== "chat")
+        throw new Error(
+          "Client web validation currently requires Chat Completions",
+        );
+      if (!request.webTracePath)
+        throw new Error("Client web requires a trace path");
+      const result = await generateWithClientWeb({
+        model: this.resolved.runnableName,
+        system: SYSTEM_PROMPT,
+        prompt: userPrompt,
+        maxOutputTokens: maxTokens,
+        apiKey: this.apiKey,
+        sessionId: request.sessionId,
+        tracePath: request.webTracePath,
+      });
+      return {
+        files: parseMarkdownResponse(result.text),
+        usage: result.usage,
+        rawResponse: result.text,
+        openRouterGenerationId: result.openRouterGenerationId,
+      };
+    }
 
     if (isWebResearchExperiment(process.env.EVALS_EXPERIMENT)) {
       const research = await generateWithWebResearch({

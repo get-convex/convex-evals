@@ -27,7 +27,7 @@ jobs:
         run: npm install -g bun@1.3.8
       - name: Install dependencies
         run: bun install --frozen-lockfile
-      # Enable this repository variable only after the schema release succeeds.
+      # Enable the schedule only after the client-web production pilot is approved.
       - id: set-experiments
         env:
           ENABLE_WEB: ${{ vars.ENABLE_NO_GUIDELINES_WITH_WEB }}
@@ -85,6 +85,10 @@ jobs:
       - name: Create temp directory
         run: mkdir -p /tmp/convex-evals
 
+      - name: Disable reporting on branch pilots
+        if: github.ref != 'refs/heads/main'
+        run: echo "DISABLE_CONVEX_REPORTING=1" >> "$GITHUB_ENV"
+
       - name: Set main-branch-only environment variables
         if: github.ref == 'refs/heads/main'
         run: |
@@ -99,12 +103,17 @@ jobs:
         env:
           OUTPUT_TEMPDIR: /tmp/convex-evals
           EVAL_CONDITION: ${{ matrix.experiment }}
+          ENABLE_CLIENT_WEB_PRODUCTION: ${{ vars.ENABLE_CLIENT_WEB_PRODUCTION }}
+          EXA_API_KEY: ${{ matrix.experiment == 'no_guidelines_with_web' && secrets.EXA_API_KEY || '' }}
         run: |
           # An empty experiment string is not a valid stored experiment label.
           if [ "$EVAL_CONDITION" = "default" ]; then
             unset EVALS_EXPERIMENT
           else
             export EVALS_EXPERIMENT="$EVAL_CONDITION"
+          fi
+          if [ "$EVAL_CONDITION" = "no_guidelines_with_web" ]; then
+            export CLIENT_WEB_TOOLS=1
           fi
           bun run runner/index.ts
 
