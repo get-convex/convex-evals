@@ -25,12 +25,17 @@ async function createCompletedRunWithEvals(
     model: string;
     formattedName?: string;
     provider?: string;
-    experiment?: "no_guidelines";
+    experiment?: "no_guidelines" | "no_guidelines_with_web";
     evals: Array<{
       category: string;
       name: string;
       passed: boolean;
       costUsd?: number;
+      generationDurationMs?: number;
+      rawUsage?: Record<string, unknown>;
+      inputTokens?: number;
+      outputTokens?: number;
+      reasoningTokens?: number;
     }>;
   },
 ): Promise<Id<"runs">> {
@@ -64,9 +69,27 @@ async function createCompletedRunWithEvals(
         ? {
             kind: "passed" as const,
             durationMs: 1000,
+            generationDurationMs: evalDef.generationDurationMs,
             usage:
-              evalDef.costUsd !== undefined
-                ? { raw: { cost: evalDef.costUsd } }
+              evalDef.costUsd !== undefined ||
+              evalDef.rawUsage !== undefined ||
+              evalDef.inputTokens !== undefined ||
+              evalDef.outputTokens !== undefined ||
+              evalDef.reasoningTokens !== undefined
+                ? {
+                    raw: {
+                      ...evalDef.rawUsage,
+                      ...(evalDef.costUsd !== undefined
+                        ? { cost: evalDef.costUsd }
+                        : {}),
+                    },
+                    inputTokens: evalDef.inputTokens,
+                    outputTokens: evalDef.outputTokens,
+                    outputTokenDetails:
+                      evalDef.reasoningTokens !== undefined
+                        ? { reasoningTokens: evalDef.reasoningTokens }
+                        : undefined,
+                  }
                 : undefined,
           }
         : {
@@ -74,8 +97,25 @@ async function createCompletedRunWithEvals(
             failureReason: "test failure",
             durationMs: 1000,
             usage:
-              evalDef.costUsd !== undefined
-                ? { raw: { cost: evalDef.costUsd } }
+              evalDef.costUsd !== undefined ||
+              evalDef.rawUsage !== undefined ||
+              evalDef.inputTokens !== undefined ||
+              evalDef.outputTokens !== undefined ||
+              evalDef.reasoningTokens !== undefined
+                ? {
+                    raw: {
+                      ...evalDef.rawUsage,
+                      ...(evalDef.costUsd !== undefined
+                        ? { cost: evalDef.costUsd }
+                        : {}),
+                    },
+                    inputTokens: evalDef.inputTokens,
+                    outputTokens: evalDef.outputTokens,
+                    outputTokenDetails:
+                      evalDef.reasoningTokens !== undefined
+                        ? { reasoningTokens: evalDef.reasoningTokens }
+                        : undefined,
+                  }
                 : undefined,
           },
     });
@@ -431,6 +471,147 @@ describe("leaderboardScores", () => {
 });
 
 describe("leaderboardModelHistory", () => {
+  it("returns per-run cost, generation time, and web-search usage", async () => {
+    const t = convexTest(schema, modules);
+
+    await createCompletedRunWithEvals(t, {
+      model: "web-model",
+      experiment: "no_guidelines_with_web",
+      evals: [
+        {
+          category: "cat1",
+          name: "eval1",
+          passed: true,
+          costUsd: 0.25,
+          generationDurationMs: 2_000,
+          rawUsage: {
+            server_tool_use_details: { web_search_requests: 2 },
+          },
+          inputTokens: 100,
+          outputTokens: 40,
+          reasoningTokens: 10,
+        },
+        {
+          category: "cat1",
+          name: "eval2",
+          passed: true,
+          costUsd: 0.75,
+          generationDurationMs: 4_000,
+          rawUsage: {
+            server_tool_use_details: { web_search_requests: 0 },
+          },
+          inputTokens: 200,
+          outputTokens: 60,
+          reasoningTokens: 20,
+        },
+      ],
+    });
+
+    const [entry] = await t.query(api.runs.leaderboardModelHistory, {
+      model: "web-model",
+      experiment: "no_guidelines_with_web",
+    });
+
+    expect(entry.runCostUsd).toBe(1);
+    expect(entry.averageGenerationTimeMs).toBe(3_000);
+    expect(entry.averageWebSearchesPerEval).toBe(1);
+    expect(entry.averageWebSearchesEstimated).toBe(false);
+    expect(entry.webSearchTelemetryEvalCount).toBe(2);
+    expect(entry.webUsageEvalCount).toBe(2);
+    expect(entry.evalCount).toBe(2);
+    expect(entry.passedEvalCount).toBe(2);
+    expect(entry.failedEvalCount).toBe(0);
+    expect(entry.inputTokens).toBe(300);
+    expect(entry.outputTokens).toBe(100);
+    expect(entry.reasoningTokens).toBe(30);
+    expect(entry.failures).toEqual([]);
+  });
+
+  it("returns a compact failure summary for each run", async () => {
+    const t = convexTest(schema, modules);
+
+    await createCompletedRunWithEvals(t, {
+      model: "failing-model",
+      evals: [
+        { category: "cat1", name: "passing-eval", passed: true },
+        { category: "cat2", name: "failing-eval", passed: false },
+      ],
+    });
+
+    const [entry] = await t.query(api.runs.leaderboardModelHistory, {
+      model: "failing-model",
+    });
+
+    expect(entry.evalCount).toBe(2);
+    expect(entry.passedEvalCount).toBe(1);
+    expect(entry.failedEvalCount).toBe(1);
+    expect(entry.inputTokens).toBeNull();
+    expect(entry.outputTokens).toBeNull();
+    expect(entry.reasoningTokens).toBeNull();
+    expect(entry.failures).toHaveLength(1);
+    expect(entry.failures[0]).toMatchObject({
+      evalPath: "cat2/failing-eval",
+      category: "cat2",
+      name: "failing-eval",
+      failureReason: "test failure",
+    });
+    expect(entry.failures[0]?.evalId).toBeDefined();
+  });
+
+  it("does not present partial token telemetry as a complete run total", async () => {
+    const t = convexTest(schema, modules);
+
+    await createCompletedRunWithEvals(t, {
+      model: "partial-token-model",
+      evals: [
+        {
+          category: "cat1",
+          name: "measured-eval",
+          passed: true,
+          inputTokens: 100,
+          outputTokens: 40,
+          reasoningTokens: 10,
+        },
+        { category: "cat1", name: "unmeasured-eval", passed: true },
+      ],
+    });
+    await createCompletedRunWithEvals(t, {
+      model: "retry-token-model",
+      evals: [
+        {
+          category: "cat1",
+          name: "retried-eval",
+          passed: true,
+          rawUsage: {
+            providerAttempts: [
+              { outcome: "empty_response" },
+              { outcome: "success" },
+            ],
+          },
+          inputTokens: 100,
+          outputTokens: 40,
+          reasoningTokens: 10,
+        },
+      ],
+    });
+
+    const [partialEntry] = await t.query(api.runs.leaderboardModelHistory, {
+      model: "partial-token-model",
+      benchmarkVersion: "all",
+    });
+    const [retryEntry] = await t.query(api.runs.leaderboardModelHistory, {
+      model: "retry-token-model",
+      benchmarkVersion: "all",
+    });
+
+    expect(partialEntry.inputTokens).toBeNull();
+    expect(partialEntry.outputTokens).toBeNull();
+    expect(partialEntry.reasoningTokens).toBeNull();
+    expect(retryEntry.inputTokens).toBeNull();
+    expect(retryEntry.outputTokens).toBeNull();
+    expect(retryEntry.reasoningTokens).toBeNull();
+  });
+
   it("returns empty array when no runs exist for model", async () => {
     const t = convexTest(schema, modules);
 
