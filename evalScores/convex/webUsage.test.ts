@@ -59,6 +59,24 @@ describe("web usage coverage", () => {
     expect(computeRunCostUsd(evals as Doc<"evals">[])).toBe(0.75);
   });
 
+  it("keeps a run cost unknown when any terminal eval lacks cost", () => {
+    const evals = [evalWith({ cost: 0.25 }), evalWith({})];
+    expect(computeRunCostUsd(evals as Doc<"evals">[])).toBeNull();
+  });
+
+  it("keeps retry cost unknown for provider attempts outside web runs", () => {
+    const evals = [
+      evalWith({
+        cost: 0.25,
+        providerAttempts: [
+          { outcome: "empty_response" },
+          { outcome: "success" },
+        ],
+      }),
+    ];
+    expect(computeRunCostUsd(evals as Doc<"evals">[])).toBeNull();
+  });
+
   it("includes explicit and inferred zero-use evals in the denominator", () => {
     const usage = computeWebUsage([
       evalWith({

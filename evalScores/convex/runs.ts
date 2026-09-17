@@ -9,6 +9,7 @@ import {
   LEADERBOARD_HISTORY_SIZE,
   computeRunCostUsd,
   computeRunDurationMs,
+  hasIncompleteProviderUsage,
   isFullyCompletedRun,
   hasCompleteBenchmarkPlan,
   computeRunScores,
@@ -1081,13 +1082,7 @@ export const leaderboardModelHistory = query({
             continue;
           }
           const usage = evalDoc.status.usage;
-          const rawUsage: unknown = usage?.raw;
-          if (
-            rawUsage !== null &&
-            typeof rawUsage === "object" &&
-            "providerUsageExcludesFailedAttempts" in rawUsage &&
-            rawUsage.providerUsageExcludesFailedAttempts === true
-          ) {
+          if (hasIncompleteProviderUsage(evalDoc)) {
             providerUsageIsComplete = false;
           }
           if (typeof usage?.inputTokens === "number") {

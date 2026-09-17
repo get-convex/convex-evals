@@ -50,35 +50,53 @@ export function getEvalCostUsd(evalDoc: Doc<"evals">): number {
   return typeof cost === "number" && Number.isFinite(cost) ? cost : 0;
 }
 
-export function computeRunCostUsd(evals: Doc<"evals">[]): number | null {
-  // A successful retry's cost excludes earlier failed requests. Dropping only
-  // that eval would still make the remaining sum look like a complete run bill.
+export function hasIncompleteProviderUsage(evalDoc: Doc<"evals">): boolean {
+  const status = evalDoc.status;
+  if (status.kind !== "passed" && status.kind !== "failed") return false;
+  const raw: unknown = status.usage?.raw;
+  if (raw === null || typeof raw !== "object") return false;
   if (
-    evals.some(({ status }) => {
-      if (status.kind !== "passed" && status.kind !== "failed") return false;
-      const raw: unknown = status.usage?.raw;
-      return (
-        raw !== null &&
-        typeof raw === "object" &&
-        "providerUsageExcludesFailedAttempts" in raw &&
-        raw.providerUsageExcludesFailedAttempts === true
-      );
+    "providerUsageExcludesFailedAttempts" in raw &&
+    raw.providerUsageExcludesFailedAttempts === true
+  ) {
+    return true;
+  }
+  if (!("providerAttempts" in raw) || !Array.isArray(raw.providerAttempts)) {
+    return false;
+  }
+  return raw.providerAttempts.some(
+    (attempt) =>
+      attempt !== null &&
+      typeof attempt === "object" &&
+      "outcome" in attempt &&
+      attempt.outcome !== "success",
+  );
+}
+
+export function computeRunCostUsd(evals: Doc<"evals">[]): number | null {
+  const terminalEvals = evals.filter(
+    ({ status }) => status.kind === "passed" || status.kind === "failed",
+  );
+  if (terminalEvals.length === 0) return null;
+  // A complete run bill requires every terminal eval. A successful retry can
+  // also omit earlier failed provider attempts, so reject either gap instead
+  // of presenting a known subset as the full cost.
+  if (
+    terminalEvals.some((evalDoc) => {
+      if (hasIncompleteProviderUsage(evalDoc)) return true;
+      const status = evalDoc.status;
+      if (status.kind !== "passed" && status.kind !== "failed") return true;
+      const raw = status.usage?.raw;
+      if (raw === null || typeof raw !== "object" || !("cost" in raw)) {
+        return true;
+      }
+      const cost = (raw as { cost?: unknown }).cost;
+      return typeof cost !== "number" || !Number.isFinite(cost);
     })
-  )
+  ) {
     return null;
-  const withCost = evals.filter((e) => {
-    if (e.status.kind !== "passed" && e.status.kind !== "failed") return false;
-    const raw = e.status.usage?.raw;
-    return (
-      raw !== undefined &&
-      raw !== null &&
-      typeof raw === "object" &&
-      "cost" in raw &&
-      typeof (raw as { cost?: unknown }).cost === "number"
-    );
-  });
-  if (withCost.length === 0) return null;
-  return withCost.reduce((sum, e) => sum + getEvalCostUsd(e), 0);
+  }
+  return terminalEvals.reduce((sum, evalDoc) => sum + getEvalCostUsd(evalDoc), 0);
 }
 
 export function computeRunDurationMs(evals: Doc<"evals">[]): number | null {

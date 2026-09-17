@@ -582,7 +582,12 @@ describe("leaderboardModelHistory", () => {
           category: "cat1",
           name: "retried-eval",
           passed: true,
-          rawUsage: { providerUsageExcludesFailedAttempts: true },
+          rawUsage: {
+            providerAttempts: [
+              { outcome: "empty_response" },
+              { outcome: "success" },
+            ],
+          },
           inputTokens: 100,
           outputTokens: 40,
           reasoningTokens: 10,

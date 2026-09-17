@@ -2,7 +2,6 @@ import { describe, it, expect } from "bun:test";
 import type { LanguageModelUsage } from "ai";
 import { computeRunCostUsd } from "../evalScores/convex/scoringUtils.js";
 import type { Doc } from "../evalScores/convex/_generated/dataModel.js";
-import { computeCostMinimumIntervalMs } from "../scripts/modelScheduling.js";
 import {
   attachTimeToFirstTokenUsage,
   attachProviderObservabilityUsage,
@@ -15,7 +14,7 @@ import {
 
 describe("provider observability", () => {
   it.each([false, true])(
-    "scopes incomplete retry accounting to web runs (web=%s)",
+    "keeps retry cost unknown from provider attempts (web=%s)",
     (webResearch) => {
       const usage = attachProviderObservabilityUsage({
         usage: undefined,
@@ -37,17 +36,13 @@ describe("provider observability", () => {
           status: { kind: "passed", durationMs: 1, usage: observed },
         } as Doc<"evals">,
       ]);
+      expect(cost).toBeNull();
       if (webResearch) {
-        expect(cost).toBeNull();
         expect(observed.raw?.providerUsageExcludesFailedAttempts).toBe(true);
       } else {
         expect(
           observed.raw?.providerUsageExcludesFailedAttempts,
         ).toBeUndefined();
-        expect(cost).toBe(50);
-        expect(computeCostMinimumIntervalMs(cost)).toBe(
-          14 * 24 * 60 * 60 * 1000,
-        );
       }
     },
   );
