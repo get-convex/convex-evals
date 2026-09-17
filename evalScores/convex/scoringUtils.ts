@@ -65,7 +65,7 @@ export function hasIncompleteProviderUsage(evalDoc: Doc<"evals">): boolean {
     return false;
   }
   return raw.providerAttempts.some(
-    (attempt) =>
+    (attempt: unknown) =>
       attempt !== null &&
       typeof attempt === "object" &&
       "outcome" in attempt &&
