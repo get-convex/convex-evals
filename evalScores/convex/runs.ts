@@ -1,4 +1,4 @@
-import { combineWebUsage, webUsageAverages } from "./webUsage";
+import { combineWebUsage, computeWebUsage, webUsageAverages } from "./webUsage";
 import { internalMutation, query, type QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -7,6 +7,8 @@ import { internal } from "./_generated/api.js";
 import { resolveBenchmarkForRun } from "./benchmarkVersions";
 import {
   LEADERBOARD_HISTORY_SIZE,
+  computeRunCostUsd,
+  computeRunDurationMs,
   isFullyCompletedRun,
   hasCompleteBenchmarkPlan,
   computeRunScores,
@@ -926,6 +928,27 @@ export const leaderboardModelHistory = query({
       runId: v.id("runs"),
       totalScore: v.number(),
       scores: v.record(v.string(), v.number()),
+      runCostUsd: v.union(v.number(), v.null()),
+      averageGenerationTimeMs: v.union(v.number(), v.null()),
+      averageWebSearchesPerEval: v.union(v.number(), v.null()),
+      averageWebSearchesEstimated: v.boolean(),
+      webSearchTelemetryEvalCount: v.number(),
+      webUsageEvalCount: v.number(),
+      evalCount: v.number(),
+      passedEvalCount: v.number(),
+      failedEvalCount: v.number(),
+      inputTokens: v.union(v.number(), v.null()),
+      outputTokens: v.union(v.number(), v.null()),
+      reasoningTokens: v.union(v.number(), v.null()),
+      failures: v.array(
+        v.object({
+          evalId: v.id("evals"),
+          evalPath: v.string(),
+          category: v.string(),
+          name: v.string(),
+          failureReason: v.string(),
+        }),
+      ),
     }),
   ),
   handler: async (ctx, args) => {
@@ -1005,6 +1028,25 @@ export const leaderboardModelHistory = query({
       runId: Id<"runs">;
       totalScore: number;
       scores: Record<string, number>;
+      runCostUsd: number | null;
+      averageGenerationTimeMs: number | null;
+      averageWebSearchesPerEval: number | null;
+      averageWebSearchesEstimated: boolean;
+      webSearchTelemetryEvalCount: number;
+      webUsageEvalCount: number;
+      evalCount: number;
+      passedEvalCount: number;
+      failedEvalCount: number;
+      inputTokens: number | null;
+      outputTokens: number | null;
+      reasoningTokens: number | null;
+      failures: Array<{
+        evalId: Id<"evals">;
+        evalPath: string;
+        category: string;
+        name: string;
+        failureReason: string;
+      }>;
     };
     const results: HistoryResult[] = [];
     await Promise.all(
@@ -1015,11 +1057,97 @@ export const leaderboardModelHistory = query({
           .collect();
         if (!isFullyCompletedRun(run, evals)) return;
         const { totalScore, scores } = computeRunScores(evals);
+        const webUsage =
+          run.experiment === "no_guidelines_with_web"
+            ? webUsageAverages(computeWebUsage(evals))
+            : webUsageAverages(undefined);
+        const terminalEvals = evals.filter(
+          (evalDoc) =>
+            evalDoc.status.kind === "passed" ||
+            evalDoc.status.kind === "failed",
+        );
+        let inputTokens = 0;
+        let outputTokens = 0;
+        let reasoningTokens = 0;
+        let hasCompleteInputTokens = terminalEvals.length > 0;
+        let hasCompleteOutputTokens = terminalEvals.length > 0;
+        let hasCompleteReasoningTokens = terminalEvals.length > 0;
+        let providerUsageIsComplete = true;
+        for (const evalDoc of terminalEvals) {
+          if (
+            evalDoc.status.kind !== "passed" &&
+            evalDoc.status.kind !== "failed"
+          ) {
+            continue;
+          }
+          const usage = evalDoc.status.usage;
+          const rawUsage: unknown = usage?.raw;
+          if (
+            rawUsage !== null &&
+            typeof rawUsage === "object" &&
+            "providerUsageExcludesFailedAttempts" in rawUsage &&
+            rawUsage.providerUsageExcludesFailedAttempts === true
+          ) {
+            providerUsageIsComplete = false;
+          }
+          if (typeof usage?.inputTokens === "number") {
+            inputTokens += usage.inputTokens;
+          } else {
+            hasCompleteInputTokens = false;
+          }
+          if (typeof usage?.outputTokens === "number") {
+            outputTokens += usage.outputTokens;
+          } else {
+            hasCompleteOutputTokens = false;
+          }
+          const evalReasoningTokens =
+            usage?.outputTokenDetails?.reasoningTokens ??
+            usage?.reasoningTokens;
+          if (typeof evalReasoningTokens === "number") {
+            reasoningTokens += evalReasoningTokens;
+          } else {
+            hasCompleteReasoningTokens = false;
+          }
+        }
+        const failedEvals = terminalEvals.filter(
+          (evalDoc) => evalDoc.status.kind === "failed",
+        );
         results.push({
           _creationTime: run._creationTime,
           runId: run._id,
           totalScore,
           scores,
+          runCostUsd: computeRunCostUsd(evals),
+          averageGenerationTimeMs: computeRunDurationMs(evals),
+          averageWebSearchesPerEval: webUsage.averageWebSearchesPerEval,
+          averageWebSearchesEstimated: webUsage.averageWebSearchesEstimated,
+          webSearchTelemetryEvalCount: webUsage.webSearchTelemetryEvalCount,
+          webUsageEvalCount: webUsage.webUsageEvalCount,
+          evalCount: terminalEvals.length,
+          passedEvalCount: terminalEvals.length - failedEvals.length,
+          failedEvalCount: failedEvals.length,
+          inputTokens:
+            providerUsageIsComplete && hasCompleteInputTokens
+              ? inputTokens
+              : null,
+          outputTokens:
+            providerUsageIsComplete && hasCompleteOutputTokens
+              ? outputTokens
+              : null,
+          reasoningTokens:
+            providerUsageIsComplete && hasCompleteReasoningTokens
+              ? reasoningTokens
+              : null,
+          failures: failedEvals.slice(0, 8).map((evalDoc) => ({
+            evalId: evalDoc._id,
+            evalPath: evalDoc.evalPath,
+            category: evalDoc.category,
+            name: evalDoc.name,
+            failureReason:
+              evalDoc.status.kind === "failed"
+                ? evalDoc.status.failureReason
+                : "Unknown failure",
+          })),
         });
       }),
     );
