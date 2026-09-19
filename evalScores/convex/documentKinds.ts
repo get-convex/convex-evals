@@ -1,18 +1,8 @@
 import type { Doc } from "./_generated/dataModel.js";
 
-// Only the persistence boundary accepts historical records without a tag.
-// Application dispatchers always see a strict discriminated union.
-export type StoredCodingRun = Extract<Doc<"runs">, { kind?: "coding" }>;
-export type StoredCodingEval = Extract<Doc<"evals">, { kind?: "coding" }>;
-export type StoredCodingModelScore = Extract<
-  Doc<"modelScores">,
-  { kind?: "coding" }
->;
-export type CodingRun = Omit<StoredCodingRun, "kind"> & { kind: "coding" };
-export type CodingEval = Omit<StoredCodingEval, "kind"> & { kind: "coding" };
-export type CodingModelScore = Omit<StoredCodingModelScore, "kind"> & {
-  kind: "coding";
-};
+export type CodingRun = Extract<Doc<"runs">, { kind: "coding" }>;
+export type CodingEval = Extract<Doc<"evals">, { kind: "coding" }>;
+export type CodingModelScore = Extract<Doc<"modelScores">, { kind: "coding" }>;
 export type DecisionRun = Extract<Doc<"runs">, { kind: "decision" }>;
 export type DecisionResult = Extract<Doc<"evals">, { kind: "decision" }>;
 export type DecisionModelScore = Extract<
@@ -27,45 +17,8 @@ export function assertNever(_value: never): never {
   throw new Error("Unhandled document kind");
 }
 
-export function normalizeRun(run: Doc<"runs">): Run {
+export function isCodingRun(run: Doc<"runs">): run is CodingRun {
   switch (run.kind) {
-    case undefined:
-    case "coding":
-      return { ...run, kind: "coding" };
-    case "decision":
-      return run;
-    default:
-      return assertNever(run);
-  }
-}
-
-export function normalizeEval(evalDoc: Doc<"evals">): Eval {
-  switch (evalDoc.kind) {
-    case undefined:
-    case "coding":
-      return { ...evalDoc, kind: "coding" };
-    case "decision":
-      return evalDoc;
-    default:
-      return assertNever(evalDoc);
-  }
-}
-
-export function normalizeModelScore(score: Doc<"modelScores">): ModelScore {
-  switch (score.kind) {
-    case undefined:
-    case "coding":
-      return { ...score, kind: "coding" };
-    case "decision":
-      return score;
-    default:
-      return assertNever(score);
-  }
-}
-
-export function isCodingRun(run: Doc<"runs">): run is StoredCodingRun {
-  switch (run.kind) {
-    case undefined:
     case "coding":
       return true;
     case "decision":
@@ -75,11 +28,8 @@ export function isCodingRun(run: Doc<"runs">): run is StoredCodingRun {
   }
 }
 
-export function isCodingEval(
-  evalDoc: Doc<"evals">,
-): evalDoc is StoredCodingEval {
+export function isCodingEval(evalDoc: Doc<"evals">): evalDoc is CodingEval {
   switch (evalDoc.kind) {
-    case undefined:
     case "coding":
       return true;
     case "decision":
@@ -91,9 +41,8 @@ export function isCodingEval(
 
 export function isCodingModelScore(
   score: Doc<"modelScores">,
-): score is StoredCodingModelScore {
+): score is CodingModelScore {
   switch (score.kind) {
-    case undefined:
     case "coding":
       return true;
     case "decision":
@@ -103,8 +52,7 @@ export function isCodingModelScore(
   }
 }
 
-export function requireCodingRun(value: Doc<"runs">): CodingRun {
-  const run = normalizeRun(value);
+export function requireCodingRun(run: Doc<"runs">): CodingRun {
   switch (run.kind) {
     case "coding":
       return run;
@@ -115,8 +63,7 @@ export function requireCodingRun(value: Doc<"runs">): CodingRun {
   }
 }
 
-export function requireCodingEval(value: Doc<"evals">): CodingEval {
-  const evalDoc = normalizeEval(value);
+export function requireCodingEval(evalDoc: Doc<"evals">): CodingEval {
   switch (evalDoc.kind) {
     case "coding":
       return evalDoc;
@@ -127,8 +74,7 @@ export function requireCodingEval(value: Doc<"evals">): CodingEval {
   }
 }
 
-export function requireDecisionRun(value: Doc<"runs">): DecisionRun {
-  const run = normalizeRun(value);
+export function requireDecisionRun(run: Doc<"runs">): DecisionRun {
   switch (run.kind) {
     case "decision":
       return run;
@@ -140,9 +86,8 @@ export function requireDecisionRun(value: Doc<"runs">): DecisionRun {
 }
 
 export function requireCodingModelScore(
-  value: Doc<"modelScores">,
+  score: Doc<"modelScores">,
 ): CodingModelScore {
-  const score = normalizeModelScore(value);
   switch (score.kind) {
     case "coding":
       return score;
@@ -153,8 +98,7 @@ export function requireCodingModelScore(
   }
 }
 
-export function requireDecisionResult(value: Doc<"evals">): DecisionResult {
-  const evalDoc = normalizeEval(value);
+export function requireDecisionResult(evalDoc: Doc<"evals">): DecisionResult {
   switch (evalDoc.kind) {
     case "decision":
       return evalDoc;
@@ -166,9 +110,8 @@ export function requireDecisionResult(value: Doc<"evals">): DecisionResult {
 }
 
 export function requireDecisionModelScore(
-  value: Doc<"modelScores">,
+  score: Doc<"modelScores">,
 ): DecisionModelScore {
-  const score = normalizeModelScore(value);
   switch (score.kind) {
     case "decision":
       return score;

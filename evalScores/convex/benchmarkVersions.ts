@@ -537,7 +537,7 @@ export const publishSeptemberWebRuns = internalMutation({
     for (const id of runIds) {
       const evals = (await ctx.db
         .query("evals")
-        .withIndex("by_runId", (q) => q.eq("runId", id))
+        .withIndex("by_kind_runId", (q) => q.eq("kind", "coding").eq("runId", id))
         .take(112)).map(requireCodingEval);
       if (
         evals.length !== 111 ||
