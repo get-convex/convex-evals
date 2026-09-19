@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "007-components/016-choose_agent_tools",
+  "coverageNotes": "Focused local decision coverage. Full implementation, scale, authorization and provider quality remain outside this bank; see author records.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Agent thread storage includes tool invocations and results",
+      "context": "Convex 1.41.0 and Agent 0.6.4. A mounted Agent has a lookupInventory tool that reads the products table, default storage, and a three-step limit. A deterministic local model requests lookupInventory(\"Blue Widget\") on its first step and produces \"done\" after the tool result. Two actions use the same thread: stock is 7 for the first, then changed to 11 before the second. Each runs:\n\n```ts\nconst result = await assistant.generateText(ctx, { threadId }, { prompt: \"Check stock\" });\n```",
+      "question": "Alongside the user messages and final replies, what does the component persist?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The two tool calls, but neither returned stock value.",
+          "rationale": "Default Agent storage includes tool result messages as well as assistant tool-call messages."
+        },
+        {
+          "id": "b",
+          "text": "The returned stock values 7 and 11, but neither tool name nor arguments.",
+          "rationale": "The stored assistant tool-call messages retain the invoked tool name and arguments."
+        },
+        {
+          "id": "c",
+          "text": "Neither the tool calls nor results; only the final assistant text is stored.",
+          "rationale": "Intermediate tool steps are stored by default; disabling storage is an explicit separate option."
+        },
+        {
+          "id": "d",
+          "text": "Both tool calls and their corresponding results, 7 and 11.",
+          "rationale": "Real SDK execution records assistant tool-call messages and tool-result messages for both runs."
+        }
+      ],
+      "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

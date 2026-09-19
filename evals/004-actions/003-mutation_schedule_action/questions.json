@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "004-actions/003-mutation_schedule_action",
+  "coverageNotes": "Recognizes the documented Convex boundary under supplied conditions. Does not establish independent implementation skill or all source requirements.",
+  "questions": [
+    {
+      "id": "q-schedule-commit",
+      "concept": "Mutation scheduling commits atomically with database writes",
+      "context": "Convex 1.44.0. The existing internal action performHttpbinFetch POSTs its url, then marks the request completed through a mutation. The requests table has url, status, requestedAt and optional completedAt fields. There are no existing rows or scheduled jobs.\n\nconvex/probe.ts\n```ts\nimport { mutation } from \"./_generated/server\";\nimport { v } from \"convex/values\";\nimport { internal } from \"./_generated/api\";\nexport const initiate = mutation({\n  args: { url: v.string(), fail: v.boolean() },\n  handler: async (ctx, args) => {\n    const requestId = await ctx.db.insert(\"requests\", {\n      url: args.url, status: \"pending\", requestedAt: Date.now(),\n    });\n    await ctx.scheduler.runAfter(0, internal.index.performHttpbinFetch, {\n      url: args.url, requestId,\n    });\n    if (args.fail) throw new Error(\"abort\");\n    return requestId;\n  },\n});\n```",
+      "question": "After initiate is called with fail: true and throws, what remains from that call?",
+      "options": [
+        {
+          "id": "a",
+          "text": "A pending row and a scheduled POST.",
+          "rationale": "The uncaught mutation error rolls back both the write and the scheduling operation."
+        },
+        {
+          "id": "b",
+          "text": "Neither a request row nor a scheduled POST.",
+          "rationale": "Mutation writes and scheduling are committed together; neither survives the error."
+        },
+        {
+          "id": "c",
+          "text": "A pending row, but no scheduled POST.",
+          "rationale": "The database insert also rolls back; it is not an earlier independent commit."
+        },
+        {
+          "id": "d",
+          "text": "A scheduled POST, but no request row.",
+          "rationale": "runAfter in a mutation does not dispatch independently before that mutation commits."
+        }
+      ],
+      "correctOptionId": "b",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

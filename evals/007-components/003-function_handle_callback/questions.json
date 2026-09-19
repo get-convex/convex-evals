@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "sourceEval": "007-components/003-function_handle_callback",
+  "coverageNotes": "No supplied API sheet in the source. Does not assess component mounting or deduplicating client retries. New target replacing incidental callback-only writer policy. Does not independently assess handle creation or mounting.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Create a serializable cross-component function handle",
+      "context": "Convex 1.41.0. `internal.index.recordCompletion` is an internal mutation taking `{ jobKey: string }` and returning null. `jobRunner.run` accepts `{ handle: string, jobKey: string }` and invokes that mutation handle once. `createFunctionHandle` and `getFunctionName` are imported from `convex/server`; `internal` and `components` are generated app references. Complete this root mutation:\n```ts\nconst handle = HANDLE;\nawait ctx.runMutation(components.jobRunner.index.run, {\n  handle, jobKey: args.jobKey,\n});\n```",
+      "question": "Which expression supplies a callback that the component can invoke?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\ngetFunctionName(internal.index.recordCompletion)\n```",
+          "rationale": "A relative function name resolves inside the component, not to the parent function."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nawait createFunctionHandle(internal.index.recordCompletion)\n```",
+          "rationale": "Creates a serialized handle that preserves the target across the component boundary."
+        },
+        {
+          "id": "c",
+          "text": "```ts\ninternal.index.recordCompletion\n```",
+          "rationale": "A generated API reference object is not a serializable string handle."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nJSON.stringify(internal.index.recordCompletion)\n```",
+          "rationale": "JSON serialization does not create a function handle; the serialized object is not a valid function reference."
+        }
+      ],
+      "correctOptionId": "b",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/package.json",
+        "answer/convex/index.ts",
+        "answer/convex/convex.config.ts",
+        "grader.test.ts"
+      ]
+    },
+    {
+      "id": "q-invoke-handle",
+      "concept": "Invoke a typed mutation handle in the component transaction",
+      "context": "Convex 1.41.0. The parent passes a valid handle created for its internal `recordCompletion` mutation into `jobRunner.run`. The component has `callback = args.handle as FunctionHandle<\"mutation\", { jobKey: string }, null>`. The callback writes one parent completion. Its write must finish as part of the current mutation, so an error later in that mutation also rolls the callback write back.",
+      "question": "Which statement invokes the callback with that transaction behavior?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nawait ctx.runMutation(callback, { jobKey: args.jobKey });\n```",
+          "rationale": "Invokes the referenced mutation in the current transaction."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nawait ctx.runQuery(callback, { jobKey: args.jobKey });\n```",
+          "rationale": "The referenced function is a mutation, not a query; static and runtime function-kind checks reject this."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nawait ctx.scheduler.runAfter(0, callback, { jobKey: args.jobKey });\n```",
+          "rationale": "Schedules a separate mutation. Awaiting scheduling does not execute the callback in the current transaction."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nawait callback({ jobKey: args.jobKey });\n```",
+          "rationale": "A handle is a string with a type brand, not a callable JavaScript function."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/package.json",
+        "answer/convex/index.ts",
+        "answer/convex/convex.config.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

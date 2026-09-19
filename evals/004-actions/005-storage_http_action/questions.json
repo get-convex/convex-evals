@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "004-actions/005-storage_http_action",
+  "coverageNotes": "Recognizes the documented Convex boundary under supplied conditions. Does not establish independent implementation skill or all source requirements.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "HTTP action storage accepts the request Blob without text conversion",
+      "context": "Convex 1.44.0. This HTTP action receives a POST with Content-Type application/octet-stream and body bytes [0, 255, 128, 65]. The caller downloads the returned URL.\n\nconvex/http.ts\n```ts\nimport { httpRouter } from \"convex/server\";\nimport { httpAction } from \"./_generated/server\";\nconst http = httpRouter();\nhttp.route({\n  path: \"/store\", method: \"POST\",\n  handler: httpAction(async (ctx, request) => {\n    const storageId = await ctx.storage.store(await request.blob());\n    const url = await ctx.storage.getUrl(storageId);\n    return Response.json({ storageId, url });\n  }),\n});\nexport default http;\n```",
+      "question": "What does the caller download?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The UTF-8 bytes for the JSON array [0,255,128,65].",
+          "rationale": "Neither request.blob nor store serializes the bytes as a JSON array."
+        },
+        {
+          "id": "b",
+          "text": "The original four bytes [0,255,128,65].",
+          "rationale": "The HTTP action stores the request Blob directly and the download preserves its bytes."
+        },
+        {
+          "id": "c",
+          "text": "The body after invalid UTF-8 bytes are replaced.",
+          "rationale": "There is no text decoding/re-encoding here; a separate text conversion control demonstrates replacement."
+        },
+        {
+          "id": "d",
+          "text": "Nothing; storage.store is unavailable in HTTP actions.",
+          "rationale": "HTTP action contexts expose storage.store; the endpoint successfully stores and serves the Blob."
+        }
+      ],
+      "correctOptionId": "b",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/http.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

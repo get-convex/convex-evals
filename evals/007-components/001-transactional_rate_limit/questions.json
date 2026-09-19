@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "sourceEval": "007-components/001-transactional_rate_limit",
+  "coverageNotes": "Applies supplied documentation and code; does not test choosing an algorithm or authoring authentication. Applies source-supplied API documentation. Does not assess rate algorithm selection. The source TASK explicitly prescribes identity.tokenIdentifier; identity-property selection is supplied setup, not a recall target here.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Enclosing mutation rollback restores component quota",
+      "context": "Convex 1.41.0, @convex-dev/rate-limiter 0.3.2. The component is mounted and authentication is configured. Supplied package reference:\n```ts\nconst rateLimiter = new RateLimiter(components.rateLimiter, {\n  sendMessage: { kind: \"fixed window\", rate: 2, period: HOUR },\n});\n// In a mutation, consume a named limit:\nawait rateLimiter.limit(ctx, \"sendMessage\", { key, throws: true });\n```\n\nThe authenticated mutation uses this handler after loading `identity`:\n```ts\nawait rateLimiter.limit(ctx, \"sendMessage\", {\n  key: identity.tokenIdentifier, throws: true,\n});\nif (args.body.trim() === \"\") throw new ConvexError(\"Empty body\");\nreturn await ctx.db.insert(\"messages\", {\n  authorTokenIdentifier: identity.tokenIdentifier, body: args.body,\n});\n```\nA fresh user sends an empty body, then three non-empty bodies in separate calls. All calls fall inside the same fixed window.",
+      "question": "What happens to the three non-empty sends?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Only the first succeeds; the empty-body failure already used one token.",
+          "rationale": "Would require component quota to commit separately from the failed root mutation."
+        },
+        {
+          "id": "b",
+          "text": "The first two succeed; the third throws the structured rate-limit error.",
+          "rationale": "The empty-body exception rolls back the consumed token; the two later successes exhaust the quota."
+        },
+        {
+          "id": "c",
+          "text": "All three succeed; throwing after consumption resets the window on later calls.",
+          "rationale": "Rollback restores prior state; it does not disable subsequent committed consumption."
+        },
+        {
+          "id": "d",
+          "text": "None succeeds; the empty-body failure leaves the limit in a rejected state.",
+          "rationale": "A failed mutation does not persist a poisoned limiter state."
+        }
+      ],
+      "correctOptionId": "b",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/package.json",
+        "answer/convex/index.ts",
+        "answer/convex/convex.config.ts",
+        "grader.test.ts"
+      ]
+    },
+    {
+      "id": "q2",
+      "concept": "Consume quota and preserve structured rejection",
+      "context": "Convex 1.41.0, @convex-dev/rate-limiter 0.3.2. The component is mounted and authentication is configured. Supplied package reference:\n```ts\nconst rateLimiter = new RateLimiter(components.rateLimiter, {\n  sendMessage: { kind: \"fixed window\", rate: 2, period: HOUR },\n});\n// In a mutation, consume a named limit:\nawait rateLimiter.limit(ctx, \"sendMessage\", { key, throws: true });\n```\n\nThe named limit allows two sends per window. `key` is the authenticated tokenIdentifier. The mutation inserts one message after the selected code. Every successful send must consume a token; an exhausted limit must throw the component's structured error with `kind`, `name` and `retryAfter`.",
+      "question": "Which code belongs before the insert?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nawait rateLimiter.limit(ctx, \"sendMessage\", { key, throws: false });\n```",
+          "rationale": "Returns a failed status on exhaustion, but this handler ignores it and still inserts."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nawait rateLimiter.check(ctx, \"sendMessage\", { key, throws: true });\n```",
+          "rationale": "Checks availability without consuming; repeated sends never exhaust a fresh key."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nawait rateLimiter.limit(ctx, \"sendMessage\", { key, throws: true });\n```",
+          "rationale": "Consumes on success and throws the structured component error on exhaustion."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nconst result = await rateLimiter.limit(ctx, \"sendMessage\", { key, throws: false });\nif (!result.ok) throw new Error(\"Rate limited\");\n```",
+          "rationale": "Stops insertion but replaces structured ConvexError data with an ordinary Error."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/package.json",
+        "answer/convex/index.ts",
+        "answer/convex/convex.config.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

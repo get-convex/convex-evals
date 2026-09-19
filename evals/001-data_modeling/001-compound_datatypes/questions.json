@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "001-data_modeling/001-compound_datatypes",
+  "coverageNotes": "Measures ID-keyed record composition only. Nested coordinate arrays and other source containers remain unconverted. Correlated tagged unions are covered by 001-data_modeling/010-discriminated_union.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "ID-keyed record composition",
+      "context": "Using Convex SDK 1.44.0, field `c` must contain an object whose keys are document IDs from the `example` table. Each value is exactly an object with required `z: ArrayBuffer`. An empty record is allowed. `v` is imported from `convex/values`.",
+      "question": "Which validator represents `c`?",
+      "options": [
+        {
+          "id": "a",
+          "text": "v.record(v.id(\"example\"), v.object({ z: v.bytes() }))",
+          "rationale": "The record validates both example-table ID keys and object values containing bytes."
+        },
+        {
+          "id": "b",
+          "text": "v.record(v.string(), v.object({ z: v.bytes() }))",
+          "rationale": "The unrestricted string key accepts arbitrary strings and IDs from other tables."
+        },
+        {
+          "id": "c",
+          "text": "v.array(v.object({ z: v.bytes() }))",
+          "rationale": "An array changes the required keyed object container."
+        },
+        {
+          "id": "d",
+          "text": "v.record(v.id(\"example\"), v.bytes())",
+          "rationale": "The record value must be an object containing z; this validator expects bare bytes."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

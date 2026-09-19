@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "sourceEval": "007-components/008-choose_rate_limiter_cooldown",
+  "coverageNotes": "Narrows the original component-selection task to the configuration needed for strict per-user spacing. Does not test recognizing or installing the component, auth implementation, or efficiency at scale. Pins source versions Convex 1.41.0 and rate-limiter 0.3.2.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Strict cooldown with the rate-limiter component",
+      "context": "Using Convex 1.41.0 and @convex-dev/rate-limiter 0.3.2, the component is mounted. A mutation consumes one token using rateLimiter.limit(ctx, \"requestCode\", { key: identity.tokenIdentifier, throws: true }) before inserting a request. SECOND is imported from the package. Choose the requestCode configuration in:\n\n```ts\nconst rateLimiter = new RateLimiter(components.rateLimiter, {\n  requestCode: CONFIG,\n});\n```",
+      "question": "Which configuration allows the first request immediately, then enforces at least 30 seconds between successful requests, including concurrent requests?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\n{ kind: \"fixed window\", rate: 1, period: 30 * SECOND, capacity: 1, start: 0 }\n```",
+          "rationale": "A fixed window refills at its boundary. One success immediately before a boundary and another immediately after it can be less than 30 seconds apart."
+        },
+        {
+          "id": "b",
+          "text": "```ts\n{ kind: \"token bucket\", rate: 1, period: 30 * SECOND, capacity: 2 }\n```",
+          "rationale": "A capacity of two allows two accumulated tokens to be consumed in a burst, violating minimum spacing."
+        },
+        {
+          "id": "c",
+          "text": "```ts\n{ kind: \"token bucket\", rate: 1, period: 30 * SECOND, capacity: 1 }\n```",
+          "rationale": "Capacity one prevents accumulated bursts, and one token refilled per 30 seconds requires a full 30 seconds between successful one-token requests."
+        },
+        {
+          "id": "d",
+          "text": "```ts\n{ kind: \"token bucket\", rate: 30, period: 30 * SECOND, capacity: 1 }\n```",
+          "rationale": "Rate is tokens refilled per period, not a cooldown duration. Thirty tokens per 30 seconds refills one token each second despite capacity one."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/package.json",
+        "answer/convex/index.ts",
+        "grader.test.ts",
+        "answer/convex/schema.ts",
+        "answer/convex/convex.config.ts"
+      ]
+    }
+  ]
+}

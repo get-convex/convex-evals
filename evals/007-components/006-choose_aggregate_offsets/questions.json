@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "sourceEval": "007-components/006-choose_aggregate_offsets",
+  "coverageNotes": "Narrows original selection to position lookup. General Aggregate choice is covered by 004; no source API sheet is introduced.",
+  "questions": [
+    {
+      "id": "q-position-entry",
+      "concept": "Position-to-entry aggregate lookup",
+      "context": "Convex 1.41.0, @convex-dev/aggregate 0.2.2. A synchronized `entryAggregate` sorts entries by `-doc.points`. Points are distinct. `args.offset` is a valid zero-based position in points-descending order. The query already loads the entry document from `item.id` and returns its title. Complete `const item = EXPRESSION;`.",
+      "question": "Which expression retrieves the entry at the requested position?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nawait entryAggregate.indexOf(ctx, args.offset)\n```",
+          "rationale": "indexOf maps a key to a numeric position, not a position to an item."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nawait entryAggregate.at(ctx, args.offset + 1)\n```",
+          "rationale": "at is already zero-based; this skips the requested item and goes out of bounds at the last offset."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nawait entryAggregate.at(ctx, -args.offset - 1)\n```",
+          "rationale": "Negative offsets count from the largest key, reversing the desired order for negated points."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nawait entryAggregate.at(ctx, args.offset)\n```",
+          "rationale": "Ascending aggregate key order is points-descending, and at maps the zero-based position to an item."
+        }
+      ],
+      "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/package.json",
+        "answer/convex/index.ts",
+        "answer/convex/convex.config.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

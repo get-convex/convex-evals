@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "sourceEval": "007-components/004-choose_aggregate",
+  "coverageNotes": "Unaided component choice; API wiring and millions-row latency are not tested.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Select maintained ordered statistics",
+      "context": "A leaderboard has mutable scores. Page loads need total users and competition rank, including ties, without scanning every score. All table changes will be synchronized with the chosen component. Use the built-in capabilities of these versions: Aggregate 0.2.2, Sharded Counter 0.2.0, Rate Limiter 0.3.2, Workpool 0.4.3, with Convex 1.41.0. Custom data structures and custom quota algorithms are outside this question.",
+      "question": "Which component directly maintains the ordered counts needed for these reads?",
+      "options": [
+        {
+          "id": "a",
+          "text": "@convex-dev/sharded-counter",
+          "rationale": "Maintains named totals, not ordered score-range counts."
+        },
+        {
+          "id": "b",
+          "text": "@convex-dev/rate-limiter",
+          "rationale": "Maintains rate budgets, not ordered leaderboard statistics."
+        },
+        {
+          "id": "c",
+          "text": "@convex-dev/aggregate",
+          "rationale": "Maintains ordered aggregate counts which support strict-above rank and total count."
+        },
+        {
+          "id": "d",
+          "text": "@convex-dev/workpool",
+          "rationale": "Queues background work; it does not maintain ordered score statistics."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/package.json",
+        "answer/convex/index.ts",
+        "answer/convex/convex.config.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

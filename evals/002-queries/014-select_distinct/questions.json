@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "002-queries/014-select_distinct",
+  "coverageNotes": "Does not demonstrate unrestricted scale in the number of distinct values or full backend implementation.",
+  "questions": [
+    {
+      "id": "q014-1",
+      "concept": "Seek past duplicate indexed values",
+      "context": "Use Convex 1.44.0. Users have a by_age index on [\"age\"]. Ages are finite numbers, and the number of distinct values fits query limits. The loop must return sorted distinct ages while skipping duplicate runs through the index. The progress guard stops a mistaken seek from looping forever.\n\n```ts\nimport { query } from \"./_generated/server\";\nimport { v } from \"convex/values\";\nimport { paginationOptsValidator, paginationResultValidator } from \"convex/server\";\nexport const candidate = query({\n  args: {},\n  handler: async ctx => {\n    const ages: number[] = [];\n    let row = await ctx.db.query(\"users\").withIndex(\"by_age\").first();\n    while (row !== null) {\n      const previousAge = row.age;\n      ages.push(previousAge);\n      row = await (/* OPTION */);\n      if (row !== null && row.age <= previousAge) throw new Error(\"No progress\");\n    }\n    return ages;\n  },\n});\n```",
+      "question": "Which expression finds the next distinct age?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nctx.db.query(\"users\").withIndex(\"by_age\", q => q.gte(\"age\", previousAge)).first()\n```",
+          "rationale": "Incorrect: gte includes the same age again; the progress guard rejects that repeated value."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nctx.db.query(\"users\").withIndex(\"by_age\", q => q.gt(\"age\", previousAge)).first()\n```",
+          "rationale": "Correct: gt excludes all rows at the previous age, and first selects the next age in index order."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nctx.db.query(\"users\").withIndex(\"by_age\", q => q.eq(\"age\", previousAge)).first()\n```",
+          "rationale": "Incorrect: eq stays within the age already returned; the progress guard rejects it."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nctx.db.query(\"users\").withIndex(\"by_age\", q => q.lt(\"age\", previousAge)).first()\n```",
+          "rationale": "Incorrect: lt looks below the current age. Starting at the smallest age makes it stop after one value."
+        }
+      ],
+      "correctOptionId": "b",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "004-actions/006-node",
+  "coverageNotes": "Recognizes the documented Convex boundary under supplied conditions. Does not establish independent implementation skill or all source requirements.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Node runtime module boundaries",
+      "context": "Using Convex 1.44.0, the backend needs an action processWithNode and a query health returning \"ok\". Dependencies and generated files are ready. This helper is shared; each option supplies the remaining modules.\n\nconvex/nodeHelper.ts\n```ts\n\"use node\";\nimport { createHash } from \"node:crypto\";\nimport { posix } from \"node:path\";\nexport function processData(data: string) {\n  return { hash: createHash(\"sha256\").update(data).digest(\"hex\"),\n    normalizedPath: posix.normalize(\"/some/test/path\") };\n}\n```",
+      "question": "Which file layout lets both functions deploy and run?",
+      "options": [
+        {
+          "id": "a",
+          "text": "convex/index.ts\n```ts\nimport { action } from \"./_generated/server\";\nimport { v } from \"convex/values\";\nimport { processData } from \"./nodeHelper\";\nexport const processWithNode = action({\n  args: { data: v.string() },\n  handler: (_, { data }) => { return processData(data); },\n});\n```\n\nconvex/health.ts\n```ts\nimport { query } from \"./_generated/server\";\nexport const health = query({ args: {}, handler: () => \"ok\" });\n```",
+          "rationale": "A use node directive in an imported helper does not make the action's own module a Node module. The default-runtime action still imports Node built-ins transitively and fails bundling."
+        },
+        {
+          "id": "b",
+          "text": "convex/index.ts\n```ts\n\"use node\";\nimport { action } from \"./_generated/server\";\nimport { v } from \"convex/values\";\nimport { processData } from \"./nodeHelper\";\nimport { query } from \"./_generated/server\";\nexport const processWithNode = action({\n  args: { data: v.string() },\n  handler: (_, { data }) => { return processData(data); },\n});\nexport const health = query({ args: {}, handler: () => \"ok\" });\n```",
+          "rationale": "A module marked use node cannot export a Convex query. The health query must live in a default-runtime module."
+        },
+        {
+          "id": "c",
+          "text": "convex/index.ts\n```ts\nimport { action } from \"./_generated/server\";\nimport { v } from \"convex/values\";\nimport { processData } from \"./nodeHelper\";\nexport const processWithNode = action({\n  args: { data: v.string() },\n  handler: (_, { data }) => { \"use node\"; return processData(data); },\n});\n```\n\nconvex/health.ts\n```ts\nimport { query } from \"./_generated/server\";\nexport const health = query({ args: {}, handler: () => \"ok\" });\n```",
+          "rationale": "The directive belongs at the module level. Placing use node inside the action handler does not select the Node runtime."
+        },
+        {
+          "id": "d",
+          "text": "convex/index.ts\n```ts\n\"use node\";\nimport { action } from \"./_generated/server\";\nimport { v } from \"convex/values\";\nimport { processData } from \"./nodeHelper\";\nexport const processWithNode = action({\n  args: { data: v.string() },\n  handler: (_, { data }) => { return processData(data); },\n});\n```\n\nconvex/health.ts\n```ts\nimport { query } from \"./_generated/server\";\nexport const health = query({ args: {}, handler: () => \"ok\" });\n```",
+          "rationale": "The action's module selects Node at the top level; the query remains in a separate default-runtime module."
+        }
+      ],
+      "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

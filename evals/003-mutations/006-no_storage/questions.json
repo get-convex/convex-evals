@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "003-mutations/006-no_storage",
+  "coverageNotes": "Tests storage.store availability by function context. Does not separately score complete upload implementation, return typing, byte-length calculation, or failure cleanup.",
+  "questions": [
+    {
+      "id": "q006-1",
+      "concept": "Mutation and action storage capabilities",
+      "context": "Convex 1.44.0. `files` has fields `storageId: v.id(\"_storage\")`, `fileName: v.string()` and `size: v.number()`. Consider this attempted implementation:\n\n```ts\nimport { mutation } from \"./_generated/server\";\nimport { v } from \"convex/values\";\n\nexport const uploadFile = mutation({\n  args: { contents: v.string(), fileName: v.string() },\n  handler: async (ctx, args) => {\n    const blob = new Blob([args.contents]);\n    const storageId = await ctx.storage.store(blob);\n    const fileId = await ctx.db.insert(\"files\", {\n      storageId, fileName: args.fileName, size: blob.size,\n    });\n    const url = await ctx.storage.getUrl(storageId);\n    return { fileId, storageId, url };\n  },\n});\n```",
+      "question": "Which statement identifies the unsupported operation in this mutation?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Constructing the Blob requires an action; the storage and database calls are available in mutations.",
+          "rationale": "Blob construction and size access execute successfully in the mutation control. The unsupported method is storage.store."
+        },
+        {
+          "id": "b",
+          "text": "Calling storage.store requires an action; Blob construction, database insertion, and storage.getUrl are available in mutations.",
+          "rationale": "TypeScript rejects storage.store on StorageWriter, and the bypassed mutation throws at that call. The action store plus mutation metadata control succeeds."
+        },
+        {
+          "id": "c",
+          "text": "Calling storage.getUrl requires an action; Blob construction, storage.store, and database insertion are available in mutations.",
+          "rationale": "getUrl works in a mutation for an existing storage ID; it is not exclusive to actions."
+        },
+        {
+          "id": "d",
+          "text": "Calling db.insert requires an action; Blob construction and both storage calls are available in mutations.",
+          "rationale": "Mutation contexts have db.insert. An action has no direct db and delegates database writes through runMutation."
+        }
+      ],
+      "correctOptionId": "b",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

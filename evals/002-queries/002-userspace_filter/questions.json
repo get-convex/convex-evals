@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "002-queries/002-userspace_filter",
+  "coverageNotes": "Tests the query-builder versus array-filter boundary. Sorting and predicate business rules are supplied, and full-table scans are not falsely labelled incorrect.",
+  "questions": [
+    {
+      "id": "q002-1",
+      "concept": "Materialize a query before JavaScript filtering",
+      "context": "Using Convex 1.44.0, messages has author: string, text: string, likes: number, isPinned: boolean and .index(\"by_author\", [\"author\"]). A query validates { author: string, minLikes: number }. All of that author’s messages fit within query limits. It must load all of those messages and apply the pinned and likes checks in JavaScript. The handler is:\n\n```ts\nconst authorQuery = ctx.db.query(\"messages\")\n  .withIndex(\"by_author\", (q) => q.eq(\"author\", args.author));\n// Insert one option here.\nreturn selected.sort((a, b) => b.likes - a.likes);\n```",
+      "question": "Which block completes the handler?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nconst selected = (await authorQuery.collect())\n  .filter((msg) => msg.isPinned && msg.likes >= args.minLikes);\n```",
+          "rationale": "collect materializes every matching document; the subsequent Array.filter runs ordinary JavaScript predicates."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nconst selected = await authorQuery\n  .filter((msg) => msg.isPinned && msg.likes >= args.minLikes)\n  .collect();\n```",
+          "rationale": "A Convex query-builder filter callback receives a FilterBuilder, not a document. Direct msg.isPinned/msg.likes property access is statically invalid; when typechecking is bypassed, an empty range returns [], but a nonempty range rejects the undefined predicate result."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nconst selected = (await authorQuery.take(10))\n  .filter((msg) => msg.isPinned && msg.likes >= args.minLikes);\n```",
+          "rationale": "take(10) can omit later qualifying messages before the JavaScript predicate runs."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nconst selected = await authorQuery\n  .filter((q) => q.and(q.eq(q.field(\"isPinned\"), true), q.gte(q.field(\"likes\"), args.minLikes)))\n  .collect();\n```",
+          "rationale": "This native database filter returns the correct values in the fixtures but does not load all author messages before evaluating the two checks in JavaScript."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "answer/convex/public.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

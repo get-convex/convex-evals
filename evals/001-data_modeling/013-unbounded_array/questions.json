@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "001-data_modeling/013-unbounded_array",
+  "coverageNotes": "Covers avoiding single-document growth. SDK descriptors and native size accounting compare the exact layouts. The existing separate-row schema supports real writes and independent updates; no alternate schema is installed. Does not benchmark contention or unlimited pagination.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Document growth for child collections",
+      "context": "Convex 1.44.0. A task has a checklist that keeps growing over time. Each item has text and completed, and the app toggles individual items. Each item is small enough for a document; the combined checklist can exceed Convex\u2019s single-document size limit.",
+      "question": "Which layout keeps every document from growing with the whole checklist?",
+      "options": [
+        {
+          "id": "a",
+          "text": "One tasks document containing a checklist array of item objects.",
+          "rationale": "The task document grows with the full array."
+        },
+        {
+          "id": "b",
+          "text": "One checklistItems document per task, containing a map of item objects.",
+          "rationale": "Moving the full map to a second document still concentrates the checklist in one document."
+        },
+        {
+          "id": "c",
+          "text": "One checklistItems document per item with taskId, text and completed, indexed by taskId.",
+          "rationale": "Each item has a separate document; the task index preserves the relationship for listing."
+        },
+        {
+          "id": "d",
+          "text": "One tasks document containing the whole checklist as a JSON string.",
+          "rationale": "Serializing the checklist as a string still grows one document."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

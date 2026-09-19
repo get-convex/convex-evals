@@ -21,6 +21,62 @@ Detailed results from production runs can be visualized at [convex-evals.netlify
 
 We use these evals to tune our [Convex Guidelines](https://docs.convex.dev/ai/), which greatly improve model performance writing Convex code and decrease hallucinations.
 
+## Decision models
+
+The multiple-choice format measures specific Convex knowledge with four plausible
+options per question. It shares the coding benchmark's version, with a separate
+score and leaderboard. A correct choice does not establish that a model can write
+or debug a working Convex application.
+
+The accepted bank contains 106 questions covering 90 of the 112 coding evals.
+[decision-bank.json](decision-bank.json) records the included questions and the
+22 intentional omissions. Questions are averaged within each source eval, then
+source evals receive equal weight. Invalid responses and provider failures count
+as incorrect; interrupted and filtered runs do not enter the leaderboard.
+Three matched option permutations are used by the hosted workflow. Unknown
+provider cost remains unknown, including when a retry has missing usage.
+
+Run a small local trial with `OPENROUTER_API_KEY` in your
+environment (or pass `--env-file` to read only the chosen provider's key):
+
+```sh
+bun run decisions validate
+bun run decisions dry-run --provider openrouter --model typesafe/jev-1.13 --limit-evals 2
+bun run decisions run --provider openrouter --model typesafe/jev-1.13 --limit-evals 2
+```
+
+The local commands write reports and raw evidence to `output-decisions/` without
+reporting to Convex. For a full bank, use `--limit-evals 10000 --repetitions 3
+--max-requests 636` and choose an explicit `--max-known-cost-usd` budget. Hosted
+runs use the manual **Decision Model Evaluations** workflow on `main`, after the
+shared benchmark has been minted. Minting does not initiate model calls.
+
+Hosted question/source evidence remains JSON. Final run evidence is a `.json.gz`
+file whose digest covers the compressed bytes; repeated journal requests are
+represented by hashes checked against the reconstructed requests. The original
+local request/attempt logs remain unchanged. The
+[shared-table rollout guide](docs/shared-kind-migration.md) covers the compatible
+deployment, tag-only migration and separately deployed strict stage.
+
+Jev uses OpenRouter's `/api/alpha/decisions` endpoint with native typed questions;
+the language models use `/api/v1/chat/completions`. The hosted Jev configuration
+pins `typesafe/jev-1.13`, records the returned model ID, probabilities, confidence,
+and provider-reported cost, and sends no chat reasoning or output-token settings.
+All four hosted models use the existing OpenRouter credential. Direct TypeSafe
+trials remain supported with `--provider typesafe --model jev-latest` and
+`TYPESAFE_API_KEY`, with their provider identity kept separate in the results.
+
+Read the [question authoring standard](docs/decision-question-authoring.md) and
+[verification guide](docs/decision-verification.md) before changing a question.
+All 106 questions have archived executable evidence and hash checks. Five have
+supported clean-checkout replay commands; the other 101 still require portability
+work. The release asset `decision-verification.tgz` contains the same evidence,
+question files, dependency locks and replay scripts.
+
+The shared protocol excludes old local backend database/log files from source
+hashing, alongside dependency/generated directories. Those files are runtime
+outputs, and are not included in the published source snapshot.
+
 ## Running the evaluations
 
 First, install dependencies:

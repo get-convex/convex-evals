@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "007-components/015-choose_agent_threads",
+  "coverageNotes": "Focused local decision coverage. Full implementation, scale, authorization and provider quality remain outside this bank; see author records.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Thread-scoped Agent generation loads and stores the exchange",
+      "context": "Convex 1.41.0 and Agent 0.6.4. The Agent component is mounted and one thread starts empty. An Agent uses default context and storage options, no instructions or tools, and a local deterministic language-model stub that always replies \"reply\". Two separate actions run this line for the same thread, first with text \"first\", then \"second\". The stub does not store messages itself.\n\n```ts\nconst result = await assistant.generateText(ctx, { threadId }, { prompt: text });\n```",
+      "question": "What does the second model call receive, and what is stored afterward?",
+      "options": [
+        {
+          "id": "a",
+          "text": "It receives only \"second\"; the thread stores both user/assistant exchanges.",
+          "rationale": "The scoped Agent also loads recent thread context; saving is not its only automatic behavior."
+        },
+        {
+          "id": "b",
+          "text": "It receives first, reply, second; the thread stores two user messages and two replies.",
+          "rationale": "The scoped call loads the earlier exchange and persists the new prompt and generated reply."
+        },
+        {
+          "id": "c",
+          "text": "It receives first, reply, second; the thread still stores only the first exchange.",
+          "rationale": "Default storage persists the second exchange too; saveMessages:none is a separate control."
+        },
+        {
+          "id": "d",
+          "text": "It receives first, reply, second; the first exchange is saved again alongside the new exchange.",
+          "rationale": "Loaded context is not appended a second time as newly generated messages."
+        }
+      ],
+      "correctOptionId": "b",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

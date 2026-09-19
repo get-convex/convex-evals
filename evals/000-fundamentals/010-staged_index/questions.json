@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "000-fundamentals/010-staged_index",
+  "coverageNotes": "Tests native staged-index declaration semantics. Exact SDK descriptors and static signatures are checked at source pin 1.41.0 and at 1.44.0 used by the archived mistake. No alternate schema is deployed; large-table backfill timing and later activation are not measured.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Native staged index declaration",
+      "context": "The `documents` table contains hundreds of millions of rows. You want to add an index on `workspaceId` and `status`. The app uses Convex 1.41.0.\n\n```ts\nimport { defineSchema, defineTable } from \"convex/server\";\nimport { v } from \"convex/values\";\n\nconst documents = defineTable({\n  workspaceId: v.string(),\n  status: v.string(),\n  title: v.string(),\n}).index(\"by_workspaceId\", [\"workspaceId\"]);\n```",
+      "question": "Which option adds the index without making deployment wait for it to finish building?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nexport default defineSchema({\n  documents: documents.index(\"by_workspaceId_and_status\",\n    [\"workspaceId\", \"status\"], { staged: true }),\n});\n```",
+          "rationale": "The SDK does not accept a third index argument. If typechecking is bypassed, the ignored third argument leaves the new index active rather than staged."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nexport default defineSchema({\n  documents: documents.index(\"by_workspaceId_and_status\",\n    [\"workspaceId\", \"status\"]).staged(),\n});\n```",
+          "rationale": "TableDefinition has no staged() method. This fluent call is statically rejected and throws at runtime."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nexport default defineSchema({\n  documents: documents.index(\"by_workspaceId_and_status\",\n    { fields: [\"workspaceId\", \"status\"], staged: true }),\n});\n```",
+          "rationale": "The index config object carries both fields and staged: true. The existing index stays active while the new descriptor is staged."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nexport default defineSchema({\n  documents: documents.index(\"by_workspaceId_and_status\",\n    [\"workspaceId\", \"status\"]),\n}, { staged: true });\n```",
+          "rationale": "Staging is an index option, not a defineSchema option. The extra schema option is statically rejected and ignored at runtime, leaving an ordinary index."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "grader.test.ts",
+        "answer/package.json"
+      ]
+    }
+  ]
+}

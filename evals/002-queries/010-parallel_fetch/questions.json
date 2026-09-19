@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "002-queries/010-parallel_fetch",
+  "coverageNotes": "Tests the native Query async-iteration interface. Promise orchestration and dashboard business logic are supplied; physical backend parallelism and performance are not assessed.",
+  "questions": [
+    {
+      "id": "q010-native-iteration",
+      "concept": "Consume a native Convex Query incrementally",
+      "context": "Use Convex 1.44.0. Inside a dashboard query, user has already been found and its preferences read has started. summarize(post) starts that post's reactions query and returns a promise for its title and counts. The dashboard needs at most the 15 newest posts.\n\n```ts\nconst postQuery = ctx.db.query(\"posts\")\n  .withIndex(\"by_author\", q => q.eq(\"authorId\", user._id)).order(\"desc\");\nconst pending = [];\n/* OPTION */ {\n  pending.push(summarize(post));\n  if (pending.length === 15) break;\n}\nconst posts = await Promise.all(pending);\n```",
+      "question": "Which loop reads the native Convex query incrementally, allowing reaction reads to start as posts arrive?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nfor (const post of postQuery)\n```",
+          "rationale": "Incorrect: a native Convex Query is asynchronously iterable, not synchronously iterable; ordinary for-of cannot consume it."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nfor await (const post of postQuery)\n```",
+          "rationale": "Correct: native Convex queries implement the async-iteration interface. for-await yields each post to the supplied body without first materializing an array."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nfor await (const post of postQuery.stream())\n```",
+          "rationale": "Incorrect: the native Convex Query has no stream() method. The query itself implements async iteration."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nfor (const post of await postQuery.take(15))\n```",
+          "rationale": "Incorrect: take(15) resolves to an array only after fetching its posts. No reaction query starts until that array has been fetched."
+        }
+      ],
+      "correctOptionId": "b",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/public.ts",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

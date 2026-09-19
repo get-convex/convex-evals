@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { combineWebUsage, computeWebUsage, webUsageAverages } from "./webUsage";
-import type { Doc } from "./_generated/dataModel";
+import type { CodingEval } from "./documentKinds";
 import { computeRunCostUsd } from "./scoringUtils";
 const evalWith = (
   raw: Record<string, unknown>,
-): Pick<Doc<"evals">, "status"> => ({
+): Pick<CodingEval, "status"> => ({
   status: { kind: "passed", durationMs: 1, usage: { raw } },
 });
 const zeroEvidence = {
@@ -40,7 +40,7 @@ describe("web usage coverage", () => {
         }),
         evalWith({ ...raw, providerUsageExcludesFailedAttempts: true }),
       ];
-      expect(computeRunCostUsd(evals as Doc<"evals">[])).toBeNull();
+      expect(computeRunCostUsd(evals as CodingEval[])).toBeNull();
       expect(webUsageAverages(computeWebUsage(evals))).toMatchObject({
         averageWebSearchesPerEval: null,
         averageWebFetchesPerEval: null,
@@ -56,12 +56,12 @@ describe("web usage coverage", () => {
       evalWith({ cost: 0.5 }),
       evalWith({ cost: 0.25, providerUsageExcludesFailedAttempts: false }),
     ];
-    expect(computeRunCostUsd(evals as Doc<"evals">[])).toBe(0.75);
+    expect(computeRunCostUsd(evals as CodingEval[])).toBe(0.75);
   });
 
   it("keeps a run cost unknown when any terminal eval lacks cost", () => {
     const evals = [evalWith({ cost: 0.25 }), evalWith({})];
-    expect(computeRunCostUsd(evals as Doc<"evals">[])).toBeNull();
+    expect(computeRunCostUsd(evals as CodingEval[])).toBeNull();
   });
 
   it("keeps retry cost unknown for provider attempts outside web runs", () => {
@@ -74,7 +74,7 @@ describe("web usage coverage", () => {
         ],
       }),
     ];
-    expect(computeRunCostUsd(evals as Doc<"evals">[])).toBeNull();
+    expect(computeRunCostUsd(evals as CodingEval[])).toBeNull();
   });
 
   it("includes explicit and inferred zero-use evals in the denominator", () => {

@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "005-idioms/009-platform_env_urls",
+  "coverageNotes": "Reads generated built-in URL properties. Does not cover hosted networking, webhook handling or arbitrary environment-variable management. App-name fallback is shared implementation behavior.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Read built-in deployment URLs through generated env",
+      "context": "Convex 1.44.0 generated `env` from an app config declaring only `PUBLIC_APP_NAME: v.optional(v.string())`. This query must read both deployment URLs through that typed object. `siteUrl` is the HTTP actions endpoint and `cloudUrl` is the client endpoint. It must also work locally, where those endpoints use different ports.\n\n```ts\nimport { env, query } from \"./_generated/server\";\nexport const getDeploymentInfo = query({\n  args: {},\n  handler: () => ({\n    URL_FIELDS,\n    appName: env.PUBLIC_APP_NAME ?? null,\n  }),\n});\n```",
+      "question": "Which fields should replace `URL_FIELDS`?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nsiteUrl: env.CONVEX_SITE_URL,\ncloudUrl: env.CONVEX_CLOUD_URL\n```",
+          "rationale": "These platform properties are already generated and point to the distinct HTTP actions and client endpoints."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nsiteUrl: env.CONVEX_CLOUD_URL,\ncloudUrl: env.CONVEX_SITE_URL\n```",
+          "rationale": "Both properties exist, but their endpoint roles are swapped."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nsiteUrl: env.CONVEX_CLOUD_URL.replace(\".convex.cloud\", \".convex.site\"),\ncloudUrl: env.CONVEX_CLOUD_URL\n```",
+          "rationale": "Hostname substitution leaves the local client port unchanged and returns the wrong site URL."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nsiteUrl: env.CONVEX_SITE_URL,\ncloudUrl: env.CONVEX_URL\n```",
+          "rationale": "CONVEX_URL is not the typed server env property; CONVEX_CLOUD_URL is."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/package.json",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

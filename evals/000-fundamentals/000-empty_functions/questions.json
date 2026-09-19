@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "000-fundamentals/000-empty_functions",
+  "coverageNotes": "Tests applying public/internal builder visibility; does not implement six functions or assess authorization logic.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Public and internal function visibility",
+      "context": "Using Convex 1.44.0, these are the complete handlers. They contain no authentication checks.\n\n```ts\nimport { query, mutation, action, internalQuery, internalMutation, internalAction } from \"./_generated/server\";\nexport const publicQuery = query({ args: {}, handler: async () => null });\nexport const publicMutation = mutation({ args: {}, handler: async () => null });\nexport const publicAction = action({ args: {}, handler: async () => null });\nexport const privateQuery = internalQuery({ args: {}, handler: async () => null });\nexport const privateMutation = internalMutation({ args: {}, handler: async () => null });\nexport const privateAction = internalAction({ args: {}, handler: async () => null });\n```",
+      "question": "Which functions can an unauthenticated ordinary client invoke directly, using the matching query, mutation or action client method?",
+      "options": [
+        {
+          "id": "a",
+          "text": "All six functions.",
+          "rationale": "Internal registrations are rejected for ordinary client calls even when their names are known."
+        },
+        {
+          "id": "b",
+          "text": "Only publicQuery and publicMutation.",
+          "rationale": "A public action is also client-callable; actions are not restricted to backend callers."
+        },
+        {
+          "id": "c",
+          "text": "Only publicQuery, publicMutation and publicAction.",
+          "rationale": "The three public registrations are directly callable. Internal registrations are not."
+        },
+        {
+          "id": "d",
+          "text": "None of the six functions.",
+          "rationale": "Public functions do not require authentication unless the handler enforces it."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

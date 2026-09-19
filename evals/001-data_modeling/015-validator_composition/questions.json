@@ -1,0 +1,112 @@
+{
+  "version": 1,
+  "sourceEval": "001-data_modeling/015-validator_composition",
+  "coverageNotes": "Tests native partial field optionality, required-field projection with pick, and extension while preserving the base validators. Source SDK is pinned to 1.44.0. Independent omit-based input derivation and authoring the complete module remain unconverted.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Partial object fields",
+      "context": "Convex 1.44.0. `v` is imported from `convex/values`. Start with this unchanged validator:\n\n```ts\nconst profileValidator = v.object({\n  name: v.string(),\n  email: v.string(),\n  internalNote: v.optional(v.string()),\n});\n```",
+      "question": "Which expression keeps all three fields and makes each optional?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nprofileValidator.partial()\n```",
+          "rationale": "partial makes each field optional without removing its validator."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nprofileValidator.pick(\"name\")\n```",
+          "rationale": "pick removes two fields and keeps name required."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nprofileValidator.omit(\"internalNote\")\n```",
+          "rationale": "omit removes internalNote and keeps name and email required."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nv.optional(profileValidator)\n```",
+          "rationale": "optional makes the whole object optional; its name and email fields remain required."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/validators.ts",
+        "checks.ts",
+        "inspect.mjs"
+      ]
+    },
+    {
+      "id": "q2",
+      "concept": "Project object fields",
+      "context": "Convex 1.44.0. `v` is imported from `convex/values`. Start with this unchanged validator:\n\n```ts\nconst profileValidator = v.object({\n  name: v.string(),\n  email: v.string(),\n  internalNote: v.optional(v.string()),\n});\n```",
+      "question": "Which expression derives an object with only the required name field?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nprofileValidator.omit(\"name\")\n```",
+          "rationale": "omit removes name rather than keeping it."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nprofileValidator.partial().pick(\"name\")\n```",
+          "rationale": "partial changes name to optional before selecting it."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nprofileValidator.pick(\"name\", \"email\")\n```",
+          "rationale": "This also retains email, which is outside the requested projection."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nprofileValidator.pick(\"name\")\n```",
+          "rationale": "pick retains name with its existing requiredness and validator."
+        }
+      ],
+      "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/validators.ts",
+        "checks.ts",
+        "inspect.mjs"
+      ]
+    },
+    {
+      "id": "q3",
+      "concept": "Extend object validator",
+      "context": "Convex 1.44.0. `v` is imported from `convex/values`. Start with this unchanged validator:\n\n```ts\nconst profileValidator = v.object({\n  name: v.string(),\n  email: v.string(),\n  internalNote: v.optional(v.string()),\n});\n```",
+      "question": "Which expression adds a required string externalId while retaining the existing fields and optionality?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nprofileValidator.pick(\"externalId\")\n```",
+          "rationale": "externalId is absent from the base and cannot be selected with pick."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nprofileValidator.extend({ externalId: v.optional(v.string()) })\n```",
+          "rationale": "This makes the new externalId optional."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nprofileValidator.extend({ externalId: v.string() })\n```",
+          "rationale": "extend adds the required field while preserving the original fields."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nprofileValidator.pick(\"name\", \"email\").extend({ externalId: v.string() })\n```",
+          "rationale": "The projection drops the existing optional internalNote field."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/validators.ts",
+        "checks.ts",
+        "inspect.mjs"
+      ]
+    }
+  ]
+}

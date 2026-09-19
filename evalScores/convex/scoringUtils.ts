@@ -2,7 +2,7 @@
  * Shared scoring helpers used by both runs.ts (leaderboardModelHistory)
  * and modelScores.ts (recomputeModelScores).
  */
-import type { Doc } from "./_generated/dataModel";
+import type { CodingEval, CodingRun } from "./documentKinds.js";
 
 export const LEADERBOARD_HISTORY_SIZE = 10;
 
@@ -19,8 +19,8 @@ export function computeMeanAndStdDev(values: number[]): {
 }
 
 export function isFullyCompletedRun(
-  run: Doc<"runs">,
-  evals: Doc<"evals">[],
+  run: CodingRun,
+  evals: CodingEval[],
 ): boolean {
   const planned = run.plannedEvals.length;
   if (planned === 0) return false;
@@ -31,7 +31,7 @@ export function isFullyCompletedRun(
 }
 
 export function hasCompleteBenchmarkPlan(
-  run: Doc<"runs">,
+  run: CodingRun,
   expectedEvalCount: number | undefined,
 ): boolean {
   return (
@@ -40,7 +40,7 @@ export function hasCompleteBenchmarkPlan(
   );
 }
 
-export function getEvalCostUsd(evalDoc: Doc<"evals">): number {
+export function getEvalCostUsd(evalDoc: CodingEval): number {
   const status = evalDoc.status;
   if (status.kind !== "passed" && status.kind !== "failed") return 0;
   const rawUsage = status.usage?.raw;
@@ -50,7 +50,7 @@ export function getEvalCostUsd(evalDoc: Doc<"evals">): number {
   return typeof cost === "number" && Number.isFinite(cost) ? cost : 0;
 }
 
-export function hasIncompleteProviderUsage(evalDoc: Doc<"evals">): boolean {
+export function hasIncompleteProviderUsage(evalDoc: CodingEval): boolean {
   const status = evalDoc.status;
   if (status.kind !== "passed" && status.kind !== "failed") return false;
   const raw: unknown = status.usage?.raw;
@@ -73,7 +73,7 @@ export function hasIncompleteProviderUsage(evalDoc: Doc<"evals">): boolean {
   );
 }
 
-export function computeRunCostUsd(evals: Doc<"evals">[]): number | null {
+export function computeRunCostUsd(evals: CodingEval[]): number | null {
   const terminalEvals = evals.filter(
     ({ status }) => status.kind === "passed" || status.kind === "failed",
   );
@@ -96,10 +96,13 @@ export function computeRunCostUsd(evals: Doc<"evals">[]): number | null {
   ) {
     return null;
   }
-  return terminalEvals.reduce((sum, evalDoc) => sum + getEvalCostUsd(evalDoc), 0);
+  return terminalEvals.reduce(
+    (sum, evalDoc) => sum + getEvalCostUsd(evalDoc),
+    0,
+  );
 }
 
-export function computeRunDurationMs(evals: Doc<"evals">[]): number | null {
+export function computeRunDurationMs(evals: CodingEval[]): number | null {
   // Leaderboard speed compares mean model generation time per successful eval.
   // Failed provider requests count against score, but not model generation time.
   // Older evals fall back to scorer duration until the generation backfill runs.
@@ -116,7 +119,7 @@ export function computeRunDurationMs(evals: Doc<"evals">[]): number | null {
   return completedCount > 0 ? total / completedCount : null;
 }
 
-export function computeRunScores(evals: Doc<"evals">[]): {
+export function computeRunScores(evals: CodingEval[]): {
   totalScore: number;
   scores: Record<string, number>;
 } {

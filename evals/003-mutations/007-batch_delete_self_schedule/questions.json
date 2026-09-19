@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "003-mutations/007-batch_delete_self_schedule",
+  "coverageNotes": "Tests the separate transaction boundary of scheduled continuation batches. Does not prove arbitrary payloads fit a fixed batch size, liveness under continuous writes, or production job recovery.",
+  "questions": [
+    {
+      "id": "q007-1",
+      "concept": "Scheduled mutations have a separate transaction boundary",
+      "context": "Convex 1.44.0. A workspace has 205 small activityLog rows. Each 100-row batch fits all transaction limits. There are no other writes. The client calls `deleteActivityLogs`; later, the scheduled mutation runs and fails with the shown error.\n\n```ts\nimport { mutation, internalMutation } from \"./_generated/server\";\nimport type { MutationCtx } from \"./_generated/server\";\nimport { internal } from \"./_generated/api\";\nimport { v } from \"convex/values\";\n\nasync function deleteBatch(ctx: MutationCtx, workspaceId: string) {\n  const batch = await ctx.db.query(\"activityLog\")\n    .withIndex(\"by_workspaceId\", q => q.eq(\"workspaceId\", workspaceId))\n    .take(100);\n  for (const entry of batch) await ctx.db.delete(\"activityLog\", entry._id);\n  return batch.length;\n}\n\nexport const deleteActivityLogs = mutation({\n  args: { workspaceId: v.string() },\n  handler: async (ctx, args) => {\n    const count = await deleteBatch(ctx, args.workspaceId);\n    if (count === 100) {\n      await ctx.scheduler.runAfter(0, internal.index.continueDelete, args);\n    }\n    return null;\n  },\n});\n\nexport const continueDelete = internalMutation({\n  args: { workspaceId: v.string() },\n  handler: async (ctx, args) => {\n    await deleteBatch(ctx, args.workspaceId);\n    throw new Error(\"Continuation failed\");\n  },\n});\n```",
+      "question": "After the scheduled mutation fails, what does the original client call return and how many rows remain?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The original call fails with \"Continuation failed\"; all 205 rows remain.",
+          "rationale": "Awaiting runAfter awaits scheduling, not execution of the scheduled mutation. The later error is not the original client result."
+        },
+        {
+          "id": "b",
+          "text": "The original call returns null; 5 rows remain because both batches committed their deletes.",
+          "rationale": "The failed scheduled mutation rolls back its own 100 attempted deletes."
+        },
+        {
+          "id": "c",
+          "text": "The original call returns null; 205 rows remain because the continuation rolls back the whole job.",
+          "rationale": "The scheduled mutation does not share the already committed parent transaction."
+        },
+        {
+          "id": "d",
+          "text": "The original call returns null; 105 rows remain because only the first batch committed.",
+          "rationale": "The initial 100 deletes commit with scheduling. The later transaction fails and preserves its 100 attempted deletions, leaving 105 rows."
+        }
+      ],
+      "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

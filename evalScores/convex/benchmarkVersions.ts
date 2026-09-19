@@ -2,6 +2,13 @@ import { internal } from "./_generated/api";
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
+import { decisionDefinition } from "./schema.js";
+import {
+  requireCodingEval,
+  requireCodingRun,
+  type CodingRun,
+} from "./documentKinds.js";
+import { sameJson } from "./decisionIdentity.js";
 import {
   HISTORICAL_BENCHMARKS,
   UNMINTED_BENCHMARK_VERSION,
@@ -100,6 +107,7 @@ export const mint = internalMutation({
     version: v.string(),
     evalCount: v.number(),
     curatedModels: v.array(v.string()),
+    decision: v.optional(decisionDefinition),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -109,10 +117,36 @@ export const mint = internalMutation({
       .unique();
 
     if (existing) {
+      if (
+        existing.decision !== undefined &&
+        (existing.evalCount !== args.evalCount ||
+          !sameJson(existing.curatedModels, args.curatedModels))
+      ) {
+        throw new Error(
+          `Benchmark ${args.version} has immutable shared metadata`,
+        );
+      }
+      if (
+        args.decision !== undefined &&
+        existing.decision !== undefined &&
+        (existing.decision.protocolVersion !== args.decision.protocolVersion ||
+          existing.decision.sourceCommit !== args.decision.sourceCommit ||
+          existing.decision.sourceEvidence.sha256 !== args.decision.sourceEvidence.sha256 ||
+          !sameJson(existing.decision.sources, args.decision.sources))
+      ) {
+        throw new Error(
+          `Benchmark ${args.version} already has a different immutable decision definition`,
+        );
+      }
       await ctx.db.patch("benchmarkVersions", existing._id, {
         evalCount: args.evalCount,
         curatedModels: args.curatedModels,
         provenance: "minted",
+        // Coding-only replay calls cannot erase a previously attached decision
+        // definition. Exact decision replays preserve the first evidence ref.
+        ...(existing.decision === undefined && args.decision !== undefined
+          ? { decision: args.decision }
+          : {}),
         ...(existing.provenance === "minted"
           ? {}
           : { effectiveAt: Date.now() }),
@@ -124,6 +158,7 @@ export const mint = internalMutation({
         evalCount: args.evalCount,
         curatedModels: args.curatedModels,
         provenance: "minted",
+        ...(args.decision !== undefined ? { decision: args.decision } : {}),
       });
     }
 
@@ -190,15 +225,16 @@ export async function consolidateCompletedBenchmarkRuns(
   let alreadyAssigned = 0;
   const scoreGroups = new Map<
     string,
-    { modelId: Id<"models">; experiment: Doc<"runs">["experiment"] }
+    { modelId: Id<"models">; experiment: CodingRun["experiment"] }
   >();
 
   // Validate the complete allowlist before writing anything. Convex mutations
   // are atomic, but doing this first also makes the operator failure clearer.
   const runs = await Promise.all(
     args.runIds.map(async (runId) => {
-      const run = await ctx.db.get("runs", runId);
-      if (!run) throw new Error(`Run ${runId} does not exist`);
+      const stored = await ctx.db.get("runs", runId);
+      if (!stored) throw new Error(`Run ${runId} does not exist`);
+      const run = requireCodingRun(stored);
       if (run.status.kind !== "completed") {
         throw new Error(`Run ${runId} is not completed`);
       }
@@ -279,12 +315,13 @@ export async function backfillCompletedRunsToBenchmark(
   let alreadyAssigned = 0;
   const scoreGroups = new Map<
     string,
-    { modelId: Id<"models">; experiment: Doc<"runs">["experiment"] }
+    { modelId: Id<"models">; experiment: CodingRun["experiment"] }
   >();
 
   for (const runId of args.runIds) {
-    const run = await ctx.db.get("runs", runId);
-    if (!run) throw new Error(`Run ${runId} does not exist`);
+    const stored = await ctx.db.get("runs", runId);
+    if (!stored) throw new Error(`Run ${runId} does not exist`);
+    const run = requireCodingRun(stored);
     if (run.status.kind !== "completed") {
       throw new Error(`Run ${runId} is not completed`);
     }
@@ -498,10 +535,10 @@ export const publishSeptemberWebRuns = internalMutation({
     );
     // Check actual results as well as the plan before publishing this allowlist.
     for (const id of runIds) {
-      const evals = await ctx.db
+      const evals = (await ctx.db
         .query("evals")
         .withIndex("by_runId", (q) => q.eq("runId", id))
-        .take(112);
+        .take(112)).map(requireCodingEval);
       if (
         evals.length !== 111 ||
         evals.some(

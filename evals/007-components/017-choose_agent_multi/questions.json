@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "007-components/017-choose_agent_multi",
+  "coverageNotes": "Focused local decision coverage. Full implementation, scale, authorization and provider quality remain outside this bank; see author records.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Agent names attribute replies within a shared thread",
+      "context": "Convex 1.41.0 and Agent 0.6.4. The component is mounted. Two Agents named \"triage\" and \"billing\" share the same short thread and use default storage. Each uses a deterministic local model that returns \"reply\". First triage generates with prompt \"customer\"; then billing generates with prompt \"take over\", both with `{ threadId }`. The transcript projection is:\n\n```ts\nreturn result.page.slice().reverse().map(doc=>({role:doc.message?.role,author:doc.agentName??null}));\n```",
+      "question": "In oldest-first order, what are the author values for the four stored messages?",
+      "options": [
+        {
+          "id": "a",
+          "text": "[\"triage\", \"triage\", \"billing\", \"billing\"]",
+          "rationale": "Default generation leaves prompt messages without agentName; it identifies generated assistant messages."
+        },
+        {
+          "id": "b",
+          "text": "[null, \"billing\", null, \"billing\"]",
+          "rationale": "Creating or using the billing Agent does not relabel the earlier assistant message."
+        },
+        {
+          "id": "c",
+          "text": "[null, \"triage\", null, \"billing\"]",
+          "rationale": "Prompt messages have no agentName. Each assistant reply preserves the name of the Agent that generated it."
+        },
+        {
+          "id": "d",
+          "text": "[null, null, null, null]",
+          "rationale": "Named Agent generation automatically saves assistant attribution on the component messages."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

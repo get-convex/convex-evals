@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "002-queries/001-single_column_index",
+  "coverageNotes": "Lookup cardinality only. Does not test enforcing uniqueness in mutations, index creation, or query scaffolding.",
+  "questions": [
+    {
+      "id": "q001-1",
+      "concept": "Unique lookup cardinality and ordinary indexes",
+      "context": "Using Convex 1.44.0, users has fields email: string, name: string, age: number and the ordinary index .index(\"by_email\", [\"email\"]). A query validates { email: string } and runs:\n\n```ts\nreturn await ctx.db.query(\"users\")\n  .withIndex(\"by_email\", (q) => q.eq(\"email\", args.email))\n  .unique();\n```\n\nThe table starts empty. Call the query for \"same@example.com\", insert one user with that email in a mutation and call again, then insert a second user with that email in a separate mutation and call again. The mutations do no duplicate checks.",
+      "question": "What happens to the inserts and the three query calls?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Both inserts commit. The calls return an empty array, a one-element array, and a two-element array.",
+          "rationale": "collect, not unique, produces these arrays; the exact query returned null, one document, and an error."
+        },
+        {
+          "id": "b",
+          "text": "Both inserts commit. The calls return null, the first user, and the first user again.",
+          "rationale": "first, not unique, silently chooses one duplicate. A first control succeeds after the unique call fails."
+        },
+        {
+          "id": "c",
+          "text": "The first insert commits and the second is rejected by the index. The calls return null, the first user, and the first user again.",
+          "rationale": "The ordinary index does not enforce write-time uniqueness. The second insert commits and both rows remain present after the failing read."
+        },
+        {
+          "id": "d",
+          "text": "Both inserts commit. The calls return null, the first user, and then throw because there are two matches.",
+          "rationale": "unique enforces zero-or-one cardinality at lookup: null for zero, one document for one, and an error for multiple matches."
+        }
+      ],
+      "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "answer/convex/public.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

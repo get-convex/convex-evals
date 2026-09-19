@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "000-fundamentals/002-basic_http_endpoint",
+  "coverageNotes": "Tests applying source-supplied prefix syntax; does not test discovering it or GET body/Response construction.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Applying HTTP prefix routing",
+      "context": "The task supplies pathPrefix: \"/api/messages/\" for matching paths under that prefix. Using Convex 1.44.0, this is the only route:\n\n```ts\nimport { httpRouter } from \"convex/server\";\nimport { httpAction } from \"./_generated/server\";\nconst http = httpRouter();\nhttp.route({\n  pathPrefix: \"/api/messages/\",\n  method: \"POST\",\n  handler: httpAction(async () => new Response(null, { status: 200 })),\n});\nexport default http;\n```",
+      "question": "Which requests receive HTTP 200? All other listed requests should be treated as unmatched.",
+      "options": [
+        {
+          "id": "a",
+          "text": "POST /api/messages/123 and POST /api/messages/nested/456.",
+          "rationale": "Both child paths have the exact prefix and POST method. The base path lacks the trailing slash; GET has the wrong method."
+        },
+        {
+          "id": "b",
+          "text": "POST /api/messages/123, POST /api/messages/nested/456 and POST /api/messages.",
+          "rationale": "The base path /api/messages does not start with /api/messages/."
+        },
+        {
+          "id": "c",
+          "text": "POST /api/messages/123 and GET /api/messages/123.",
+          "rationale": "A matching path does not override the registered POST method."
+        },
+        {
+          "id": "d",
+          "text": "Only POST /api/messages/123; POST /api/messages/nested/456 is unmatched.",
+          "rationale": "pathPrefix matches nested descendants too; it is not a single path-segment parameter."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/http.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

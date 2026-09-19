@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "002-queries/003-multicolumn_equality",
+  "coverageNotes": "Tests native compound-index ordering and bounded selection. Does not measure production performance, schema design, or independent implementation. Tied priorities are allowed.",
+  "questions": [
+    {
+      "id": "q003-1",
+      "concept": "Compound equality leaves the next field ordered",
+      "context": "Using Convex 1.44.0, tasks has fields projectId: string, status: string, priority: number, title: string, assignee: string and .index(\"by_project_status_priority\", [\"projectId\", \"status\", \"priority\"]). Seven tasks for projectId=\"p\" and status=\"todo\" were inserted in this order: priorities [9, 2, 7, 1, 5, 3, 4]. Other projects and statuses also exist. A query validates projectId and status as strings and runs:\n\n```ts\nreturn await ctx.db.query(\"tasks\")\n  .withIndex(\"by_project_status_priority\", (q) =>\n    q.eq(\"projectId\", args.projectId).eq(\"status\", args.status))\n  .take(5);\n```",
+      "question": "For { projectId: \"p\", status: \"todo\" }, which priority sequence does the query return?",
+      "options": [
+        {
+          "id": "a",
+          "text": "[9, 2, 7, 1, 5], following creation order within the equality range.",
+          "rationale": "Creation order is not the next ordering field here. A table-scan control follows creation order; the displayed compound index follows priority."
+        },
+        {
+          "id": "b",
+          "text": "[9, 7, 5, 4, 3], following descending priority within the equality range.",
+          "rationale": "Descending priority requires order(\"desc\"); that targeted control returns this sequence."
+        },
+        {
+          "id": "c",
+          "text": "[1, 2, 3, 4, 5], following ascending priority within the equality range.",
+          "rationale": "After fixing projectId and status, priority is the next index field. The default ascending traversal and take(5) return the five smallest priorities."
+        },
+        {
+          "id": "d",
+          "text": "It throws because priority must also have an equality constraint before take(5).",
+          "rationale": "A compound-index query may constrain just its leading equality prefix. The exact query typechecks, deploys and runs without constraining priority."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "answer/convex/public.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

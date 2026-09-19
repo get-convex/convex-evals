@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "sourceEval": "007-components/009-choose_rate_limiter_burst",
+  "coverageNotes": "Narrows original component selection to burst/refill configuration; 005 covers limiter selection and 008 strict spacing.",
+  "questions": [
+    {
+      "id": "q-burst-config",
+      "concept": "Configure burst capacity separately from sustained refill",
+      "context": "Convex 1.41.0, @convex-dev/rate-limiter 0.3.2. The component is mounted. Each authenticated search consumes one token with `limit(ctx, \"logSearch\", { key: identity.tokenIdentifier, throws: true })` before inserting its row. `SECOND` is imported from the package. Set the named `logSearch` configuration.",
+      "question": "Which configuration allows a fresh burst of 10 searches, then replenishes capacity at one search per second?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\n{ kind: \"token bucket\", rate: 10, period: SECOND, capacity: 10 }\n```",
+          "rationale": "Refills ten tokens each second rather than one."
+        },
+        {
+          "id": "b",
+          "text": "```ts\n{ kind: \"token bucket\", rate: 1, period: SECOND, capacity: 1 }\n```",
+          "rationale": "Refills at the desired rate but permits only one initial request."
+        },
+        {
+          "id": "c",
+          "text": "```ts\n{ kind: \"token bucket\", rate: 1, period: SECOND, capacity: 10 }\n```",
+          "rationale": "Capacity sets the initial burst while rate and period set sustained replenishment."
+        },
+        {
+          "id": "d",
+          "text": "```ts\n{ kind: \"fixed window\", rate: 10, period: 10 * SECOND, capacity: 10, start: 0 }\n```",
+          "rationale": "Refills at fixed ten-second boundaries, not one token each second after consumption."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/package.json",
+        "answer/convex/index.ts",
+        "answer/convex/convex.config.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

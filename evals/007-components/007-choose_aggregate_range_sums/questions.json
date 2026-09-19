@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "sourceEval": "007-components/007-choose_aggregate_range_sums",
+  "coverageNotes": "Narrows original selection to weighted time configuration. General Aggregate choice is covered by 004; no API reference is supplied.",
+  "questions": [
+    {
+      "id": "q-weighted-time-config",
+      "concept": "Separate aggregate sort key from summed weight",
+      "context": "Convex 1.41.0, @convex-dev/aggregate 0.2.2. Stored transactions have numeric `happenedAt` and `amount`. Inserts already synchronize full documents. A query calls `transactionAggregate.sum(ctx, { bounds: { lower: { key: start, inclusive: true }, upper: { key: end, inclusive: false } } })`. Complete the second constructor argument:\n```ts\nnew TableAggregate<{ Key: number; DataModel: DataModel; TableName: \"transactions\" }>(components.aggregate, CONFIG);\n```",
+      "question": "Which configuration makes this query sum amounts for transactions in [start, end)?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\n{ sortKey: (doc) => doc.happenedAt, sumValue: (doc) => doc.amount }\n```",
+          "rationale": "The bounds select time keys and the weighted aggregate adds amount."
+        },
+        {
+          "id": "b",
+          "text": "```ts\n{ sortKey: (doc) => doc.amount, sumValue: (doc) => doc.amount }\n```",
+          "rationale": "Applies the time bounds to amounts instead of timestamps."
+        },
+        {
+          "id": "c",
+          "text": "```ts\n{ sortKey: (doc) => doc.happenedAt }\n```",
+          "rationale": "No amount weight is stored; sum does not infer a field named amount."
+        },
+        {
+          "id": "d",
+          "text": "```ts\n{ sortKey: (doc) => doc.happenedAt, sumValue: (doc) => doc.happenedAt }\n```",
+          "rationale": "Selects the right interval but sums timestamps instead of amounts."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/package.json",
+        "answer/convex/index.ts",
+        "answer/convex/convex.config.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

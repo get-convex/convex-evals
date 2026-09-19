@@ -1,7 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import type { LanguageModelUsage } from "ai";
 import { computeRunCostUsd } from "../evalScores/convex/scoringUtils.js";
-import type { Doc } from "../evalScores/convex/_generated/dataModel.js";
+import type { CodingEval } from "../evalScores/convex/documentKinds.js";
 import {
   attachTimeToFirstTokenUsage,
   attachProviderObservabilityUsage,
@@ -33,8 +33,9 @@ describe("provider observability", () => {
       });
       const cost = computeRunCostUsd([
         {
+          kind: "coding",
           status: { kind: "passed", durationMs: 1, usage: observed },
-        } as Doc<"evals">,
+        } as CodingEval,
       ]);
       expect(cost).toBeNull();
       if (webResearch) {

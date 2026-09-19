@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "001-data_modeling/012-denormalize_for_index",
+  "coverageNotes": "Covers selecting the complete related set while maintaining a copied field. Does not test schema design, pagination by owner age, or initial copy creation.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Maintaining denormalized child values",
+      "context": "Convex 1.44.0. Each dog stores `ownerId` and a copied `ownerAge`. The dogs indexes are `by_owner: [\"ownerId\"]` and `by_owner_age: [\"ownerAge\"]`. Different owners may share an age. This mutation must update every dog belonging to `args.ownerId`, leaving other owners\u2019 dogs unchanged.\n\n```ts\nconst owner = await ctx.db.get(\"owners\", args.ownerId);\nif (!owner) throw new Error(\"Owner not found\");\nconst dogs = SELECT_DOGS;\nawait ctx.db.patch(\"owners\", args.ownerId, { age: args.newAge });\nfor (const dog of dogs) {\n  await ctx.db.patch(\"dogs\", dog._id, { ownerAge: args.newAge });\n}\nreturn null;\n```",
+      "question": "Which expression replaces `SELECT_DOGS`?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nawait ctx.db.query(\"dogs\").withIndex(\"by_owner_age\", q => q.eq(\"ownerAge\", owner.age)).collect()\n```",
+          "rationale": "Selecting by age also updates dogs belonging to another owner with that age."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nawait ctx.db.query(\"dogs\").withIndex(\"by_owner\", q => q.eq(\"ownerId\", args.ownerId)).take(1)\n```",
+          "rationale": "Taking one misses further dogs belonging to the same owner."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nawait ctx.db.query(\"dogs\").collect()\n```",
+          "rationale": "Collecting the whole table updates unrelated owners\u2019 dogs."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nawait ctx.db.query(\"dogs\").withIndex(\"by_owner\", q => q.eq(\"ownerId\", args.ownerId)).collect()\n```",
+          "rationale": "The owner-ID index selects all and only that owner\u2019s dogs."
+        }
+      ],
+      "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "002-queries/022-unbounded_query_no_collect",
+  "coverageNotes": "Applies an explicit bounded-subset contract added by the original decision question. The neutral coding task does not prescribe a count. Does not measure physical disk reads, bytes, or complete pagination.",
+  "questions": [
+    {
+      "id": "q022-1",
+      "concept": "Native result limits versus array slicing",
+      "context": "Convex 1.44.0. `auditLogs` has a `by_workspaceId` index on `[\"workspaceId\"]`. A workspace can have arbitrarily many entries. This endpoint only needs a subset of up to 100 entries.\n\nBoth query handlers begin with:\n```ts\nconst entries = ctx.db.query(\"auditLogs\")\n  .withIndex(\"by_workspaceId\", q => q.eq(\"workspaceId\", args.workspaceId));\n```\n\nVersion X ends with:\n```ts\nreturn await entries.take(100);\n```\n\nVersion Y ends with:\n```ts\nreturn (await entries.collect()).slice(0, 100);\n```",
+      "question": "Which version puts a 100-row limit into the database query?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Both X and Y.",
+          "rationale": "Y slices only after collecting the complete matching stream; its serialized query has no limit."
+        },
+        {
+          "id": "b",
+          "text": "Only X.",
+          "rationale": "take(100) adds a native limit operator. Array.slice does not change the consumed database query."
+        },
+        {
+          "id": "c",
+          "text": "Only Y.",
+          "rationale": "X, not Y, sends a limit operator to the database."
+        },
+        {
+          "id": "d",
+          "text": "Neither X nor Y.",
+          "rationale": "X sends a native limit even when the index range has many matching rows."
+        }
+      ],
+      "correctOptionId": "b",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

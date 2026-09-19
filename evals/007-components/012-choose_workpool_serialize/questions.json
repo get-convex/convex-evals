@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "007-components/012-choose_workpool_serialize",
+  "coverageNotes": "Focused local decision coverage. Full implementation, scale, authorization and provider quality remain outside this bank; see author records.",
+  "questions": [
+    {
+      "id": "q-pool-pause",
+      "concept": "Workpool zero parallelism pauses queued work",
+      "context": "Convex 1.41.0 and Workpool 0.4.8. recordEvent inserts an event and enqueues its statistics update through one mounted Workpool. Only these queued mutations write statistics. A developer tries to serialize the updates with this setting:\n\n```ts\nconst statsPool = new Workpool(components.workpool, { maxParallelism: 0 });\n```\n\nThree events are committed. No jobs were running before them, and the pool configuration stays unchanged.",
+      "question": "What happens to the queued statistics updates?",
+      "options": [
+        {
+          "id": "a",
+          "text": "They stay queued; none starts until the pool permits work.",
+          "rationale": "Zero pauses new work. A control that sets the mounted pool to one drains all three jobs."
+        },
+        {
+          "id": "b",
+          "text": "They run one at a time, because zero disables parallel execution.",
+          "rationale": "Serialization requires a positive limit of one; zero permits no new worker."
+        },
+        {
+          "id": "c",
+          "text": "They are discarded, because a zero-capacity pool cannot accept work.",
+          "rationale": "Enqueue still records durable jobs. Raising the limit later runs the previously queued updates."
+        },
+        {
+          "id": "d",
+          "text": "One runs and the remaining two wait, because zero means no extra workers.",
+          "rationale": "The setting counts the total allowed running work, not workers beyond an implicit first one."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

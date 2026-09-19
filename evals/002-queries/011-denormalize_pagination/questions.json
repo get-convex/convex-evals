@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "002-queries/011-denormalize_pagination",
+  "coverageNotes": "Does not establish denormalized-field maintenance or usePaginatedQuery integration.",
+  "questions": [
+    {
+      "id": "q011-1",
+      "concept": "Choose the denormalized pagination index",
+      "context": "Use Convex 1.44.0. The dogs table has fields name, breed, ownerId and ownerAge, with indexes by_owner [\"ownerId\"] and by_owner_age [\"ownerAge\"]. ownerAge matches the related owner's age throughout these requests. Dogs must be paginated by ascending ownerAge; ties use creation order.\n\n```ts\nimport { query } from \"./_generated/server\";\nimport { v } from \"convex/values\";\nimport { paginationOptsValidator, paginationResultValidator } from \"convex/server\";\nexport const candidate = query({\n  args: { cursor: v.union(v.string(), v.null()), numItems: v.number() },\n  handler: async (ctx, args) => {\n    const options = { cursor: args.cursor, numItems: args.numItems };\n    const result = await (/* OPTION */);\n    return { dogs: result.page.map(dog => ({ name: dog.name, breed: dog.breed })),\n      continueCursor: result.continueCursor };\n  },\n});\n```",
+      "question": "Which expression belongs in the marked position?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nctx.db.query(\"dogs\").withIndex(\"by_owner\").order(\"asc\").paginate(options)\n```",
+          "rationale": "Incorrect: by_owner orders by owner ID, which does not encode owner age."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nctx.db.query(\"dogs\").withIndex(\"by_owner_age\").order(\"desc\").paginate(options)\n```",
+          "rationale": "Incorrect: the owner-age index is reversed, giving descending ages."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nctx.db.query(\"dogs\").withIndex(\"by_owner_age\").order(\"asc\").paginate(options)\n```",
+          "rationale": "Correct: the denormalized owner-age index supplies the ascending order for native cursor pagination."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nctx.db.query(\"dogs\").order(\"asc\").paginate(options)\n```",
+          "rationale": "Incorrect: default order follows dog creation time, not ownerAge."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

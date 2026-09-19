@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "007-components/011-choose_workpool_throttle",
+  "coverageNotes": "Focused local decision coverage. Full implementation, scale, authorization and provider quality remain outside this bank; see author records.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "A default retry policy does not enable Workpool action retries",
+      "context": "Convex 1.41.0 and Workpool 0.4.8. An idempotent sync action always throws after its HTTP request receives a 503 response. One mounted pool is configured as follows. One action is enqueued with an onComplete callback and no per-enqueue retry option.\n\n```ts\nconst pool = new Workpool(components.workpool, {\n  maxParallelism: 3,\n  defaultRetryBehavior: { maxAttempts: 3, initialBackoffMs: 100, base: 2 },\n});\n```",
+      "question": "How many action attempts and completion callbacks occur for this job?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Three attempts; three callbacks with failed results.",
+          "rationale": "The policy is not enabled. Even when enabled, intermediate failed attempts do not each produce the final completion callback."
+        },
+        {
+          "id": "b",
+          "text": "Three attempts; one callback with a failed result.",
+          "rationale": "This is the control with retryActionsByDefault: true. Defining the default policy alone does not activate it."
+        },
+        {
+          "id": "c",
+          "text": "Four attempts; one callback with a failed result.",
+          "rationale": "maxAttempts counts total attempts, not extra retries, and this default policy is not enabled."
+        },
+        {
+          "id": "d",
+          "text": "One attempt; one callback with a failed result.",
+          "rationale": "Workpool defaults retryActionsByDefault to false. The supplied retry behavior is used only if retries are enabled."
+        }
+      ],
+      "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

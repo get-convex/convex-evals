@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "006-clients/000-use_query",
+  "coverageNotes": "Recognizes the initial useQuery loading sentinel. Empty and populated subscription results are verification controls. Does not assess rendering layout or full backend implementation.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "useQuery has an undefined initial result",
+      "context": "`getAllMessages` returns an array of message documents. This React 18 component is mounted under `ConvexProvider` with a new Convex 1.44.0 client and no cached query result.\n\n```ts\nimport { useQuery } from \"convex/react\";\nimport { api } from \"../convex/_generated/api\";\nexport function Messages() {\n  const messages = useQuery(api.messages.getAllMessages);\n  return <pre>{JSON.stringify(messages)}</pre>;\n}\n```",
+      "question": "What is `messages` on the initial render, before the first query result arrives?",
+      "options": [
+        {
+          "id": "a",
+          "text": "undefined",
+          "rationale": "useQuery returns undefined while its initial result is unavailable."
+        },
+        {
+          "id": "b",
+          "text": "null",
+          "rationale": "The loading sentinel is undefined; a null value would be a query result."
+        },
+        {
+          "id": "c",
+          "text": "[]",
+          "rationale": "An empty array is a loaded empty query result, not the initial loading state."
+        },
+        {
+          "id": "d",
+          "text": "A Promise that resolves to the array",
+          "rationale": "useQuery returns reactive results directly, not a Promise."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/package.json",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

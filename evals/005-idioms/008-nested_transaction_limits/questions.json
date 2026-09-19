@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "sourceEval": "005-idioms/008-nested_transaction_limits",
+  "coverageNotes": "Tests two related targets: the native runMutation options shape for a per-call document-write cap, and the caught-child transaction outcome in which child delivery writes roll back while the parent records rejection. The writer, references and arguments are supplied. Evidence uses fresh jobs with no deliveries and nonnegative integer counts; it does not assess retry semantics, preexisting deliveries, other resource limits or independently writing the complete implementation.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Native nested-mutation write-limit options",
+      "context": "`internal.index.writeDeliveries` inserts `args.count` delivery documents for `args.jobId`. It has no write limit of its own. The parent mutation catches any error from the call.\n\nThe app uses Convex 1.44.0. The job starts with no deliveries, and `count` is a nonnegative integer.",
+      "question": "Which call limits the child to five writes and rolls them all back if it tries a sixth?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nawait ctx.runMutation(\n  internal.index.writeDeliveries,\n  { jobId: args.jobId, count: args.count },\n  { maxNumWrites: 5 },\n);\n```",
+          "rationale": "maxNumWrites is not a supported runMutation option. TypeScript rejects it; when checking is bypassed, it does not apply the requested limit."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nawait ctx.runMutation(\n  internal.index.writeDeliveries,\n  { jobId: args.jobId, count: args.count },\n  { limits: { documentsWritten: 5 } },\n);\n```",
+          "rationale": "limits is not the native options property. TypeScript rejects it; when checking is bypassed, the nested documentsWritten value does not apply the requested limit."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nawait ctx.runMutation(\n  internal.index.writeDeliveries,\n  { jobId: args.jobId, count: args.count },\n  { transactionLimits: { documentsWritten: 5 } },\n);\n```",
+          "rationale": "The third argument accepts transactionLimits, with documentsWritten selecting the document-write count. A child exceeding five writes fails and rolls back while the catching parent can commit its status update."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nawait ctx.runMutation(\n  internal.index.writeDeliveries,\n  { jobId: args.jobId, count: args.count },\n  { maxWrites: 5 },\n);\n```",
+          "rationale": "maxWrites is not a supported runMutation option. TypeScript rejects it; when checking is bypassed, it does not apply the requested limit."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "answer/convex/schema.ts",
+        "answer/package.json",
+        "grader.test.ts",
+        "checks.ts",
+        "inspect.mjs"
+      ]
+    },
+    {
+      "id": "caught-child-outcome",
+      "concept": "Caught nested-mutation rollback preserves parent work",
+      "context": "The app uses Convex 1.44.0. A job starts with status `\"pending\"` and no deliveries. This is `convex/index.ts`:\n\n```ts\nimport { v } from \"convex/values\";\nimport { internalMutation, mutation } from \"./_generated/server\";\nimport { internal } from \"./_generated/api\";\n\nexport const writeDeliveries = internalMutation({\n  args: {\n    jobId: v.id(\"jobs\"),\n    count: v.number(),\n  },\n  handler: async (ctx, args) => {\n    for (let i = 0; i < args.count; i++) {\n      await ctx.db.insert(\"deliveries\", {\n        jobId: args.jobId,\n        recipient: `recipient-${i}`,\n      });\n    }\n    return null;\n  },\n});\n\nexport const processFanout = mutation({\n  args: {\n    jobId: v.id(\"jobs\"),\n    count: v.number(),\n  },\n  handler: async (ctx, args) => {\n    try {\n      await ctx.runMutation(\n        internal.index.writeDeliveries,\n        { jobId: args.jobId, count: args.count },\n        { transactionLimits: { documentsWritten: 5 } },\n      );\n    } catch {\n      await ctx.db.patch(\"jobs\", args.jobId, { status: \"rejected\" });\n      return \"rejected\";\n    }\n    await ctx.db.patch(\"jobs\", args.jobId, { status: \"completed\" });\n    return \"completed\";\n  },\n});\n```",
+      "question": "What happens when a client calls `processFanout` with that job and `count: 6`?",
+      "options": [
+        {
+          "id": "a",
+          "text": "It returns \"rejected\"; the job is rejected and five deliveries remain.",
+          "rationale": "The first five child writes do not survive the sixth-write failure."
+        },
+        {
+          "id": "b",
+          "text": "It throws; the job stays pending and no deliveries remain.",
+          "rationale": "The parent catches the child failure and commits its own status update."
+        },
+        {
+          "id": "c",
+          "text": "It returns \"completed\"; the job is completed and six deliveries remain.",
+          "rationale": "The native child write cap fails before a six-delivery transaction can commit."
+        },
+        {
+          "id": "d",
+          "text": "It returns \"rejected\"; the job is rejected and no deliveries remain.",
+          "rationale": "Only the failing child transaction rolls back; the catching parent commits rejected status."
+        }
+      ],
+      "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/package.json",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

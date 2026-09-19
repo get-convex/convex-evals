@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "001-data_modeling/000-simple_datatypes",
+  "coverageNotes": "Recognizes three native representation validators; other source fields, complete schema construction and int64 bounds are not measured.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Native numeric and binary validators",
+      "context": "Using Convex SDK 1.44.0, a table has required fields `b` (JavaScript number), `d` (JavaScript bigint), and `h` (ArrayBuffer). Each field must reject other value types. `v` is imported from `convex/values`.",
+      "question": "Which field mapping accepts these native values?",
+      "options": [
+        {
+          "id": "a",
+          "text": "{ b: v.number(), d: v.number(), h: v.bytes() }",
+          "rationale": "v.number() rejects the required bigint in d."
+        },
+        {
+          "id": "b",
+          "text": "{ b: v.int64(), d: v.int64(), h: v.bytes() }",
+          "rationale": "v.int64() rejects the required JavaScript number in b."
+        },
+        {
+          "id": "c",
+          "text": "{ b: v.number(), d: v.int64(), h: v.array(v.number()) }",
+          "rationale": "An array-of-numbers validator rejects the required ArrayBuffer in h and accepts an ordinary array instead."
+        },
+        {
+          "id": "d",
+          "text": "{ b: v.number(), d: v.int64(), h: v.bytes() }",
+          "rationale": "v.number(), v.int64() and v.bytes() validate JavaScript number, bigint and ArrayBuffer respectively."
+        }
+      ],
+      "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

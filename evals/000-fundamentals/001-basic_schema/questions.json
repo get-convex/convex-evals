@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "000-fundamentals/001-basic_schema",
+  "coverageNotes": "Tests schema construction APIs with all table fields supplied; no application modeling or implementation coverage.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Constructing a runtime schema",
+      "context": "Using Convex 1.44.0, schema.ts must declare users and messages with the fields below.\n\n```ts\nimport { defineSchema, defineTable } from \"convex/server\";\nimport { v } from \"convex/values\";\nconst users = { name: v.string() };\nconst messages = { text: v.string(), authorName: v.string() };\n```",
+      "question": "Which export builds the Convex schema?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nexport default defineSchema({ users, messages });\n```",
+          "rationale": "Field maps are not table definitions. Schema export cannot serialize these as tables."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nexport default defineSchema({ users: defineTable(users), messages: defineTable(messages) });\n```",
+          "rationale": "defineTable builds table definitions and defineSchema wraps them as the deployable schema."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nexport default defineSchema({ users: v.object(users), messages: v.object(messages) });\n```",
+          "rationale": "An object validator describes a value, not a table definition."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nexport default { users: defineTable(users), messages: defineTable(messages) };\n```",
+          "rationale": "A plain object of table definitions does not provide the schema export contract."
+        }
+      ],
+      "correctOptionId": "b",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "002-queries/027-budgeted_filtered_pagination",
+  "coverageNotes": "Tests a single native pagination pipeline: filter placement and faithful option/result pass-through. It does not measure React hooks, performance throughput, unbounded scans, or index selection. Budget probes observe native limit outcomes and cursor contracts, not latency.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Native filtered pagination preserves options and metadata",
+      "context": "Convex 1.41.0. `auditEntries` has `{ workspaceId: string, sequence: number, status: \"ok\" | \"failed\", payload: string }` and index `by_workspaceId_and_sequence` on `[\"workspaceId\", \"sequence\"]`.\n\nInside a query:\n\n```ts\nconst entries = ctx.db.query(\"auditEntries\")\n  .withIndex(\"by_workspaceId_and_sequence\", q =>\n    q.eq(\"workspaceId\", args.workspaceId))\n  .order(\"asc\");\n```\n\n`args.paginationOpts` is validated by `paginationOptsValidator`; callers may supply `numItems`, `cursor`, `endCursor`, `maximumRowsRead`, and `maximumBytesRead`.",
+      "question": "Which completion returns failed entries with native filtered-pagination behavior, preserving the caller\u2019s read budgets, cursor bounds, and any split metadata?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nreturn await entries\n  .filter(q => q.eq(q.field(\"status\"), \"failed\"))\n  .paginate({\n    numItems: args.paginationOpts.numItems,\n    cursor: args.paginationOpts.cursor,\n  });\n```",
+          "rationale": "Reconstructing only numItems and cursor drops native row/byte budgets and endCursor."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nreturn await entries\n  .filter(q => q.eq(q.field(\"status\"), \"failed\"))\n  .paginate(args.paginationOpts);\n```",
+          "rationale": "Filters within the Convex query and forwards the complete options and native result unchanged."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nconst result = await entries.paginate(args.paginationOpts);\nreturn {\n  ...result,\n  page: result.page.filter(entry => entry.status === \"failed\"),\n};\n```",
+          "rationale": "Paginates unfiltered rows first, so numItems counts all statuses and a page can be empty even when enough failed matches exist later."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nconst result = await entries\n  .filter(q => q.eq(q.field(\"status\"), \"failed\"))\n  .paginate(args.paginationOpts);\nreturn {\n  page: result.page,\n  isDone: result.isDone,\n  continueCursor: result.continueCursor,\n};\n```",
+          "rationale": "Preserves selected rows and options but discards pageStatus and splitCursor needed to expose native split behavior."
+        }
+      ],
+      "correctOptionId": "b",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

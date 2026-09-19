@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "002-queries/005-creation_time",
+  "coverageNotes": "Tests the implicit creation-time suffix. No claim about equal-timestamp tie direction, custom timestamps, pagination, or production throughput.",
+  "questions": [
+    {
+      "id": "q005-1",
+      "concept": "Implicit creation-time suffix on an ordinary index",
+      "context": "Using Convex 1.44.0, comments has fields postId: string, author: string, text: string and .index(\"by_post\", [\"postId\"]). Three comments for postId=\"p\" have distinct creation times: text \"Beta\" is oldest, \"Zulu\" is next, and \"Alpha\" is newest. Comments for other posts also exist. A query validates { postId: string } and runs:\n\n```ts\nreturn await ctx.db.query(\"comments\")\n  .withIndex(\"by_post\", (q) => q.eq(\"postId\", args.postId))\n  .order(\"desc\")\n  .collect();\n```",
+      "question": "For { postId: \"p\" }, what happens?",
+      "options": [
+        {
+          "id": "a",
+          "text": "It returns the comments in text order: \"Zulu\", \"Beta\", \"Alpha\".",
+          "rationale": "text is not an index field and does not determine this query order; the seeded text order differs from creation order."
+        },
+        {
+          "id": "b",
+          "text": "It returns the comments newest first: \"Alpha\", \"Zulu\", \"Beta\".",
+          "rationale": "Ordinary indexes have an implicit _creationTime suffix. With postId fixed, order(\"desc\") traverses that suffix newest first."
+        },
+        {
+          "id": "c",
+          "text": "It returns the comments oldest first: \"Beta\", \"Zulu\", \"Alpha\".",
+          "rationale": "An ascending-order control returns this sequence; the displayed query explicitly reverses that order."
+        },
+        {
+          "id": "d",
+          "text": "It throws because by_post does not explicitly include _creationTime.",
+          "rationale": "The unchanged by_post index supports the displayed query. Explicitly declaring _creationTime is unnecessary."
+        }
+      ],
+      "correctOptionId": "b",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "answer/convex/public.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

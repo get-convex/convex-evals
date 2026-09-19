@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "000-fundamentals/008-helper_fns",
+  "coverageNotes": "Tests passing a read-capable context to an ordinary typed helper; no date-formatting or missing-item error design.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Typed shared read helper",
+      "context": "Using Convex 1.44.0, items stores name: string, quantity: number and lastModified: number. Both handlers pass their full ctx to one ordinary helper.\n\n```ts\nimport { query, mutation } from \"./_generated/server\";\nimport type { QueryCtx, MutationCtx, ActionCtx, DatabaseReader } from \"./_generated/server\";\nimport type { Id } from \"./_generated/dataModel\";\nimport { v } from \"convex/values\";\n// Insert the type alias here.\nasync function getItemData(ctx: ReadContext, itemId: Id<\"items\">) {\n  const item = await ctx.db.get(\"items\", itemId);\n  return item ? { name: item.name, quantity: item.quantity, lastModified: new Date(item.lastModified).toISOString() } : null;\n}\nexport const getItem = query({\n  args: { itemId: v.id(\"items\") },\n  handler: (ctx, { itemId }) => getItemData(ctx, itemId),\n});\nexport const updateItem = mutation({\n  args: { itemId: v.id(\"items\"), quantity: v.number() },\n  handler: async (ctx, { itemId, quantity }) => {\n    await ctx.db.patch(\"items\", itemId, { quantity });\n    return await getItemData(ctx, itemId);\n  },\n});\n```",
+      "question": "Which type alias lets this helper and both handlers compile?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\ntype ReadContext = MutationCtx;\n```",
+          "rationale": "A query context lacks mutation-only capabilities required by MutationCtx, so passing it to this helper does not compile."
+        },
+        {
+          "id": "b",
+          "text": "```ts\ntype ReadContext = ActionCtx;\n```",
+          "rationale": "ActionCtx has no direct db reader, and the query/mutation contexts are not action contexts."
+        },
+        {
+          "id": "c",
+          "text": "```ts\ntype ReadContext = QueryCtx;\n```",
+          "rationale": "QueryCtx provides the read capabilities used here. MutationCtx can also be passed because it includes those capabilities."
+        },
+        {
+          "id": "d",
+          "text": "```ts\ntype ReadContext = DatabaseReader;\n```",
+          "rationale": "DatabaseReader describes ctx.db, not the full ctx; ctx.db is not a property of DatabaseReader."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

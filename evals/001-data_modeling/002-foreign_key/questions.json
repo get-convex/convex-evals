@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "001-data_modeling/002-foreign_key",
+  "coverageNotes": "Measures table-specific ID validation, not existence checks, joins, cascade behavior or complete user/post construction.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Table-specific ID validation",
+      "context": "Using Convex SDK 1.44.0, `posts.author` must be a required document ID belonging to the `users` table. Reject arbitrary strings and IDs from other tables. Checking whether the referenced document still exists is handled separately. `v` is imported from `convex/values`.",
+      "question": "Which validator belongs on `author`?",
+      "options": [
+        {
+          "id": "a",
+          "text": "v.string()",
+          "rationale": "A string validator also accepts arbitrary strings and IDs from posts."
+        },
+        {
+          "id": "b",
+          "text": "v.id(\"users\")",
+          "rationale": "v.id(\"users\") validates table identity; a deleted users ID still has that identity."
+        },
+        {
+          "id": "c",
+          "text": "v.id(\"posts\")",
+          "rationale": "This validates posts IDs and rejects users IDs."
+        },
+        {
+          "id": "d",
+          "text": "v.union(v.id(\"users\"), v.id(\"posts\"))",
+          "rationale": "This also accepts posts IDs, which the contract excludes."
+        }
+      ],
+      "correctOptionId": "b",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

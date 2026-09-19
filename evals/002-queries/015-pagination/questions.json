@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "002-queries/015-pagination",
+  "coverageNotes": "Tests native default order and cursor continuation by prediction; API production, custom timestamp sorting and frontend integration remain unconverted.",
+  "questions": [
+    {
+      "id": "q015-1",
+      "concept": "Continue default creation-order pagination",
+      "context": "Use Convex 1.44.0. The documents table has title, content and an application field createdAt. Five separate mutations insert A, B, C, D, E in that order, with strictly increasing _creationTime. Their createdAt values are 500, 100, 400, 200, 300 respectively. With no concurrent writes, call this query three times with numItems: 2: first cursor:null, then each preceding result's continueCursor.\n\n```ts\nimport { query } from \"./_generated/server\";\nimport { v } from \"convex/values\";\nimport { paginationOptsValidator, paginationResultValidator } from \"convex/server\";\nexport const candidate = query({\n  args: { paginationOpts: paginationOptsValidator },\n  handler: async (ctx, args) => ctx.db.query(\"documents\")\n    .order(\"desc\").paginate(args.paginationOpts),\n});\n```",
+      "question": "Which title sequence is returned across the three pages?",
+      "options": [
+        {
+          "id": "a",
+          "text": "[A, B], then [C, D], then [E]; the third page has isDone: true.",
+          "rationale": "Incorrect: the default creation-time ordering is reversed by order(\"desc\")."
+        },
+        {
+          "id": "b",
+          "text": "[A, C], then [E, D], then [B]; the third page has isDone: true.",
+          "rationale": "Incorrect: createdAt is an ordinary application field and does not determine the default query order."
+        },
+        {
+          "id": "c",
+          "text": "[E, D], then [C, B], then [A]; the third page has isDone: true.",
+          "rationale": "Correct: default order is by system creation time, and each native cursor continues after the preceding page."
+        },
+        {
+          "id": "d",
+          "text": "[E, D], then [E, D], then [E, D]; the third page has isDone: false.",
+          "rationale": "Incorrect: the supplied continueCursor advances the native query; it does not restart at its newest row."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

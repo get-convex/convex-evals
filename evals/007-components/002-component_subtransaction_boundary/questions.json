@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "sourceEval": "007-components/002-component_subtransaction_boundary",
+  "coverageNotes": "Tests the parent/component rollback boundary and awaiting the actual call. Uses the original unchanged local component pinned to 1.41.0. Does not assess authoring or mounting a component.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "A caught component mutation error rolls back its subtransaction while its caller may commit",
+      "context": "Convex 1.41.0. A mounted auditSink component owns audits { event: string }. Its mutation components.auditSink.index.writeAudit accepts { event: string, failAfterWrite: boolean }, inserts an audit row, then throws if failAfterWrite is true.\n\nThe root schema has auditStatuses { event: string, status: \"audit_succeeded\" | \"audit_failed\" }. A root mutation has validated args { event: string, shouldFail: boolean }. ctx, args, and components are in scope. Each option is the complete root handler body.",
+      "question": "Which handler commits the matching status and returns it normally in both cases, with a successful audit kept and a failed audit insert rolled back?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\ntry {\n  await ctx.runMutation(components.auditSink.index.writeAudit, {\n    event: args.event, failAfterWrite: args.shouldFail,\n  });\n} catch (error) {\n  await ctx.db.insert(\"auditStatuses\", { event: args.event, status: \"audit_failed\" });\n  throw error;\n}\nawait ctx.db.insert(\"auditStatuses\", { event: args.event, status: \"audit_succeeded\" });\nreturn \"audit_succeeded\";\n```",
+          "rationale": "Rethrowing aborts the root transaction too. Its audit_failed insert is rolled back and the caller receives an error."
+        },
+        {
+          "id": "b",
+          "text": "```ts\ntry {\n  await ctx.runQuery(components.auditSink.index.writeAudit, {\n    event: args.event, failAfterWrite: args.shouldFail,\n  });\n} catch {\n  await ctx.db.insert(\"auditStatuses\", { event: args.event, status: \"audit_failed\" });\n  return \"audit_failed\";\n}\nawait ctx.db.insert(\"auditStatuses\", { event: args.event, status: \"audit_succeeded\" });\nreturn \"audit_succeeded\";\n```",
+          "rationale": "runQuery cannot execute a mutation reference. The actual call fails even when shouldFail is false, so a successful audit is incorrectly recorded as failed."
+        },
+        {
+          "id": "c",
+          "text": "```ts\ntry {\n  await ctx.scheduler.runAfter(0, components.auditSink.index.writeAudit, {\n    event: args.event, failAfterWrite: args.shouldFail,\n  });\n} catch {\n  await ctx.db.insert(\"auditStatuses\", { event: args.event, status: \"audit_failed\" });\n  return \"audit_failed\";\n}\nawait ctx.db.insert(\"auditStatuses\", { event: args.event, status: \"audit_succeeded\" });\nreturn \"audit_succeeded\";\n```",
+          "rationale": "Awaiting runAfter waits for scheduling, not for the scheduled mutation to execute. A later audit error is not caught by this handler, which records audit_succeeded."
+        },
+        {
+          "id": "d",
+          "text": "```ts\ntry {\n  await ctx.runMutation(components.auditSink.index.writeAudit, {\n    event: args.event, failAfterWrite: args.shouldFail,\n  });\n} catch {\n  await ctx.db.insert(\"auditStatuses\", { event: args.event, status: \"audit_failed\" });\n  return \"audit_failed\";\n}\nawait ctx.db.insert(\"auditStatuses\", { event: args.event, status: \"audit_succeeded\" });\nreturn \"audit_succeeded\";\n```",
+          "rationale": "Awaiting runMutation observes the component outcome. Catching the error leaves the component insert rolled back while allowing the parent status write to commit."
+        }
+      ],
+      "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "answer/convex/schema.ts",
+        "answer/package.json",
+        "grader.test.ts",
+        "answer/convex/auditSink/index.ts",
+        "answer/convex/auditSink/schema.ts",
+        "answer/convex/convex.config.ts"
+      ]
+    }
+  ]
+}

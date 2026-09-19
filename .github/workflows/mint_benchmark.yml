@@ -32,3 +32,12 @@ jobs:
           CONVEX_EVAL_URL: ${{ secrets.CONVEX_EVAL_URL }}
           CONVEX_AUTH_TOKEN: ${{ secrets.CONVEX_AUTH_TOKEN }}
         run: bun run benchmark:mint
+
+      - name: Preserve shared source snapshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-source
+          path: output-benchmark-mint/
+          if-no-files-found: warn
+          retention-days: 30

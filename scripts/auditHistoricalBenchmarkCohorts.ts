@@ -2,12 +2,20 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 
-type StoredRun = {
+type StoredCodingRun = {
+  kind?: "coding";
   _creationTime: number;
   plannedEvals: string[];
   experiment?: string;
   status: { kind: string };
 };
+
+type StoredDecisionRun = {
+  kind: "decision";
+  _creationTime: number;
+};
+
+type StoredRun = StoredCodingRun | StoredDecisionRun;
 
 type Cohort = {
   signature: string;
@@ -29,6 +37,50 @@ function suiteSignature(plannedEvals: string[]): string {
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+function parseProductionRuns(value: unknown): StoredRun[] {
+  if (!Array.isArray(value)) {
+    throw new Error("Expected Convex runs export to be an array");
+  }
+  return value.map((entry, index) => {
+    if (entry === null || typeof entry !== "object") {
+      throw new Error(`Run ${index} is not an object`);
+    }
+    const run = entry as Record<string, unknown>;
+    if (typeof run._creationTime !== "number") {
+      throw new Error(`Run ${index} has no numeric _creationTime`);
+    }
+    if (run.kind === "decision") {
+      return { kind: "decision", _creationTime: run._creationTime };
+    }
+    if (run.kind !== undefined && run.kind !== "coding") {
+      throw new Error(`Run ${index} has unknown kind ${String(run.kind)}`);
+    }
+    if (
+      !Array.isArray(run.plannedEvals) ||
+      !run.plannedEvals.every((evalPath) => typeof evalPath === "string")
+    ) {
+      throw new Error(`Coding run ${index} has invalid plannedEvals`);
+    }
+    if (
+      run.status === null ||
+      typeof run.status !== "object" ||
+      typeof (run.status as Record<string, unknown>).kind !== "string"
+    ) {
+      throw new Error(`Coding run ${index} has invalid status`);
+    }
+    if (run.experiment !== undefined && typeof run.experiment !== "string") {
+      throw new Error(`Coding run ${index} has invalid experiment`);
+    }
+    return {
+      kind: run.kind,
+      _creationTime: run._creationTime,
+      plannedEvals: run.plannedEvals,
+      experiment: run.experiment,
+      status: { kind: (run.status as Record<string, unknown>).kind as string },
+    };
+  });
 }
 
 async function readProductionRuns(): Promise<StoredRun[]> {
@@ -57,11 +109,17 @@ async function readProductionRuns(): Promise<StoredRun[]> {
   if (exitCode !== 0) {
     throw new Error(`convex data exited with status ${exitCode}`);
   }
-  return JSON.parse(output) as StoredRun[];
+  return parseProductionRuns(JSON.parse(output) as unknown);
 }
 
 async function main(): Promise<void> {
-  const runs = await readProductionRuns();
+  const storedRuns = await readProductionRuns();
+  // Historical coding records may be untagged during phase 1. Select both
+  // coding forms before any aggregation so decision rows cannot become cohorts.
+  const runs = storedRuns.filter(
+    (run): run is StoredCodingRun =>
+      run.kind === undefined || run.kind === "coding",
+  );
   const cohorts = new Map<string, Cohort>();
 
   for (const run of runs) {
@@ -100,6 +158,7 @@ async function main(): Promise<void> {
     JSON.stringify(
       {
         totalRuns: runs.length,
+        decisionRunsExcluded: storedRuns.length - runs.length,
         uniquePlannedEvalSets: cohorts.size,
         likelyFullSuiteCohorts: likelyFullSuites.map((cohort) => ({
           signature: cohort.signature,
