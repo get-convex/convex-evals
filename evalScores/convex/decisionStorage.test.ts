@@ -6,11 +6,11 @@ import { modules } from "./test.setup.js";
 import { assertDecisionIngestionEnabled } from "./decisionConfig.js";
 
 describe("decision shared-table lifecycle", () => {
-  it("keeps Stage 1 disabled while allowing an explicit test override", () => {
-    expect(() => assertDecisionIngestionEnabled()).toThrow(
+  it("enables reporting after the strict rollout and still enforces a disabled gate", () => {
+    expect(() => assertDecisionIngestionEnabled()).not.toThrow();
+    expect(() => assertDecisionIngestionEnabled(false)).toThrow(
       "strict kind migration",
     );
-    expect(() => assertDecisionIngestionEnabled(true)).not.toThrow();
   });
 
   it("records immutable results, finalizes the exact plan, and materializes its cohort", async () => {

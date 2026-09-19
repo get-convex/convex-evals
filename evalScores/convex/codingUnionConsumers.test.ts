@@ -26,6 +26,7 @@ async function fixture() {
       lastSeenAt: 1,
     });
     const legacyRun = await ctx.db.insert("runs", {
+      kind: "coding",
       modelId,
       provider: "test",
       plannedEvals: ["cat/legacy"],

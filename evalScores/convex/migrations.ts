@@ -5,14 +5,7 @@ import type { DataModel, Id } from "./_generated/dataModel.js";
 import { historicalBenchmarkForRun } from "./historicalBenchmarks";
 import { paginationOptsValidator, type PaginationOptions } from "convex/server";
 import { v } from "convex/values";
-import {
-  assertNever,
-  isCodingEval,
-  isCodingRun,
-  normalizeRun,
-  normalizeEval,
-  normalizeModelScore,
-} from "./documentKinds.js";
+import { assertNever, isCodingEval, isCodingRun } from "./documentKinds.js";
 
 export const migrations = new Migrations<DataModel>(components.migrations);
 
@@ -109,7 +102,12 @@ export const runBenchmarkVersionBackfill = migrations.runner(
 export const auditBenchmarkVersionBackfill = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const runs = (await ctx.db.query("runs").collect()).filter(isCodingRun);
+    const runs = (
+      await ctx.db
+        .query("runs")
+        .withIndex("by_kind", (q) => q.eq("kind", "coding"))
+        .collect()
+    ).filter(isCodingRun);
     const counts = new Map<Id<"benchmarkVersions">, number>();
     let unresolved = 0;
 
@@ -150,45 +148,6 @@ export const run = migrations.runner();
 export const runAll = migrations.runner([
   internal.migrations.backfillRunBenchmarkVersionIds,
   internal.migrations.backfillEvalGenerationDurations,
-]);
-
-/** The dedicated discriminator migration changes only this one field. It does
- * not rerun historical repairs, rewrite IDs, or recalculate existing scores. */
-export function codingKindPatch(document: { kind?: "coding" | "decision" }) {
-  switch (document.kind) {
-    case undefined:
-      return { kind: "coding" as const };
-    case "coding":
-    case "decision":
-      return;
-    default:
-      return assertNever(document.kind);
-  }
-}
-
-export const backfillRunKinds = migrations.define({
-  table: "runs",
-  batchSize: 25,
-  migrateOne: async (_ctx, document) => codingKindPatch(document),
-});
-
-export const backfillEvalKinds = migrations.define({
-  table: "evals",
-  batchSize: 25,
-  migrateOne: async (_ctx, document) => codingKindPatch(document),
-});
-
-export const backfillModelScoreKinds = migrations.define({
-  table: "modelScores",
-  batchSize: 25,
-  migrateOne: async (_ctx, document) => codingKindPatch(document),
-});
-
-// Intentionally separate from runAll: rollout must not change unrelated data.
-export const runKindBackfill = migrations.runner([
-  internal.migrations.backfillRunKinds,
-  internal.migrations.backfillEvalKinds,
-  internal.migrations.backfillModelScoreKinds,
 ]);
 
 export const AUDIT_MAX_PAGE_BYTES = 2 * 1024 * 1024;
@@ -287,9 +246,7 @@ export const auditDocumentKinds = internalQuery({
         continueCursor = result.continueCursor;
         isDone = result.isDone;
         scanned = result.page.length;
-        for (const document of result.page) {
-          if (document.kind === undefined) counts.missingKind += 1;
-          const run = normalizeRun(document);
+        for (const run of result.page) {
           counts[run.kind] += 1;
           if (run.kind === "coding") addBenchmark(run.benchmarkVersion);
           if (!(await getBenchmark(run.benchmarkVersion))) {
@@ -306,12 +263,10 @@ export const auditDocumentKinds = internalQuery({
         continueCursor = result.continueCursor;
         isDone = result.isDone;
         scanned = result.page.length;
-        for (const document of result.page) {
-          if (document.kind === undefined) counts.missingKind += 1;
-          const evalDoc = normalizeEval(document);
+        for (const evalDoc of result.page) {
           counts[evalDoc.kind] += 1;
           const parent = await getRun(evalDoc.runId);
-          if (!parent || normalizeRun(parent).kind !== evalDoc.kind) {
+          if (!parent || parent.kind !== evalDoc.kind) {
             relationshipErrors.push({
               id: evalDoc._id,
               reason: "Missing or opposite-kind parent run",
@@ -328,15 +283,13 @@ export const auditDocumentKinds = internalQuery({
         continueCursor = result.continueCursor;
         isDone = result.isDone;
         scanned = result.page.length;
-        for (const document of result.page) {
-          if (document.kind === undefined) counts.missingKind += 1;
-          const score = normalizeModelScore(document);
+        for (const score of result.page) {
           counts[score.kind] += 1;
           if (score.kind === "coding") addBenchmark(score.benchmarkVersion);
           const parent = await getRun(score.latestRunId);
           if (
             !parent ||
-            normalizeRun(parent).kind !== score.kind ||
+            parent.kind !== score.kind ||
             parent.benchmarkVersion !== score.benchmarkVersion
           ) {
             relationshipErrors.push({

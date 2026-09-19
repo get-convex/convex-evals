@@ -160,8 +160,7 @@ export const decisionSummary = v.object({
 
 // One top-level union per shared table; each branch owns its required fields.
 export const codingRun = v.object({
-  // Temporary compatibility for existing records; writers always set coding.
-  kind: v.optional(v.literal("coding")),
+  kind: v.literal("coding"),
   modelId: v.id("models"),
   provider: v.string(),
   runId: v.optional(v.string()),
@@ -212,8 +211,7 @@ export const decisionRun = v.object({
 });
 
 export const codingEval = v.object({
-  // Temporary compatibility for existing records; writers always set coding.
-  kind: v.optional(v.literal("coding")),
+  kind: v.literal("coding"),
   runId: v.id("runs"),
   evalPath: v.string(),
   category: v.string(),
@@ -247,8 +245,7 @@ export const decisionResult = v.object({
 });
 
 export const codingModelScore = v.object({
-  // Temporary compatibility for existing records; writers always set coding.
-  kind: v.optional(v.literal("coding")),
+  kind: v.literal("coding"),
   modelId: v.id("models"),
   experiment: v.optional(experimentLiteral),
   benchmarkVersion: v.id("benchmarkVersions"),
@@ -334,13 +331,6 @@ export default defineSchema({
     .index("by_name", ["name"]),
 
   runs: defineTable(v.union(codingRun, decisionRun))
-    .index("by_modelId", ["modelId"])
-    .index("by_experiment", ["experiment"])
-    .index("by_modelId_experiment_benchmark", [
-      "modelId",
-      "experiment",
-      "benchmarkVersion",
-    ])
     .index("by_kind", ["kind"])
     .index("by_kind_modelId", ["kind", "modelId"])
     .index("by_kind_experiment", ["kind", "experiment"])
@@ -362,8 +352,6 @@ export default defineSchema({
     .index("by_effectiveAt", ["effectiveAt"]),
 
   evals: defineTable(v.union(codingEval, decisionResult))
-    .index("by_runId", ["runId"])
-    .index("by_evalPath", ["evalPath"])
     .index("by_kind", ["kind"])
     .index("by_kind_runId", ["kind", "runId"])
     .index("by_kind_evalPath", ["kind", "evalPath"])
@@ -390,14 +378,6 @@ export default defineSchema({
   // The leaderboardScores query reads directly from this table instead of
   // recomputing from runs + evals on every request. Always select the kind first.
   modelScores: defineTable(v.union(codingModelScore, decisionModelScore))
-    .index("by_modelId_experiment", ["modelId", "experiment"])
-    .index("by_experiment", ["experiment"])
-    .index("by_modelId_experiment_benchmark", [
-      "modelId",
-      "experiment",
-      "benchmarkVersion",
-    ])
-    .index("by_experiment_benchmark", ["experiment", "benchmarkVersion"])
     .index("by_kind", ["kind"])
     .index("by_kind_modelId_experiment", ["kind", "modelId", "experiment"])
     .index("by_kind_experiment", ["kind", "experiment"])
