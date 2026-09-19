@@ -12,16 +12,19 @@ part of preparing them.
 
 ## PR order
 
-1. **Compatible backend**, branch `codex/convex-decision-evals-release`, into
+1. **[Compatible backend PR #323](https://github.com/get-convex/convex-evals/pull/323)**,
+   branch `codex/convex-decision-evals-release`, into
    `main`. It includes the accepted 106-question bank, runner, evidence package,
    union-aware consumers, optional historical coding tags and dedicated
    migration. New coding writes are tagged. Decision ingestion stays disabled.
-2. **Strict backend**, branch `codex/convex-decision-evals-strict`, initially
+2. **[Strict backend PR #324](https://github.com/get-convex/convex-evals/pull/324)**,
+   branch `codex/convex-decision-evals-strict`, initially
    stacked on the compatible branch. Its implementation is exactly
    `docs/shared-kind-strict.patch`: required tags, kind-prefixed indexes,
    temporary compatibility removal and ingestion enabled. It must not merge
    until the compatible revision is deployed and the production audit passes.
-3. **Website companion**, branch `codex/convex-decision-leaderboard` in
+3. **[Website companion PR #1019](https://github.com/get-convex/website/pull/1019)**,
+   branch `codex/convex-decision-leaderboard` in
    `get-convex/website`. Merge into website `main` only after the strict backend
    is healthy. Website production activation follows its separate `main` to
    `prod` promotion. The coding model selector already depends on the new
@@ -34,6 +37,13 @@ require fresh checks for that exact head. Never merge the strict branch into
 the compatibility branch as a shortcut. Do not run the patch manually in an
 already patched strict checkout.
 
+Keep stage two in draft throughout migration. Deleting the merged stage-one
+branch can automatically retarget it; retargeting alone does not rerun CI.
+The rebase/push must produce fresh checks before it is made ready for approval.
+Freeze unrelated backend merges during the rollout window. The release workflow
+serializes deploy jobs without cancelling an in-flight deployment, but that
+does not replace these per-stage gates.
+
 ## Evidence already collected
 
 The 19 September development rehearsal targeted only `brazen-pelican-414`.
@@ -41,6 +51,9 @@ It backed up and migrated 3,402 runs, 256,245 evals and 793 model scores. A full
 comparison confirmed all 260,440 documents retained their original fields,
 IDs and creation times except the intended `kind: "coding"` addition. The
 complete relationship/tag audit passed before strict deployment.
+The tag migration took about 14 minutes, the full preservation comparison about
+6 minutes, and the successful audit about 14 minutes. These are development
+measurements, not production timeouts or duration promises.
 
 There were 750 matched hosted coding query measurements, zero errors and
 identical existing decoded results. The selected-model score response dropped
@@ -75,12 +88,45 @@ and backups in private release evidence, never in a public PR.
    dispatches for the rollout and let in-flight paid runs finish. Do not cancel
    or duplicate paid work just to speed up deployment. Keep normal evaluation
    scheduling paused until the final shared version is minted and checked.
+   Record the live `Periodic Evaluations` workflow state, and disable it for
+   the approved window only if it is active. A workflow already disabled before
+   the rollout must stay disabled afterward. This is an operational GitHub
+   Actions gate, not a switch enforced by repository code. Also hold manual
+   coding and guideline-validation dispatches. Without this hold, the stage-one
+   hash goes into the non-public unminted bucket: coding inference still spends
+   money and advances model scheduling even though it does not populate the
+   published benchmark.
+   The approval names a release operator who owns both the hold and restoration.
+   Before the window, record each of these workflows' current state with
+   `gh api repos/get-convex/convex-evals/actions/workflows/<filename>`:
+   `periodic_evals.yml`, `manual_evals.yml`, `validate_guidelines.yml`, and
+   `decision_evals.yml` once it exists on `main`. During the approved window,
+   disable each active workflow explicitly, for example:
+
+   ```sh
+   gh workflow disable periodic_evals.yml --repo get-convex/convex-evals
+   gh workflow disable manual_evals.yml --repo get-convex/convex-evals
+   gh workflow disable validate_guidelines.yml --repo get-convex/convex-evals
+   ```
+
+   Disable the new decision workflow after stage one introduces it, and hold
+   dispatch permission until then. Disabling does not cancel existing runs.
+   Check queued, waiting and running jobs, including caller-dispatched branch
+   runs; wait for them to finish before continuing. The same operator restores
+   only previously active workflows after all gates pass. A separately approved
+   decision pilot requires explicitly enabling its new manual workflow.
 2. Export a production snapshot before writes and record its checksum, target,
    timestamp and table counts. Preserve any required storage backup separately
-   according to the export options; a document export alone does not prove
-   uploaded evidence blobs are backed up. Validate backup readability and the
-   compatible restore procedure. Restoring is an incident action requiring
-   separate approval, not an automatic rollback step.
+   with `bunx convex export --prod --include-file-storage --path <private.zip>`
+   from `evalScores/`; the explicit flag includes uploaded evidence files.
+   Validate the archive and record the file-storage contents. The development
+   pass checked backup readability and document preservation, but did not
+   rehearse an import. Before approving the production window, rehearse restore
+   into an isolated empty local/nonproduction deployment under the compatible
+   schema, and verify counts, IDs, references and representative blob reads.
+   Never use the existing development or production deployment as the restore
+   test target. Restoring production is an incident action requiring separate
+   approval, not an automatic rollback step.
 3. Merge the compatible PR after green CI. `release.yml` on `main` creates a
    GitHub release and then deploys Convex. Wait for the **Deploy Convex** step
    and complete workflow to succeed for the exact merged SHA. A release tag or
@@ -100,7 +146,7 @@ and backups in private release evidence, never in a public PR.
 5. From the repository root, capture the complete audit:
 
    ```sh
-   bun run scripts/auditDocumentKinds.ts --prod > production-kind-audit.json
+   bun run scripts/auditDocumentKinds.ts --prod > /private/release-evidence/production-kind-audit.json
    ```
 
    Require exit zero, every table complete, `safeToTighten: true`, no missing
@@ -108,13 +154,19 @@ and backups in private release evidence, never in a public PR.
    and 2 MiB plus cached parent reads. Preserve all pages through `isDone`;
    one successful page is insufficient. Investigate failures and rerun the
    complete audit after repairs. Compare coding counts and representative
-   benchmark/model outputs with the pre-migration evidence.
+   benchmark/model outputs with the pre-migration evidence. Replace the example
+   output path with the operator's private release directory outside the checkout.
 6. Retarget/rebase the strict PR as above. Check its schema against the
    approved final proposal and its diff against the reviewed strict patch.
    Record the passing production audit and approval before merging. Wait for
    the complete release workflow's strict deployment. Verify required tags,
    kind-prefixed query behavior, unchanged coding results and decision API
    availability on the deployed revision.
+   Convex also validates the strict schema against live documents. If an
+   untagged row appears after the audit, schema deployment fails and the
+   compatible deployment stays active. Treat that as a stopped gate: repair
+   and repeat the audit, not permission to bypass schema validation. The earlier
+   GitHub release may still exist despite that failed deploy.
 7. With explicit mint approval, dispatch **Mint Benchmark Version** from the
    final strict `main` revision. This mints one shared coding/decision identity
    and stores its source snapshot; it makes no provider calls. Record the
@@ -122,18 +174,62 @@ and backups in private release evidence, never in a public PR.
    compatibility revision, silently attach a new bank to old results, or
    import local results. Recheck the source fingerprint before inference if
    benchmark inputs change after minting.
+   Approval of this gate must acknowledge the conservative identity policy
+   below. Mint only once for the chosen final source; an exact idempotent retry
+   must use that same source. An accidental compatibility-stage mint fails
+   after source upload, so do not use it as a preflight check.
 8. Release the website companion through its normal reviewed promotion and
    verify the actual production target, coding rankings/model history,
    benchmark selector and decision empty state for the newly minted version.
    Cached data is partitioned by backend URL. Old benchmark versions with no
    decision bank should show the explicit no-bank state.
+   The proposed rollout deliberately allows an initially empty new coding and
+   decision cohort. Historical versions and their results remain selectable.
+   Accept that behavior explicitly at release approval; do not announce a
+   populated leaderboard until hosted runs have completed. This plan does not
+   imply permission to spend money just to fill the empty state.
 9. Obtain separate approval for an initial paid decision run. Dispatch one
    model first, verify source/version/profile identity, evidence links,
    completed full-suite score and costs, then expand to the other models and
    approved guideline conditions. The workflow requests three repetitions,
    limits model-job concurrency to two, and retains journals. Its known-cost
-   budget is not a hard dollar cap when a provider omits cost. Restore the
-   previous coding workflow schedule only after the shared version is valid.
+   budget is not a hard dollar cap when a provider omits cost. Restore only
+   workflow schedules that were active before the rollout, and only after the
+   shared version is valid. Do not enable a previously disabled workflow without
+   separate approval. Minting does not populate scores; historical versions
+   remain selectable while the new cohort is empty.
+   Set the workflow input to a single model, for example `model=jev` with
+   `condition=no_guidelines`; its current default is `all`, so do not accept the
+   UI default for the pilot. `runDecisions` awaits the hosted `onStart` hook
+   before entering its provider loop (`runner/decisions/run.ts`); a disabled
+   ingestion gate or missing minted definition rejects before paid inference.
+
+## Identity policy to approve before minting
+
+This release retains the reviewed conservative hash inputs. They include
+decision request/scoring code and operational backend files such as
+`decisionConfig.ts`, `decisionAdmin.ts`, `decisionStorage.ts` and
+`decisionIngestionPerformance.ts`. A change to a hashed input changes the
+shared benchmark identity, even if it only adjusts a batch size or evidence
+limit. That does not automatically mint anything: new coding runs otherwise
+enter the unminted bucket, and decision start requires the corresponding
+approved minted definition. Plan such changes as a new shared benchmark or
+defer them; do not silently compare them with the prior version.
+
+The minted shared metadata, including the curated-model snapshot, is immutable.
+An attempt to remint the same version with changed curated models is rejected.
+That snapshot describes the model roster at mint time; it is not an admission
+allowlist. Adding a coding model later can still schedule, score and display it
+under the same version, while historical curated-cohort progress keeps its
+original denominator. Do not remint just to refresh that snapshot. Later
+documentation or model-roster commits may also run decisions under an unchanged
+shared hash: the stored minted source remains the authority, and the run records
+its own origin commit separately. A later remint with different source provenance
+is not an idempotent retry even if its benchmark hash is unchanged.
+The first mint approval must explicitly accept this policy. If a narrower
+semantic hash or editable curated snapshot is preferred, stop before minting
+and review that change separately rather than modifying the accepted schema
+or mutating an existing version during the rollout.
 
 ## Failure and rollback
 
@@ -148,6 +244,12 @@ and backups in private release evidence, never in a public PR.
   is the reviewed compatible union-aware code with ingestion disabled. It
   retains support for both tagged coding and any decision data already
   written. Do not restore the pre-union schema or delete tags/decision rows.
+  Deploy that fallback through a new reviewed revert PR into `main` which
+  reverts the strict implementation commit while preserving the compatible
+  commit. Wait for its release workflow's successful Convex deployment and
+  verify disabled ingestion. Do not manually deploy an old checkout with a
+  production key. Freeze other merges until the rollback lands and is verified,
+  since any intervening `main` release would otherwise redeploy strict code.
 - A failed website promotion can roll back the website while leaving the
   backend union support intact. Pause new paid work until its evidence and
   result views are usable again.

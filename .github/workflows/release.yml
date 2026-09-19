@@ -9,6 +9,11 @@ permissions:
   contents: write
   pull-requests: read
 
+# Keep release/deploy jobs ordered; do not interrupt an in-flight deployment.
+concurrency:
+  group: production-release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
