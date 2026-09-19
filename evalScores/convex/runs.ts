@@ -16,9 +16,7 @@ import {
 } from "./scoringUtils.js";
 import {
   assertNever,
-  normalizeEval,
-  normalizeModelScore,
-  normalizeRun,
+  requireCodingModelScore,
   requireCodingEval,
   requireCodingRun,
   type CodingEval,
@@ -380,7 +378,7 @@ export const deleteRun = internalMutation({
   handler: async (ctx, args) => {
     const storedRun = await ctx.db.get("runs", args.runId);
     if (!storedRun) return null;
-    const run = normalizeRun(storedRun);
+    const run = storedRun;
     switch (run.kind) {
       case "decision":
         await deleteDecisionRunData(ctx, run);
@@ -396,11 +394,23 @@ export const deleteRun = internalMutation({
     // Collect all evals for this run
     const storedEvals = await ctx.db
       .query("evals")
-      .withIndex("by_runId", (q) => q.eq("runId", args.runId))
+      .withIndex("by_kind_runId", (q) =>
+        q.eq("kind", "coding").eq("runId", args.runId),
+      )
       .collect();
+    const wrongKindEval = await ctx.db
+      .query("evals")
+      .withIndex("by_kind_runId", (q) =>
+        q.eq("kind", "decision").eq("runId", args.runId),
+      )
+      .first();
+    if (wrongKindEval) {
+      throw new Error(
+        `Coding run ${run._id} has decision result ${wrongKindEval._id}`,
+      );
+    }
     const evals: CodingEval[] = [];
-    for (const storedEval of storedEvals) {
-      const evalDoc = normalizeEval(storedEval);
+    for (const evalDoc of storedEvals) {
       switch (evalDoc.kind) {
         case "coding":
           evals.push(evalDoc);
@@ -510,9 +520,8 @@ export const getRunDetails = query({
 
     const evals = await ctx.db
       .query("evals")
-      .withIndex("by_runId", (q) => q.eq("runId", args.runId))
-      .filter((q) =>
-        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
+      .withIndex("by_kind_runId", (q) =>
+        q.eq("kind", "coding").eq("runId", args.runId),
       )
       .collect()
       .then((rows) => rows.map(requireCodingEval));
@@ -585,33 +594,23 @@ export const listRuns = query({
   handler: async (ctx, args) => {
     let runsQuery = ctx.db
       .query("runs")
-      .filter((q) =>
-        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
-      )
+      .withIndex("by_kind", (q) => q.eq("kind", "coding"))
       .order("desc");
 
     // Apply filters if provided
     if (args.experiment) {
       runsQuery = ctx.db
         .query("runs")
-        .withIndex("by_experiment", (q) => q.eq("experiment", args.experiment))
-        .filter((q) =>
-          q.or(
-            q.eq(q.field("kind"), "coding"),
-            q.eq(q.field("kind"), undefined),
-          ),
+        .withIndex("by_kind_experiment", (q) =>
+          q.eq("kind", "coding").eq("experiment", args.experiment),
         )
         .order("desc");
     } else if (args.modelId) {
       const modelId = args.modelId;
       runsQuery = ctx.db
         .query("runs")
-        .withIndex("by_modelId", (q) => q.eq("modelId", modelId))
-        .filter((q) =>
-          q.or(
-            q.eq(q.field("kind"), "coding"),
-            q.eq(q.field("kind"), undefined),
-          ),
+        .withIndex("by_kind_modelId", (q) =>
+          q.eq("kind", "coding").eq("modelId", modelId),
         )
         .order("desc");
     }
@@ -630,12 +629,8 @@ export const listRuns = query({
       runs.map(async (run) => {
         const evals = await ctx.db
           .query("evals")
-          .withIndex("by_runId", (q) => q.eq("runId", run._id))
-          .filter((q) =>
-            q.or(
-              q.eq(q.field("kind"), "coding"),
-              q.eq(q.field("kind"), undefined),
-            ),
+          .withIndex("by_kind_runId", (q) =>
+            q.eq("kind", "coding").eq("runId", run._id),
           )
           .collect()
           .then((rows) => rows.map(requireCodingEval));
@@ -742,24 +737,21 @@ export const leaderboardScores = query({
       const storedScoreRows = targetModelId
         ? await ctx.db
             .query("modelScores")
-            .withIndex("by_modelId_experiment_benchmark", (q) =>
-              q.eq("modelId", targetModelId).eq("experiment", args.experiment),
+            .withIndex("by_kind_modelId_experiment_benchmark", (q) =>
+              q
+                .eq("kind", "coding")
+                .eq("modelId", targetModelId)
+                .eq("experiment", args.experiment),
             )
             .collect()
         : await ctx.db
             .query("modelScores")
-            .withIndex("by_experiment", (q) =>
-              q.eq("experiment", args.experiment),
-            )
-            .filter((q) =>
-              q.or(
-                q.eq(q.field("kind"), "coding"),
-                q.eq(q.field("kind"), undefined),
-              ),
+            .withIndex("by_kind_experiment", (q) =>
+              q.eq("kind", "coding").eq("experiment", args.experiment),
             )
             .collect();
       const scoreRows = storedScoreRows
-        .map((row) => normalizeModelScore(row))
+        .map(requireCodingModelScore)
         .filter((row): row is CodingModelScore => row.kind === "coding")
         .filter((row) => publicIds.has(row.benchmarkVersion));
 
@@ -793,8 +785,9 @@ export const leaderboardScores = query({
       const storedScoreRows = targetModelId
         ? await ctx.db
             .query("modelScores")
-            .withIndex("by_modelId_experiment_benchmark", (q) =>
+            .withIndex("by_kind_modelId_experiment_benchmark", (q) =>
               q
+                .eq("kind", "coding")
                 .eq("modelId", targetModelId)
                 .eq("experiment", args.experiment)
                 .eq("benchmarkVersion", benchmark._id),
@@ -802,20 +795,15 @@ export const leaderboardScores = query({
             .collect()
         : await ctx.db
             .query("modelScores")
-            .withIndex("by_experiment_benchmark", (q) =>
+            .withIndex("by_kind_experiment_benchmark", (q) =>
               q
+                .eq("kind", "coding")
                 .eq("experiment", args.experiment)
                 .eq("benchmarkVersion", benchmark._id),
             )
-            .filter((q) =>
-              q.or(
-                q.eq(q.field("kind"), "coding"),
-                q.eq(q.field("kind"), undefined),
-              ),
-            )
             .collect();
       rows = storedScoreRows
-        .map(normalizeModelScore)
+        .map(requireCodingModelScore)
         .filter((row): row is CodingModelScore => row.kind === "coding");
       returnedVersion = benchmark.version;
       for (const row of rows) {
@@ -851,26 +839,21 @@ export const leaderboardScores = query({
         const storedPreviousRows = targetModelId
           ? await ctx.db
               .query("modelScores")
-              .withIndex("by_modelId_experiment_benchmark", (q) =>
+              .withIndex("by_kind_modelId_experiment_benchmark", (q) =>
                 q
+                  .eq("kind", "coding")
                   .eq("modelId", targetModelId)
                   .eq("experiment", args.experiment),
               )
               .collect()
           : await ctx.db
               .query("modelScores")
-              .withIndex("by_experiment", (q) =>
-                q.eq("experiment", args.experiment),
-              )
-              .filter((q) =>
-                q.or(
-                  q.eq(q.field("kind"), "coding"),
-                  q.eq(q.field("kind"), undefined),
-                ),
+              .withIndex("by_kind_experiment", (q) =>
+                q.eq("kind", "coding").eq("experiment", args.experiment),
               )
               .collect();
         const previousRows = storedPreviousRows
-          .map(normalizeModelScore)
+          .map(requireCodingModelScore)
           .filter((row): row is CodingModelScore => row.kind === "coding");
         const latestPreviousByModel = new Map<Id<"models">, CodingModelScore>();
 
@@ -985,14 +968,13 @@ export const leaderboardVersions = query({
       .collect();
     const scoreRows = await ctx.db
       .query("modelScores")
-      .withIndex("by_experiment", (q) => q.eq("experiment", args.experiment))
-      .filter((q) =>
-        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
+      .withIndex("by_kind_experiment", (q) =>
+        q.eq("kind", "coding").eq("experiment", args.experiment),
       )
       .collect()
       .then((rows) =>
         rows
-          .map(normalizeModelScore)
+          .map(requireCodingModelScore)
           .filter((row): row is CodingModelScore => row.kind === "coding"),
       );
     // Versions need metadata only for models that have a score in this
@@ -1152,13 +1134,11 @@ export const leaderboardModelHistory = query({
       // This index preserves creation order across benchmark versions.
       candidateRuns = ctx.db
         .query("runs")
-        .withIndex("by_modelId", (q) => q.eq("modelId", targetModelId))
+        .withIndex("by_kind_modelId", (q) =>
+          q.eq("kind", "coding").eq("modelId", targetModelId),
+        )
         .filter((q) =>
           q.and(
-            q.or(
-              q.eq(q.field("kind"), "coding"),
-              q.eq(q.field("kind"), undefined),
-            ),
             q.eq(q.field("experiment"), args.experiment),
             q.eq(q.field("status.kind"), "completed"),
           ),
@@ -1177,21 +1157,14 @@ export const leaderboardModelHistory = query({
       benchmarkById = new Map([[benchmark._id, benchmark]]);
       candidateRuns = ctx.db
         .query("runs")
-        .withIndex("by_modelId_experiment_benchmark", (q) =>
+        .withIndex("by_kind_modelId_experiment_benchmark", (q) =>
           q
+            .eq("kind", "coding")
             .eq("modelId", targetModelId)
             .eq("experiment", args.experiment)
             .eq("benchmarkVersion", benchmark._id),
         )
-        .filter((q) =>
-          q.and(
-            q.or(
-              q.eq(q.field("kind"), "coding"),
-              q.eq(q.field("kind"), undefined),
-            ),
-            q.eq(q.field("status.kind"), "completed"),
-          ),
-        )
+        .filter((q) => q.and(q.eq(q.field("status.kind"), "completed")))
         .order("desc");
     }
 
@@ -1232,12 +1205,8 @@ export const leaderboardModelHistory = query({
         continue;
       const evals = await ctx.db
         .query("evals")
-        .withIndex("by_runId", (q) => q.eq("runId", run._id))
-        .filter((q) =>
-          q.or(
-            q.eq(q.field("kind"), "coding"),
-            q.eq(q.field("kind"), undefined),
-          ),
+        .withIndex("by_kind_runId", (q) =>
+          q.eq("kind", "coding").eq("runId", run._id),
         )
         .collect()
         .then((rows) => rows.map(requireCodingEval));
@@ -1348,9 +1317,8 @@ export const getModelSummary = query({
   handler: async (ctx, args) => {
     const runs = await ctx.db
       .query("runs")
-      .withIndex("by_modelId", (q) => q.eq("modelId", args.modelId))
-      .filter((q) =>
-        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
+      .withIndex("by_kind_modelId", (q) =>
+        q.eq("kind", "coding").eq("modelId", args.modelId),
       )
       .order("desc")
       .take(MODEL_SUMMARY_RUNS_PER_MODEL)
@@ -1377,12 +1345,8 @@ export const getModelSummary = query({
     for (const run of runs.slice(0, MODEL_SUMMARY_EVALS_RUNS)) {
       const evals = await ctx.db
         .query("evals")
-        .withIndex("by_runId", (q) => q.eq("runId", run._id))
-        .filter((q) =>
-          q.or(
-            q.eq(q.field("kind"), "coding"),
-            q.eq(q.field("kind"), undefined),
-          ),
+        .withIndex("by_kind_runId", (q) =>
+          q.eq("kind", "coding").eq("runId", run._id),
         )
         .collect()
         .then((rows) => rows.map(requireCodingEval));
@@ -1409,9 +1373,8 @@ export const getLatestRunTime = query({
   handler: async (ctx, args) => {
     const latestRun = await ctx.db
       .query("runs")
-      .withIndex("by_modelId", (q) => q.eq("modelId", args.modelId))
-      .filter((q) =>
-        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
+      .withIndex("by_kind_modelId", (q) =>
+        q.eq("kind", "coding").eq("modelId", args.modelId),
       )
       .order("desc")
       .first();

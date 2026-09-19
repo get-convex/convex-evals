@@ -3,7 +3,7 @@
  * Called by cron jobs to clean up stuck or stale runs.
  */
 import { internalMutation } from "./_generated/server";
-import { assertNever, normalizeRun } from "./documentKinds.js";
+import { assertNever } from "./documentKinds.js";
 import { interruptDecisionRun } from "./decisionStorage.js";
 
 /** Maximum age (in ms) before a pending/running run is considered stuck (3 hours) */
@@ -40,8 +40,7 @@ export const failStuckRuns = internalMutation({
       .collect();
 
     let failedCount = 0;
-    for (const storedRun of candidates) {
-      const run = normalizeRun(storedRun);
+    for (const run of candidates) {
       const elapsedMs = now - run._creationTime;
       switch (run.kind) {
         case "coding": {
