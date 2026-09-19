@@ -71,6 +71,7 @@ web_modules/
 
 .npm
 package-lock.json
+!verification/decisions/dependencies/**/package-lock.json
 
 # Optional eslint cache
 

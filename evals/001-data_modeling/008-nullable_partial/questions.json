@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "001-data_modeling/008-nullable_partial",
+  "coverageNotes": "Uses sample-01 unchanged. Measures optional-nullable field composition only; independent construction of the other two source fields and patch/unset behavior remain uncovered.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Optional nullable field",
+      "context": "Using Convex SDK 1.44.0, an `optionals` table has a `maybe_nullable` field. The field may be omitted, set to `null`, or set to a string. Other values must be rejected.\n\n`v` is imported from `convex/values`.",
+      "question": "Which field validator allows exactly those possibilities?",
+      "options": [
+        {
+          "id": "a",
+          "text": "v.union(v.string(), v.null())",
+          "rationale": "The nullable union still requires field presence and rejects omission."
+        },
+        {
+          "id": "b",
+          "text": "v.optional(v.string())",
+          "rationale": "The optional string allows omission but rejects null."
+        },
+        {
+          "id": "c",
+          "text": "v.union(v.optional(v.string()), v.null())",
+          "rationale": "An optional union member does not make the containing field optional. This expression is also statically rejected."
+        },
+        {
+          "id": "d",
+          "text": "v.optional(v.union(v.string(), v.null()))",
+          "rationale": "The outer optional allows omission; the inner union allows string or null."
+        }
+      ],
+      "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "sourceEval": "001-data_modeling/007-schema_evolution",
+  "coverageNotes": "Measures optional intermediate fields when adding/removing columns; migration helpers, patch semantics and full deployment sequencing remain unconverted. Measures old/new value compatibility in the same field; does not establish transformation correctness, idempotency or deployment sequencing.",
+  "questions": [
+    {
+      "id": "migration-optional-field",
+      "concept": "Optional fields during migration",
+      "context": "Using Convex SDK 1.44.0, existing product rows have a string `category` and no `description`. During migration, new rows may add a string `description` and may omit `category`. Both fields, when present, must be strings. All other product fields stay fixed. `v` is imported from `convex/values`.",
+      "question": "Which intermediate field mapping accepts old, partially migrated and fully migrated rows?",
+      "options": [
+        {
+          "id": "a",
+          "text": "{ description: v.string(), category: v.optional(v.string()) }",
+          "rationale": "Requiring description rejects old rows where it is absent."
+        },
+        {
+          "id": "b",
+          "text": "{ description: v.optional(v.string()), category: v.optional(v.string()) }",
+          "rationale": "Making each field optional permits both transition states while validating present strings."
+        },
+        {
+          "id": "c",
+          "text": "{ description: v.optional(v.string()), category: v.string() }",
+          "rationale": "Requiring category rejects rows after category has been removed."
+        },
+        {
+          "id": "d",
+          "text": "{ description: v.union(v.string(), v.null()), category: v.optional(v.string()) }",
+          "rationale": "A nullable description is still required and also admits null, outside the contract."
+        }
+      ],
+      "correctOptionId": "b",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    },
+    {
+      "id": "q1",
+      "concept": "Same-field migration union",
+      "context": "Using Convex SDK 1.44.0, old product rows store booleans in required `active`. During migration, that same field must also accept exactly the strings `\"active\"`, `\"inactive\"`, and `\"banned\"`. Missing values and other values must be rejected. `v` is imported from `convex/values`.",
+      "question": "Which intermediate validator supports both old and migrated rows?",
+      "options": [
+        {
+          "id": "a",
+          "text": "v.union(v.literal(\"active\"), v.literal(\"inactive\"), v.literal(\"banned\"))",
+          "rationale": "A new-only literal union rejects existing boolean values."
+        },
+        {
+          "id": "b",
+          "text": "v.optional(v.union(v.literal(\"active\"), v.literal(\"inactive\"), v.literal(\"banned\")))",
+          "rationale": "Optionality allows omission but still rejects existing boolean values."
+        },
+        {
+          "id": "c",
+          "text": "v.union(v.boolean(), v.union(v.literal(\"active\"), v.literal(\"inactive\"), v.literal(\"banned\")))",
+          "rationale": "The union accepts the old boolean representation and exactly the three new statuses."
+        },
+        {
+          "id": "d",
+          "text": "v.union(v.boolean(), v.string())",
+          "rationale": "The broad string validator also accepts statuses outside the requested set."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

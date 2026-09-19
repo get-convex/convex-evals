@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "sourceEval": "004-actions/008-vector_search_hydration",
+  "coverageNotes": "Recognizes the documented Convex boundary under supplied conditions. Does not establish independent implementation skill or all source requirements.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Vector filters are restricted to declared filterFields",
+      "context": "Convex 1.44.0. The documents table has title, category, status (published or draft), and embedding. Its vector index is:\n```ts\n.vectorIndex(\"by_embedding\", {\n  vectorField: \"embedding\", dimensions: 4, filterFields: [\"category\"],\n})\n```\nThe developer adds this action and calls it with a four-element embedding.\n\nconvex/probe.ts\n```ts\nimport { action } from \"./_generated/server\";\nimport { v } from \"convex/values\";\nexport const searchPublished = action({\n  args: { embedding: v.array(v.float64()) },\n  handler: async (ctx, args) => {\n    return await ctx.vectorSearch(\"documents\", \"by_embedding\", {\n      vector: args.embedding, limit: 1,\n      filter: (q) => q.eq(\"status\", \"published\"),\n    });\n  },\n});\n```",
+      "question": "What happens during TypeScript checking and, if checking is bypassed, when the action runs?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Checking passes; the search returns only published hits.",
+          "rationale": "status is a document field but is not declared among this vector index's filterFields."
+        },
+        {
+          "id": "b",
+          "text": "Checking passes; the backend rejects the status filter.",
+          "rationale": "The generated vector filter type rejects status before runtime too."
+        },
+        {
+          "id": "c",
+          "text": "Checking fails; the search still returns only published hits.",
+          "rationale": "Bypassing static checking does not add status to the index; runtime also rejects it."
+        },
+        {
+          "id": "d",
+          "text": "Checking fails; the backend also rejects the status filter.",
+          "rationale": "Both generated types and backend filter validation enforce the declared filterFields."
+        }
+      ],
+      "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    },
+    {
+      "id": "q2",
+      "concept": "Hydrate vector IDs through one query from an action",
+      "context": "Convex 1.44.0. The documents vector index has four dimensions and category as a filter field. Callers supply a four-element embedding and an integer limit from 1 to 256. internal.index.fetchDocuments is an internal query taking { ids: Id<\"documents\">[] }; it returns one document or null per ID in input order. The action must hydrate all hits through exactly one call to that query, then omit missing/draft documents without refilling the limit.\n\nconvex/probe.ts\n```ts\nimport { action } from \"./_generated/server\";\nimport { v } from \"convex/values\";\nimport { internal } from \"./_generated/api\";\nimport { Doc } from \"./_generated/dataModel\";\nexport const search = action({\n  args: { embedding: v.array(v.float64()), category: v.string(), limit: v.number() },\n  handler: async (ctx, args) => {\n    const hits = await ctx.vectorSearch(\"documents\", \"by_embedding\", {\n      vector: args.embedding, limit: args.limit,\n      filter: (q) => q.eq(\"category\", args.category),\n    });\n    // INSERT OPTION\n    return hits.flatMap((hit, i) => {\n      const doc = docs[i];\n      return doc === null || doc.status !== \"published\" ? [] : [{\n        _id: doc._id, title: doc.title, category: doc.category,\n        status: doc.status, _score: hit._score,\n      }];\n    });\n  },\n});\n```",
+      "question": "Which replacement obtains the documents?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nconst docs: (Doc<\"documents\"> | null)[] = await ctx.runQuery(internal.index.fetchDocuments, { ids: hits.map(hit => hit._id) });\n```",
+          "rationale": "One query gets all IDs while preserving positions, so the fixed projection pairs each document with its own score."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nconst docs: (Doc<\"documents\"> | null)[] = await Promise.all(hits.map(async hit => (await ctx.runQuery(internal.index.fetchDocuments, { ids: [hit._id] }))[0]));\n```",
+          "rationale": "This can return the right documents but invokes the query once per hit, violating the visible single-query requirement when multiple hits exist."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nconst docs: (Doc<\"documents\"> | null)[] = await Promise.all(hits.map(hit => ctx.db.get(\"documents\", hit._id)));\n```",
+          "rationale": "ActionCtx has no direct database reader; database hydration must cross the query boundary."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nconst docs: (Doc<\"documents\"> | null)[] = await ctx.runMutation(internal.index.fetchDocuments, { ids: hits.map(hit => hit._id) });\n```",
+          "rationale": "fetchDocuments is a query; runMutation rejects its function kind."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

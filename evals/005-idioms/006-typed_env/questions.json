@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "sourceEval": "005-idioms/006-typed_env",
+  "coverageNotes": "Tests native typed-env declaration entry point, declaration API and generated import for one optional string. Query behavior is held constant. Does not cover multiple variables, literal-union declarations, independent implementation skill, secret management, or component environment binding.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Declare application env through the app config and consume generated server env",
+      "context": "You want `SUPPORT_EMAIL` to be an optional string in Convex's generated types. The app uses Convex 1.44.0 and has no schema or app configuration yet.\n\nEach option supplies the configuration and imports for this query in `convex/config.ts`. Use normal Convex code generation without editing generated files.\n\n```ts\nexport const getSupportConfig = query({\n  args: {},\n  handler: () => ({\n    supportEmail: env.SUPPORT_EMAIL ?? null,\n    isConfigured: env.SUPPORT_EMAIL !== undefined,\n  }),\n});\n```",
+      "question": "Which setup gives this query a typed `SUPPORT_EMAIL` value and lets it compile and run?",
+      "options": [
+        {
+          "id": "a",
+          "text": "convex/convex.config.ts\n\n```ts\nimport { defineApp } from \"convex/server\";\nimport { v } from \"convex/values\";\n\nexport default defineApp({\n  env: {\n    SUPPORT_EMAIL: v.optional(v.string()),\n  },\n});\n```\n\nconvex/config.ts imports\n\n```ts\nimport { query } from \"./_generated/server\";\nimport { env } from \"./_generated/env\";\n```",
+          "rationale": "The app declaration is valid, but native code generation exports env from _generated/server, not a separate _generated/env module. The import cannot resolve."
+        },
+        {
+          "id": "b",
+          "text": "convex/convex.config.ts\n\n```ts\nimport { defineApp } from \"convex/server\";\nimport { v } from \"convex/values\";\n\nexport default defineApp({\n  env: {\n    SUPPORT_EMAIL: v.optional(v.string()),\n  },\n});\n```\n\nconvex/config.ts imports\n\n```ts\nimport { query, env } from \"./_generated/server\";\n```",
+          "rationale": "The supported app config declares env validators through defineApp({ env: ... }), and generated server exports env with those types."
+        },
+        {
+          "id": "c",
+          "text": "convex/env.config.ts\n\n```ts\nimport { defineApp } from \"convex/server\";\nimport { v } from \"convex/values\";\n\nexport default defineApp({\n  env: {\n    SUPPORT_EMAIL: v.optional(v.string()),\n  },\n});\n```\n\nconvex/config.ts imports\n\n```ts\nimport { query, env } from \"./_generated/server\";\n```",
+          "rationale": "env.config.ts is not the native app configuration entry point. These validators do not become the app's typed env declarations."
+        },
+        {
+          "id": "d",
+          "text": "convex/convex.config.ts\n\n```ts\nimport { defineEnv } from \"convex/server\";\nimport { v } from \"convex/values\";\n\nexport default defineEnv({\n  SUPPORT_EMAIL: v.optional(v.string()),\n});\n```\n\nconvex/config.ts imports\n\n```ts\nimport { query, env } from \"./_generated/server\";\n```",
+          "rationale": "Convex 1.44.0 has no defineEnv export from convex/server. The native declaration belongs in defineApp's env option."
+        }
+      ],
+      "correctOptionId": "b",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/convex.config.ts",
+        "answer/convex/config.ts",
+        "answer/package.json",
+        "grader.test.ts",
+        "checks.ts"
+      ]
+    }
+  ]
+}

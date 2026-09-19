@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "sourceEval": "007-components/005-choose_rate_limiter",
+  "coverageNotes": "Unaided component choice. Does not imply custom mutation counters are non-atomic; does not assess algorithm configuration or throughput.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Select transactional named per-user quotas",
+      "context": "A messaging mutation needs a named per-user send quota, distinguishable rejections with a retry delay, and quota consumption that rolls back when the send throws. Enforcement must not scan message history. The window algorithm is not prescribed. Use the built-in capabilities of these versions: Aggregate 0.2.2, Sharded Counter 0.2.0, Rate Limiter 0.3.2, Workpool 0.4.3, with Convex 1.41.0. Custom data structures and custom quota algorithms are outside this question.",
+      "question": "Which component directly supplies this quota mechanism?",
+      "options": [
+        {
+          "id": "a",
+          "text": "@convex-dev/aggregate",
+          "rationale": "Ordered statistics do not provide built-in named time budgets and retry metadata."
+        },
+        {
+          "id": "b",
+          "text": "@convex-dev/workpool",
+          "rationale": "Work concurrency and retries do not provide a per-identity send quota."
+        },
+        {
+          "id": "c",
+          "text": "@convex-dev/sharded-counter",
+          "rationale": "Named counters can support custom algorithms but do not supply this built-in quota API."
+        },
+        {
+          "id": "d",
+          "text": "@convex-dev/rate-limiter",
+          "rationale": "Provides named per-key limits, retry metadata and transactional consumption."
+        }
+      ],
+      "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/package.json",
+        "answer/convex/index.ts",
+        "answer/convex/convex.config.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

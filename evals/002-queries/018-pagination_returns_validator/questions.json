@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "002-queries/018-pagination_returns_validator",
+  "coverageNotes": "Does not test pagination algorithm, React hook code or schema authoring.",
+  "questions": [
+    {
+      "id": "q018-1",
+      "concept": "Validate a native paginated result",
+      "context": "Use Convex 1.44.0. Posts have title and content fields. The query returns unmodified native pagination results containing complete post documents. Both field-only and document validators are available below. The returns validator must type and validate both the rows and the pagination envelope.\n\n```ts\nimport { query } from \"./_generated/server\";\nimport { v } from \"convex/values\";\nimport { paginationOptsValidator, paginationResultValidator } from \"convex/server\";\nconst fields = { title: v.string(), content: v.string() };\nconst postFields = v.object(fields);\nconst postDocument = v.object({ ...fields, _id: v.id(\"posts\"), _creationTime: v.number() });\nexport const candidate = query({\n  args: { paginationOpts: paginationOptsValidator },\n  returns: /* OPTION */,\n  handler: async (ctx, args) => ctx.db.query(\"posts\").paginate(args.paginationOpts),\n});\n```",
+      "question": "Which expression belongs in returns?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nv.array(postDocument)\n```",
+          "rationale": "Incorrect: native pagination returns an object containing page and metadata, not a document array directly."
+        },
+        {
+          "id": "b",
+          "text": "```ts\npaginationResultValidator(postDocument)\n```",
+          "rationale": "Correct: paginationResultValidator wraps a single full-document validator in the native page-and-metadata shape."
+        },
+        {
+          "id": "c",
+          "text": "```ts\npaginationResultValidator(postFields)\n```",
+          "rationale": "Incorrect: postFields omits _id and _creationTime. Convex object validators reject those undeclared fields on returned documents."
+        },
+        {
+          "id": "d",
+          "text": "```ts\npaginationResultValidator(v.array(postDocument))\n```",
+          "rationale": "Incorrect: the helper already makes page an array. Passing an array validator requires each page element to be another array."
+        }
+      ],
+      "correctOptionId": "b",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

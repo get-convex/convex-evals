@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "002-queries/004-range_condition",
+  "coverageNotes": "Introductory recognition of compound-index range construction. Boundary and order distractors additionally test general semantics. Does not establish production-scale performance, independent coding ability, or hard-model discrimination.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Constructing an equality-prefix range over a Convex compound index",
+      "context": "Using Convex 1.44.0, the following schema is already installed:\n\n```ts\nimport { defineSchema, defineTable } from \"convex/server\";\nimport { v } from \"convex/values\";\n\nexport default defineSchema({\n  temperatures: defineTable({\n    sensorId: v.string(),\n    timestamp: v.number(), // Unix timestamp in seconds\n    value: v.number(), // Temperature in Celsius\n  }).index(\"by_sensor_time\", [\"sensorId\", \"timestamp\"]),\n});\n```\n\nA public query has validated arguments { sensorId: string, startTime: number, endTime: number }, with startTime <= endTime. The query's ctx and args are in scope. The matching results fit within Convex query limits. Each option is the complete handler body.",
+      "question": "Which handler uses by_sensor_time to return only the specified sensor’s readings from startTime through endTime, including both endpoints, ordered oldest first?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nreturn await ctx.db\n  .query(\"temperatures\")\n  .withIndex(\"by_sensor_time\", (q) =>\n    q\n      .gte(\"timestamp\", args.startTime)\n      .lte(\"timestamp\", args.endTime)\n  )\n  .filter((q) => q.eq(q.field(\"sensorId\"), args.sensorId))\n  .order(\"asc\")\n  .collect();\n```",
+          "rationale": "Moves the leading sensorId equality outside the index range into a later filter. The timestamp range therefore lacks its required leading index-field equality. Static diagnostics and actual runtime behavior are recorded separately in execution-evidence.json."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nreturn await ctx.db\n  .query(\"temperatures\")\n  .withIndex(\"by_sensor_time\", (q) =>\n    q\n      .eq(\"sensorId\", args.sensorId)\n      .gt(\"timestamp\", args.startTime)\n      .lte(\"timestamp\", args.endTime)\n  )\n  .order(\"asc\")\n  .collect();\n```",
+          "rationale": "The strict lower bound excludes rows exactly at startTime. Other rows, the upper endpoint, and ordering remain correct."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nreturn await ctx.db\n  .query(\"temperatures\")\n  .withIndex(\"by_sensor_time\", (q) =>\n    q\n      .eq(\"sensorId\", args.sensorId)\n      .gte(\"timestamp\", args.startTime)\n      .lte(\"timestamp\", args.endTime)\n  )\n  .order(\"asc\")\n  .collect();\n```",
+          "rationale": "Matches sensorId as the equality prefix, bounds timestamp inclusively, and traverses the compound index in ascending order."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nreturn await ctx.db\n  .query(\"temperatures\")\n  .withIndex(\"by_sensor_time\", (q) =>\n    q\n      .eq(\"sensorId\", args.sensorId)\n      .gte(\"timestamp\", args.startTime)\n      .lte(\"timestamp\", args.endTime)\n  )\n  .order(\"desc\")\n  .collect();\n```",
+          "rationale": "Selects the correct rows but returns them newest first. It fails when the result contains different timestamps."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "answer/convex/public.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "004-actions/009-webhook_state_machine",
+  "coverageNotes": "Recognizes the documented Convex boundary under supplied conditions. Does not establish independent implementation skill or all source requirements.",
+  "questions": [
+    {
+      "id": "q2",
+      "concept": "A failed mutation rolls back all event database effects",
+      "context": "Convex 1.41.0. A subscription is active at sequence 1, and no receipt exists for event \"evt-2\". An HTTP action awaits ctx.runMutation(internal.probe.applyThenFail, ...) with that subscription's ID and eventId \"evt-2\". It catches the error and responds with HTTP 500. No other writes occur.\n\nconvex/probe.ts\n```ts\nimport { internalMutation } from \"./_generated/server\";\nimport { v } from \"convex/values\";\nexport const applyThenFail = internalMutation({\n  args: { eventId: v.string(), subscriptionId: v.id(\"subscriptions\") },\n  handler: async (ctx, args) => {\n    await ctx.db.patch(args.subscriptionId, { state: \"canceled\", sequence: 2 });\n    await ctx.db.insert(\"receipts\", { eventId: args.eventId, outcome: \"applied\" });\n    throw new Error(\"processing failed\");\n  },\n});\n```",
+      "question": "After the HTTP response, what is stored?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The subscription is canceled at sequence 2; the receipt exists.",
+          "rationale": "Awaiting each write does not commit it independently; the uncaught mutation error rolls both back."
+        },
+        {
+          "id": "b",
+          "text": "The subscription is canceled at sequence 2; no receipt exists.",
+          "rationale": "The earlier patch belongs to the same transaction and also rolls back."
+        },
+        {
+          "id": "c",
+          "text": "The subscription is active at sequence 1; no receipt exists.",
+          "rationale": "Both writes roll back before runMutation rejects. Catching in the HTTP action does not commit the failed mutation."
+        },
+        {
+          "id": "d",
+          "text": "The subscription is active at sequence 1; the receipt exists.",
+          "rationale": "The receipt insert and subscription patch share the mutation transaction, so the receipt cannot commit alone."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

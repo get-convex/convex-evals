@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "004-actions/002-run_query_mutation",
+  "coverageNotes": "Recognizes the documented Convex boundary under supplied conditions. Does not establish independent implementation skill or all source requirements.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Actions access the database through queries and mutations",
+      "context": "Convex 1.44.0. The fetchRequests table stores { url: string, data: any }, indexed by_url on [\"url\"]. These existing functions are available:\n- api.index.getFetchResult: query, args { url: string }, returns Id<\"fetchRequests\"> | null.\n- api.index.saveFetchResult: mutation, args { url: string, data: any }, atomically inserts or updates by URL and returns Id<\"fetchRequests\">.\n\nAn action has validated args { url: string }. fetchJson(url) fetches and parses JSON, throwing on a failed HTTP response. ctx, args, api, and fetchJson are in scope. Each option is the complete action handler body.",
+      "question": "Which handler returns a cached ID without fetching, or fetches and saves the response through the existing functions when the URL is missing?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nconst cached = await ctx.runQuery(api.index.getFetchResult, { url: args.url });\nif (cached !== null) return cached;\nconst data = await fetchJson(args.url);\nreturn await ctx.runMutation(api.index.saveFetchResult, { url: args.url, data });\n```",
+          "rationale": "ActionCtx uses runQuery for the read and runMutation for the write, while the action performs the external fetch."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nconst cached = await ctx.db.query(\"fetchRequests\")\n  .withIndex(\"by_url\", (q) => q.eq(\"url\", args.url)).first();\nif (cached !== null) return cached._id;\nconst data = await fetchJson(args.url);\nreturn await ctx.db.insert(\"fetchRequests\", { url: args.url, data });\n```",
+          "rationale": "ActionCtx has no db. Direct database access belongs in a query or mutation, so this action cannot perform even its first lookup."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nconst cached = await ctx.runQuery(api.index.getFetchResult, { url: args.url });\nif (cached !== null) return cached;\nconst data = await fetchJson(args.url);\nreturn await ctx.runQuery(api.index.saveFetchResult, { url: args.url, data });\n```",
+          "rationale": "runQuery cannot invoke the saveFetchResult mutation. The warm-cache path happens to work; the uncached path fails instead of storing the response."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nconst cached = await ctx.runMutation(api.index.getFetchResult, { url: args.url });\nif (cached !== null) return cached;\nconst data = await fetchJson(args.url);\nreturn await ctx.runMutation(api.index.saveFetchResult, { url: args.url, data });\n```",
+          "rationale": "runMutation cannot invoke the getFetchResult query. The first lookup fails regardless of cache state."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

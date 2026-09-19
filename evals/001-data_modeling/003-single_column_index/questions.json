@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "001-data_modeling/003-single_column_index",
+  "coverageNotes": "Measures index declaration compatibility with a supplied typed equality range. It does not measure query generation or performance.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Index equality prefix",
+      "context": "Using Convex SDK 1.44.0, `defineTable` and `v` are imported from `convex/server` and `convex/values` respectively. The following fields are fixed.\n\n```ts\nconst messages = defineTable({ content: v.string(), author_email: v.string() });\n```\n\nA query uses `.withIndex(\"lookup\", q => q.eq(\"author_email\", email))` to fetch one author's messages.",
+      "question": "Which declaration lets this index-range query typecheck?",
+      "options": [
+        {
+          "id": "a",
+          "text": "messages.index(\"lookup\", [\"content\"])",
+          "rationale": "The first indexed field is content, so author_email cannot start the range."
+        },
+        {
+          "id": "b",
+          "text": "messages.index(\"lookup\", [\"content\", \"author_email\"])",
+          "rationale": "A range cannot skip the leading content field."
+        },
+        {
+          "id": "c",
+          "text": "messages.index(\"lookup\", [\"author_email\"])",
+          "rationale": "The range starts with the leading author_email field."
+        },
+        {
+          "id": "d",
+          "text": "messages.index(\"lookup\", [\"_creationTime\", \"author_email\"])",
+          "rationale": "The explicit creation-time prefix cannot be skipped to constrain author_email."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

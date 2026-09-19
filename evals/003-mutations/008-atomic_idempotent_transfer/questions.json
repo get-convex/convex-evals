@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "003-mutations/008-atomic_idempotent_transfer",
+  "coverageNotes": "Tests identical-call OCC/idempotency outcome only. Whole-mutation rollback is shared with 004-cascade_delete/q004-2. Full validation, mismatched key reuse, and atomic cache implementation remain unconverted.",
+  "questions": [
+    {
+      "id": "q008-occ",
+      "concept": "Automatic retries preserve transactional idempotency",
+      "context": "Using Convex SDK 1.44.0, the `transfers` table has the fields inserted below and an ordinary index declared with `.index(\"by_idempotencyKey\", [\"idempotencyKey\"])`.\n\nThe mutation is:\n\n```ts\nimport { v } from \"convex/values\";\nimport { mutation } from \"./_generated/server\";\n\nexport const transfer = mutation({\n  args: {\n    fromAccountId: v.id(\"accounts\"),\n    toAccountId: v.id(\"accounts\"),\n    amount: v.number(),\n    idempotencyKey: v.string(),\n  },\n  handler: async (ctx, args) => {\n    const existing = await ctx.db\n      .query(\"transfers\")\n      .withIndex(\"by_idempotencyKey\", q =>\n        q.eq(\"idempotencyKey\", args.idempotencyKey))\n      .unique();\n    if (existing !== null) return existing._id;\n\n    const from = await ctx.db.get(\"accounts\", args.fromAccountId);\n    const to = await ctx.db.get(\"accounts\", args.toAccountId);\n    if (from === null || to === null) throw new Error(\"Missing account\");\n\n    await ctx.db.patch(\"accounts\", from._id, {\n      balance: from.balance - args.amount,\n    });\n    await ctx.db.patch(\"accounts\", to._id, {\n      balance: to.balance + args.amount,\n    });\n    return await ctx.db.insert(\"transfers\", args);\n  },\n});\n```\n\nThe accounts are distinct and both start with 100 credits. There are no transfer records. Two clients concurrently call this mutation with identical arguments: 10 credits from the first account to the second, using the same idempotency key. There are no other calls or unrelated failures.",
+      "question": "What do the clients receive, and what is committed?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Both calls succeed with different transfer IDs. Two records are inserted, and the balances become 80 and 120.",
+          "rationale": "The lookup and writes run in one mutation. Conflicting attempts retry; observed calls commit one transfer rather than two."
+        },
+        {
+          "id": "b",
+          "text": "Both calls succeed with the same transfer ID. One record is inserted, and the balances become 90 and 110.",
+          "rationale": "Both calls return the same committed record and balances move once. A conflicting attempt can retry and observe that record."
+        },
+        {
+          "id": "c",
+          "text": "One call succeeds and one fails because the index rejects a duplicate key. One record is inserted, and the balances become 90 and 110.",
+          "rationale": "An ordinary index does not reject duplicate-key inserts. A targeted control inserts duplicates successfully and unique() rejects a later read."
+        },
+        {
+          "id": "d",
+          "text": "One call succeeds and one fails because Convex reports the write conflict to that client. One record is inserted, and the balances become 90 and 110.",
+          "rationale": "The initial conflict is retried automatically. Runtime retry logs accompany fulfilled calls; this does not promise unlimited retries under arbitrary contention."
+        }
+      ],
+      "correctOptionId": "b",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

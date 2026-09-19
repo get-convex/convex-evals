@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "006-clients/001-use_mutation",
+  "coverageNotes": "Recognizes the mutation hook result versus generated references and other libraries' hook shapes. Pending state is supplied. Does not assess form design or the server return-value discrepancy in the source answer.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "useMutation returns a callable client mutation function",
+      "context": "This React 18 component is under `ConvexProvider` using Convex 1.44.0. `api.messages.sendMessage` references a public mutation that inserts its `author` and `body` arguments.\n\n```ts\nimport React, { useState } from \"react\";\nimport { useMutation } from \"convex/react\";\nimport { api } from \"../convex/_generated/api\";\nexport function Send() {\n  BINDING\n  const [sending, setSending] = useState(false);\n  async function submit() {\n    setSending(true);\n    try {\n      await send({ author: \"Ada\", body: \"Hello\" });\n    } finally {\n      setSending(false);\n    }\n  }\n  return <button onClick={submit}>{sending ? \"Sending...\" : \"Send\"}</button>;\n}\n```",
+      "question": "Which binding lets the click handler send the message?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nconst send = api.messages.sendMessage;\n```",
+          "rationale": "A generated FunctionReference is metadata for dispatch, not a callable client mutation."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nconst { mutate: send } = useMutation(api.messages.sendMessage);\n```",
+          "rationale": "useMutation returns the function itself, not an object exposing mutate."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nconst [send] = useMutation(api.messages.sendMessage);\n```",
+          "rationale": "useMutation does not return a tuple and its function result is not iterable."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nconst send = useMutation(api.messages.sendMessage);\n```",
+          "rationale": "The hook returns a callable mutation function; awaiting it waits for the server result."
+        }
+      ],
+      "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/package.json",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

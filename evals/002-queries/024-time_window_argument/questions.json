@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "002-queries/024-time_window_argument",
+  "coverageNotes": "Applies the supplied-time contract. Does not test a client timer implementation, a scheduling SLA, or physical query-read efficiency.",
+  "questions": [
+    {
+      "id": "q024-1",
+      "concept": "Updating the argument of a time-dependent subscription",
+      "context": "Convex 1.44.0. `items` has `{ name: string, expiresAt: number }` and an index `by_expiresAt` on `[\"expiresAt\"]`. All times are Unix milliseconds.\n\n```ts\nimport { query } from \"./_generated/server\";\nimport { v } from \"convex/values\";\nexport const listActive = query({\n  args: { now: v.number() },\n  handler: async (ctx, args) => {\n    return await ctx.db.query(\"items\")\n      .withIndex(\"by_expiresAt\", q => q.gt(\"expiresAt\", args.now))\n      .take(100);\n  },\n});\n```\n\nThe only item expires at `T + 1000`. A client subscribes with `{ now: T }` and receives that item. No documents change. The client clock passes `T + 2000`, while the subscription arguments stay unchanged. The client then replaces the subscription with one using `{ now: T + 2000 }`.",
+      "question": "When is the item removed from the query result?",
+      "options": [
+        {
+          "id": "a",
+          "text": "When the clock passes its expiry, before the client changes the argument.",
+          "rationale": "The query result depends on its argument and database reads, not clock passage outside the query."
+        },
+        {
+          "id": "b",
+          "text": "Only after a database write, even if the client changes the argument.",
+          "rationale": "A new query argument selects a new query result without requiring a database write."
+        },
+        {
+          "id": "c",
+          "text": "As soon as the client clock changes, because `now` is a live clock reference.",
+          "rationale": "The number is a serialized argument value; naming it now does not bind it to a live clock."
+        },
+        {
+          "id": "d",
+          "text": "After the client subscribes with the later `now` value.",
+          "rationale": "The unchanged argument still admits the item. The later argument excludes it with the same stored data."
+        }
+      ],
+      "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

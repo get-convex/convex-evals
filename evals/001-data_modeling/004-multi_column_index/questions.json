@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "001-data_modeling/004-multi_column_index",
+  "coverageNotes": "Measures ordered index declaration compatibility with a supplied typed equality/range query. No performance or arbitrary multi-index optimization claim.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Equality before range",
+      "context": "Using Convex SDK 1.44.0, `defineTable` and `v` are imported from `convex/server` and `convex/values` respectively. The following fields are fixed.\n\n```ts\nconst messages = defineTable({\n  content: v.string(), author_email: v.string(), sent_at: v.number(),\n});\n```\n\nA query uses `.withIndex(\"lookup\", q => q.eq(\"author_email\", email).gte(\"sent_at\", start).lt(\"sent_at\", end))` for one author and a time interval.",
+      "question": "Which declaration lets this index-range query typecheck?",
+      "options": [
+        {
+          "id": "a",
+          "text": "messages.index(\"lookup\", [\"sent_at\", \"author_email\"])",
+          "rationale": "The supplied equality cannot skip sent_at to start on author_email."
+        },
+        {
+          "id": "b",
+          "text": "messages.index(\"lookup\", [\"author_email\"]).index(\"by_time\", [\"sent_at\"])",
+          "rationale": "The lookup index lacks sent_at after author_email; another index does not extend its range fields."
+        },
+        {
+          "id": "c",
+          "text": "messages.index(\"lookup\", [\"content\", \"author_email\", \"sent_at\"])",
+          "rationale": "The supplied range cannot skip the leading content field."
+        },
+        {
+          "id": "d",
+          "text": "messages.index(\"lookup\", [\"author_email\", \"sent_at\"])",
+          "rationale": "The equality field is followed by the time field used by both range bounds."
+        }
+      ],
+      "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

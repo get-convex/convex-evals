@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "003-mutations/004-cascade_delete",
+  "coverageNotes": "Tests absence of automatic referential actions and whole-mutation rollback. Does not measure implementing the full indexed cascade or multi-hop graph discovery.",
+  "questions": [
+    {
+      "id": "q004-1",
+      "concept": "ID validators do not create automatic cascades",
+      "context": "Convex 1.44.0. The schema declares `documents.authorId: v.id(\"users\")` and `.index(\"by_author\", [\"authorId\"])`. One user has two documents. There are no concurrent writes. This mutation runs with that user ID:\n\n```ts\nimport { mutation } from \"./_generated/server\";\nimport { v } from \"convex/values\";\n\nexport const removeUser = mutation({\n  args: { userId: v.id(\"users\") },\n  handler: async (ctx, args) => {\n    await ctx.db.delete(\"users\", args.userId);\n    return null;\n  },\n});\n```",
+      "question": "What is committed?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The user and both documents are deleted because authorId is an ID reference.",
+          "rationale": "An ID validator does not implement cascading deletes. The parent-only execution preserves both documents."
+        },
+        {
+          "id": "b",
+          "text": "The mutation fails because two documents still reference the user.",
+          "rationale": "ID validation checks the table identity, not live referential integrity. The deletion succeeds with dependent rows present."
+        },
+        {
+          "id": "c",
+          "text": "The user is deleted and both documents keep their existing authorId values.",
+          "rationale": "Only the explicit user delete occurs. Dependent documents and their ID values persist unchanged."
+        },
+        {
+          "id": "d",
+          "text": "The user is deleted and authorId is removed from both documents.",
+          "rationale": "Convex does not perform an implicit set-null or field-removal referential action."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

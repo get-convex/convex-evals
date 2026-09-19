@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "sourceEval": "007-components/018-presence_room_tracking",
+  "coverageNotes": "Focused local decision coverage. Full implementation, scale, authorization and provider quality remain outside this bank; see author records.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Presence room listing uses the returned opaque room token",
+      "context": "Convex 1.41.0 and Presence 0.3.2. Presence is mounted and its client is constructed. No app tables or authentication are used. Source-provided API excerpt: heartbeat(ctx, roomId, userId, sessionId, interval) returns `{ roomToken, sessionToken }`; `presence.list(ctx, roomToken)` lists a room; `presence.disconnect(ctx, sessionToken)` disconnects one session.\n\nA successful heartbeat used roomId \"room-A\", userId \"alice\", sessionId \"tab1\", interval 60000. The list handler receives those roomId and userId strings and the returned roomToken and sessionToken. The caller wants that room's entries.",
+      "question": "Which return statement should the list handler use?",
+      "options": [
+        {
+          "id": "a",
+          "text": "`return await presence.list(ctx, roomToken);`",
+          "rationale": "The returned room token authorizes and identifies this component room list."
+        },
+        {
+          "id": "b",
+          "text": "`return await presence.list(ctx, roomId);`",
+          "rationale": "The application room ID is not the opaque room token. This call returns an empty list in the tested component."
+        },
+        {
+          "id": "c",
+          "text": "`return await presence.list(ctx, sessionToken);`",
+          "rationale": "The session token is for the session operation; it is not a room-list token."
+        },
+        {
+          "id": "d",
+          "text": "`return await presence.list(ctx, userId);`",
+          "rationale": "A user ID does not identify a component room token."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    },
+    {
+      "id": "q2",
+      "concept": "Presence combines multiple sessions into one user entry",
+      "context": "Convex 1.41.0 and Presence 0.3.2. Source-provided API excerpt: heartbeat(ctx, roomId, userId, sessionId, interval) returns `{ roomToken, sessionToken }`; `presence.list(ctx, roomToken)` lists a room; `presence.disconnect(ctx, sessionToken)` disconnects one session. Source documentation also says each room list has one entry per user, any live session keeps the user online, and offline users remain listed.\n\nAlice opens tab1 and tab2 in the same room, each with its own sessionId and a 60000 ms heartbeat interval. Both are alive. Disconnect tab1 and read the room; then disconnect tab2 and read it again. Neither session expires during these calls.",
+      "question": "What do the two reads show for Alice?",
+      "options": [
+        {
+          "id": "a",
+          "text": "First two entries, one online and one offline; then two offline entries.",
+          "rationale": "list aggregates sessions into a single user entry."
+        },
+        {
+          "id": "b",
+          "text": "First one online entry; then the same user remains as one offline entry.",
+          "rationale": "The remaining session keeps Alice online after the first disconnect. The final disconnect makes the retained entry offline."
+        },
+        {
+          "id": "c",
+          "text": "First one offline entry; then one offline entry.",
+          "rationale": "Disconnecting one session does not end the other live session."
+        },
+        {
+          "id": "d",
+          "text": "First one online entry; then no Alice entry.",
+          "rationale": "The last disconnect retains the user entry with online:false."
+        }
+      ],
+      "correctOptionId": "b",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

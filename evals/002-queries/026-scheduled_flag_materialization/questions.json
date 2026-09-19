@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "002-queries/026-scheduled_flag_materialization",
+  "coverageNotes": "Tests the recurring registration API with the marker supplied. A one-minute interval is a nominal schedule, not a strict completion-within-one-minute guarantee. Does not test unlimited marking batches.",
+  "questions": [
+    {
+      "id": "q026-1",
+      "concept": "Registering a recurring backend mutation",
+      "context": "Convex 1.41.0. `internal.crons.markExpired` is an internal mutation that checks `Date.now()` and marks due subscriptions with `isExpired: true`. It takes no arguments. A public query reads the persisted flags.\n\nIn `convex/crons.ts`:\n```ts\nimport { cronJobs } from \"convex/server\";\nimport { internal } from \"./_generated/api\";\n\n// markExpired is defined in this file.\nconst crons = cronJobs();\n// Insert the registration here.\nexport default crons;\n```",
+      "question": "Which registration compiles and runs the mutation on a repeating one-minute interval?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\ncrons.interval(\"mark expired subscriptions\",\n  { minutes: 1 }, internal.crons.markExpired, {});\n```",
+          "rationale": "interval accepts a schedule object with minutes, hours, or seconds. This registers a 60-second recurring mutation."
+        },
+        {
+          "id": "b",
+          "text": "```ts\ncrons.interval(\"mark expired subscriptions\",\n  60_000, internal.crons.markExpired, {});\n```",
+          "rationale": "interval expects its schedule object, not a millisecond delay number."
+        },
+        {
+          "id": "c",
+          "text": "```ts\ncrons.interval(\"mark expired subscriptions\",\n  { milliseconds: 60_000 }, internal.crons.markExpired, {});\n```",
+          "rationale": "milliseconds is not a supported interval schedule field."
+        },
+        {
+          "id": "d",
+          "text": "```ts\ncrons.cron(\"mark expired subscriptions\",\n  { minutes: 1 }, internal.crons.markExpired, {});\n```",
+          "rationale": "cron expects a cron-expression string, not the interval schedule object."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

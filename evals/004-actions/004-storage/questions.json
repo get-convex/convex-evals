@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "sourceEval": "004-actions/004-storage",
+  "coverageNotes": "Recognizes the documented Convex boundary under supplied conditions. Does not establish independent implementation skill or all source requirements.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Action storage.store accepts a Blob and returns its storage ID",
+      "context": "Convex 1.44.0. An action must store the supplied text and return its storage ID and download URL.\n\nconvex/probe.ts\n```ts\nimport { action } from \"./_generated/server\";\nimport { v } from \"convex/values\";\nexport const write = action({\n  args: { text: v.string() },\n  handler: async (ctx, args) => {\n    // INSERT OPTION\n    const url = await ctx.storage.getUrl(storageId);\n    return { storageId, url };\n  },\n});\n```",
+      "question": "Which line uploads the text?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nconst storageId = await ctx.storage.store(args.text);\n```",
+          "rationale": "store expects a Blob, not a string; this fails static checking and runtime input handling."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nconst storageId = await ctx.storage.generateUploadUrl(new Blob([args.text]));\n```",
+          "rationale": "generateUploadUrl creates an upload URL; it does not accept or store this Blob and does not return a storage ID."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nconst storageId = await ctx.storage.getUrl(new Blob([args.text]));\n```",
+          "rationale": "getUrl reads a URL for an existing storage ID; a Blob is not an ID and this does not upload."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nconst storageId = await ctx.storage.store(new Blob([args.text]));\n```",
+          "rationale": "store uploads the Blob and returns the ID used by getUrl."
+        }
+      ],
+      "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    },
+    {
+      "id": "q2",
+      "concept": "storage.get returns a nullable Blob",
+      "context": "Convex 1.44.0. A file containing the text \"hello\" has been stored. Run inspect once, delete that file successfully, then run inspect again with the same syntactically valid storage ID.\n\nconvex/inspect.ts\n```ts\nimport { action } from \"./_generated/server\";\nimport { v } from \"convex/values\";\nexport const inspect = action({\n  args: { storageId: v.id(\"_storage\") },\n  handler: async (ctx, args) => {\n    const blob = await ctx.storage.get(args.storageId);\n    return blob === null ? \"missing\" : await blob.text();\n  },\n});\n```",
+      "question": "What do the two calls return?",
+      "options": [
+        {
+          "id": "a",
+          "text": "\"hello\", then \"missing\".",
+          "rationale": "get returns a Blob for an existing file and null for a deleted file; the explicit branch converts null to missing."
+        },
+        {
+          "id": "b",
+          "text": "\"hello\", then an error from storage.get.",
+          "rationale": "A valid ID for a missing file returns null; the wrapper, not get, chooses whether to throw."
+        },
+        {
+          "id": "c",
+          "text": "A download URL, then \"missing\".",
+          "rationale": "get returns the file Blob; getUrl is the URL API."
+        },
+        {
+          "id": "d",
+          "text": "\"hello\", then an empty string.",
+          "rationale": "A deleted file returns null, not an empty Blob. The empty-file control returns an empty string while it exists."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

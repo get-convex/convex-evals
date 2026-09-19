@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "000-fundamentals/006-database_crud",
+  "coverageNotes": "Tests partial-update API recognition, not the full CRUD system.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Partial document updates",
+      "context": "Using Convex 1.44.0, locations requires name: string, latitude: number and longitude: number. Inside a mutation, id identifies an existing row and name is a new string.",
+      "question": "Which code updates the name while preserving the same document ID and both coordinates?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nawait ctx.db.replace(id, { name });\n```",
+          "rationale": "Replace requires a complete document. The supplied value fails static and runtime validation for missing coordinates, so no replacement commits."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nawait ctx.db.insert(\"locations\", { name });\n```",
+          "rationale": "Insert would create a new document, but this exact value first fails required-coordinate validation."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nawait ctx.db.patch(id, { name });\n```",
+          "rationale": "Patch updates only the supplied field and preserves the document ID and omitted coordinates."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nawait ctx.db.delete(id);\nawait ctx.db.insert(\"locations\", { name });\n```",
+          "rationale": "The insert fails required-coordinate validation; the mutation rolls back the preceding delete. Even a complete delete/insert would create a new ID."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/public.ts",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

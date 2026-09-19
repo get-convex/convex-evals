@@ -15,6 +15,7 @@ import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
+import type { CodingRun } from "./documentKinds";
 import {
   backfillCompletedRunsToBenchmark,
   consolidateCompletedBenchmarkRuns,
@@ -38,7 +39,7 @@ async function createCompletedRun(
   opts: {
     model: string;
     formattedName?: string;
-    experiment?: Doc<"runs">["experiment"];
+    experiment?: CodingRun["experiment"];
     benchmarkVersion?: string;
     evals: Array<{
       category: string;

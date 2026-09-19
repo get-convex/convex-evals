@@ -1,4 +1,4 @@
-import type { Doc } from "./_generated/dataModel";
+import type { CodingEval } from "./documentKinds.js";
 
 export type WebUsage = {
   evalCount: number;
@@ -21,9 +21,7 @@ function count(value: unknown): number | null {
     : null;
 }
 
-export function computeWebUsage(
-  evals: Pick<Doc<"evals">, "status">[],
-): WebUsage {
+export function computeWebUsage(evals: Pick<CodingEval, "status">[]): WebUsage {
   const result: WebUsage = {
     evalCount: 0,
     reportedSearchEvalCount: 0,

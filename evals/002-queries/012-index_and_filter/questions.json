@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "002-queries/012-index_and_filter",
+  "coverageNotes": "Does not prove that post-filtering reduces scanned rows or handles arbitrarily large result sets.",
+  "questions": [
+    {
+      "id": "q012-1",
+      "concept": "Filter outside an index range builder",
+      "context": "Use Convex 1.44.0. The users table has name:string, age:number and isDeleted:boolean. Its by_age index contains [\"age\"]. Use that index for age >= minAge and a query filter to exclude deleted users. The function must compile and run.\n\n```ts\nimport { query } from \"./_generated/server\";\nimport { v } from \"convex/values\";\nimport { paginationOptsValidator, paginationResultValidator } from \"convex/server\";\nexport const candidate = query({\n  args: { minAge: v.number() },\n  handler: async (ctx, args) => {\n    const users = await (/* OPTION */).collect();\n    return users.map(user => user.name);\n  },\n});\n```",
+      "question": "Which query expression fits the marked position?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nctx.db.query(\"users\")\n  .withIndex(\"by_age\", q => q.gte(\"age\", args.minAge).eq(\"isDeleted\", false))\n```",
+          "rationale": "Incorrect: isDeleted is not in by_age, and an equality constraint cannot be appended after this lower bound."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nctx.db.query(\"users\")\n  .withIndex(\"by_age\", q => q.gte(\"age\", args.minAge))\n  .filter(q => q.eq(\"isDeleted\", false))\n```",
+          "rationale": "Incorrect: in a filter, a string is a literal value. q.field(\"isDeleted\") is needed to read a document field."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nctx.db.query(\"users\")\n  .filter(q => q.eq(q.field(\"isDeleted\"), false))\n  .withIndex(\"by_age\", q => q.gte(\"age\", args.minAge))\n```",
+          "rationale": "Incorrect: filter returns a Query, which no longer has the QueryInitializer.withIndex method. Choose the index first."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nctx.db.query(\"users\")\n  .withIndex(\"by_age\", q => q.gte(\"age\", args.minAge))\n  .filter(q => q.eq(q.field(\"isDeleted\"), false))\n```",
+          "rationale": "Correct: the range builder constrains age, and the filter expression reads the nonindexed isDeleted field."
+        }
+      ],
+      "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

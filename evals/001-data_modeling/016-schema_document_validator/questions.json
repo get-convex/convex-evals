@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "001-data_modeling/016-schema_document_validator",
+  "coverageNotes": "Tests deriving a required complete stored-document validator from a schema, including system fields. Does not assess restore logic, missing-record handling, writes, or authorization. Real backend probes use the byte-identical original schema and Convex 1.44.0 within source range ^1.44.0.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Schema-derived complete stored-document argument validator",
+      "context": "A mutation takes a saved `profiles` document as `snapshot`, including `_id` and `_creationTime`. The app uses Convex 1.44.0.\n\n```ts\nimport { defineSchema, defineTable } from \"convex/server\";\nimport { v } from \"convex/values\";\n\nexport default defineSchema({\n  profiles: defineTable({\n    displayName: v.string(),\n    bio: v.string(),\n  }),\n});\n```\n\nThe mutation imports this schema as `schema` and uses `args: { snapshot: snapshotValidator }`.",
+      "question": "Which option uses the schema to validate the whole document?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nexport const snapshotValidator = schema.tables.profiles.validator;\n```",
+          "rationale": "A table validator describes the declared application fields, without the stored-document system fields. It rejects genuine snapshots and accepts payloads missing both system fields."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nexport const snapshotValidator = schema.doc(\"profiles\");\n```",
+          "rationale": "The schema document validator adds required table-specific _id and _creationTime fields to the declared fields without repeating validator definitions."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nexport const snapshotValidator = schema.tables.profiles.doc();\n```",
+          "rationale": "The full-document helper belongs to SchemaDefinition, not TableDefinition. TableDefinition has no doc() method."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nexport const snapshotValidator = schema.validator(\"profiles\");\n```",
+          "rationale": "SchemaDefinition has no validator() method. The full-document helper is named doc(tableName)."
+        }
+      ],
+      "correctOptionId": "b",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "grader.test.ts",
+        "answer/package.json"
+      ]
+    }
+  ]
+}

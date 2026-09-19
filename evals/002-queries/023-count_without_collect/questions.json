@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "002-queries/023-count_without_collect",
+  "coverageNotes": "Counter maintenance is supplied and checked as setup. Does not independently test OCC, rollback design, migration/backfill, edits/deletes, or production timing.",
+  "questions": [
+    {
+      "id": "q023-1",
+      "concept": "Reading a materialized per-organization count",
+      "context": "Convex 1.44.0. Tickets are append-only and all inserts go through `createTicket`. That mutation inserts the ticket and updates one `ticketCounts` row for its organization in the same transaction. The counter equals the total number of tickets. An organization without tickets has no counter row.\n\nThe schema contains:\n```ts\ntickets: defineTable({ orgId: v.string(), title: v.string(), status: v.string() })\n  .index(\"by_orgId\", [\"orgId\"]),\nticketCounts: defineTable({ orgId: v.string(), count: v.number() })\n  .index(\"by_orgId\", [\"orgId\"]),\n```\n\n`getTicketCount` is a query with `args: { orgId: v.string() }`.",
+      "question": "Which handler returns the exact count while keeping the number of documents read independent of the number of tickets?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nlet count = 0;\nfor await (const ticket of ctx.db.query(\"tickets\")\n  .withIndex(\"by_orgId\", q => q.eq(\"orgId\", args.orgId))) {\n  count += 1;\n}\nreturn count;\n```",
+          "rationale": "This counts correctly but iterates every matching ticket. Avoiding collect does not make the read constant-size."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nconst counter = await ctx.db.query(\"ticketCounts\")\n  .withIndex(\"by_orgId\", q => q.eq(\"orgId\", args.orgId))\n  .unique();\nreturn counter?.count ?? 0;\n```",
+          "rationale": "The maintained counter supplies the exact total through one indexed document, or zero when absent."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nconst tickets = await ctx.db.query(\"tickets\")\n  .withIndex(\"by_orgId\", q => q.eq(\"orgId\", args.orgId))\n  .collect();\nreturn tickets.length;\n```",
+          "rationale": "This counts correctly but collects every matching ticket, so document reads grow with ticket history."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nconst tickets = await ctx.db.query(\"tickets\")\n  .withIndex(\"by_orgId\", q => q.eq(\"orgId\", args.orgId))\n  .take(100);\nreturn tickets.length;\n```",
+          "rationale": "This bounds reads but returns 100 when the exact total exceeds 100."
+        }
+      ],
+      "correctOptionId": "b",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

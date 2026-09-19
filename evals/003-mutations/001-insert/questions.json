@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "003-mutations/001-insert",
+  "coverageNotes": "Does not test schema authoring, ID-generation internals, or independent input validation.",
+  "questions": [
+    {
+      "id": "q001-1",
+      "concept": "The result of inserting a document",
+      "context": "Convex 1.44.0. `users` has `{ email: string, name: string, age: number }`.\n\n```ts\nimport { mutation } from \"./_generated/server\";\nimport { v } from \"convex/values\";\nexport const insertUser = mutation({\n  args: { email: v.string(), name: v.string(), age: v.number() },\n  handler: async (ctx, args) => {\n    const result = await ctx.db.insert(\"users\", args);\n    return result;\n  },\n});\n```",
+      "question": "What does a successful call return?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The complete stored user document, including `_id` and `_creationTime`.",
+          "rationale": "insert returns an ID, not a fetched document."
+        },
+        {
+          "id": "b",
+          "text": "The newly generated document ID as a string.",
+          "rationale": "The returned ID resolves to the newly inserted user."
+        },
+        {
+          "id": "c",
+          "text": "An object with a single `_id` field.",
+          "rationale": "The SDK unwraps the ID; its public result is not an {_id} response envelope."
+        },
+        {
+          "id": "d",
+          "text": "`null`, because a database write has no return value.",
+          "rationale": "Unlike a void write operation, insert returns the generated document ID."
+        }
+      ],
+      "correctOptionId": "b",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

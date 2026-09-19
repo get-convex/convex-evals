@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "001-data_modeling/005-many_to_many",
+  "coverageNotes": "Measures two independent relationship lookup prefixes. The join-row shape is supplied; relationship modeling and exclusion filters are not independently measured.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Bidirectional enrollment prefixes",
+      "context": "Using Convex SDK 1.44.0, `defineTable` and `v` are imported from `convex/server` and `convex/values` respectively. The following fields are fixed.\n\n```ts\nconst enrollments = defineTable({\n  studentId: v.id(\"students\"), courseId: v.id(\"courses\"),\n  enrollmentDate: v.number(), grade: v.optional(v.string()),\n});\n```\n\nThe two queries start their ranges with `q.eq(\"studentId\", studentId)` on `\"by_student\"` and `q.eq(\"courseId\", courseId)` on `\"by_course\"`.",
+      "question": "Which pair of declarations lets both index-range queries typecheck?",
+      "options": [
+        {
+          "id": "a",
+          "text": "enrollments.index(\"by_student\", [\"studentId\"]).index(\"by_course\", [\"courseId\"])",
+          "rationale": "Each independent lookup has its own leading ID field; a trailing second ID is not required."
+        },
+        {
+          "id": "b",
+          "text": "enrollments.index(\"by_student\", [\"studentId\"]).index(\"by_course\", [\"studentId\", \"courseId\"])",
+          "rationale": "The course query cannot skip studentId. Reversing sort order would not change that."
+        },
+        {
+          "id": "c",
+          "text": "enrollments.index(\"by_student\", [\"courseId\", \"studentId\"]).index(\"by_course\", [\"courseId\"])",
+          "rationale": "The student query cannot skip courseId."
+        },
+        {
+          "id": "d",
+          "text": "enrollments.index(\"by_student\", [\"studentId\"]).index(\"by_course\", [\"enrollmentDate\", \"courseId\"])",
+          "rationale": "The course query cannot skip enrollmentDate."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

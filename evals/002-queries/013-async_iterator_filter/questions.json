@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "002-queries/013-async_iterator_filter",
+  "coverageNotes": "Tests missing referenced-row behavior only; does not assess async iteration, a full team scan or app-specific soft-deletion policy.",
+  "questions": [
+    {
+      "id": "q013-1",
+      "concept": "ID references do not imply row existence",
+      "context": "Use Convex 1.44.0. The teams schema has adminId: v.id(\"users\"). A team T references user U. A completed mutation physically deletes U but makes no explicit change to T. No other writes occur. The query below is then called with T's ID.\n\n```ts\nimport { query } from \"./_generated/server\";\nimport { v } from \"convex/values\";\nimport { paginationOptsValidator, paginationResultValidator } from \"convex/server\";\nexport const candidate = query({\n  args: { teamId: v.id(\"teams\") },\n  handler: async (ctx, args) => {\n    const team = await ctx.db.get(\"teams\", args.teamId);\n    if (team === null) return { teamExists: false, admin: null };\n    const admin = await ctx.db.get(\"users\", team.adminId);\n    return { teamExists: true, admin };\n  },\n});\n```",
+      "question": "What does the query return?",
+      "options": [
+        {
+          "id": "a",
+          "text": "{ teamExists: true, admin: null }",
+          "rationale": "Correct: v.id validates an ID, not continued existence. The team remains and get returns null for its missing admin."
+        },
+        {
+          "id": "b",
+          "text": "{ teamExists: false, admin: null }",
+          "rationale": "Incorrect: deleting the user does not cascade to teams through v.id references."
+        },
+        {
+          "id": "c",
+          "text": "{ teamExists: true, admin: U }, with U\u2019s last stored fields.",
+          "rationale": "Incorrect: the stored ID does not retain a snapshot of the referenced document; get returns null after deletion."
+        },
+        {
+          "id": "d",
+          "text": "It throws when get(\"users\", team.adminId) finds no document.",
+          "rationale": "Incorrect: a valid ID whose row is missing yields null rather than a missing-row exception."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

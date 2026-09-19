@@ -9,6 +9,11 @@ permissions:
   contents: write
   pull-requests: read
 
+# Keep release/deploy jobs ordered; do not interrupt an in-flight deployment.
+concurrency:
+  group: production-release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -28,6 +33,11 @@ jobs:
 
       - name: Check guidelines formatting
         run: bun run format-check:guidelines
+
+      - name: Verify accepted decision bank and archived evidence
+        run: |
+          bun run decisions validate
+          node verification/decisions/verify.mjs
 
       - name: Build Release Files
         run: bun run buildRelease.ts

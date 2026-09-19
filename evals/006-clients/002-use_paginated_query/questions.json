@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "sourceEval": "006-clients/002-use_paginated_query",
+  "coverageNotes": "Applies the task-supplied backend to a supplied hook component; tests accumulated results and loadMore size. Does not measure independently implementing the backend, hook selection, or complete UI.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Pagination accumulation and requested page size",
+      "context": "Convex 1.44.0 and React 18.3.1. App is mounted inside a ConvexProvider with a valid ConvexReactClient. The table contains five items inserted separately in order A, B, C, D, E; it does not change during this sequence. The supplied backend and component are:\n\n```ts\nimport { paginationOptsValidator } from \"convex/server\";\nimport { query } from \"./_generated/server\";\n\nexport const paginateItems = query({\n  args: {\n    paginationOpts: paginationOptsValidator,\n  },\n  handler: async (ctx, args) => {\n    return ctx.db.query(\"items\").order(\"desc\").paginate(args.paginationOpts);\n  },\n});\n```\n\n```tsx\nimport React from \"react\";\nimport { usePaginatedQuery } from \"convex/react\";\nimport { api } from \"../convex/_generated/api\";\n\nexport default function App() {\n  const { results, status, loadMore } = usePaginatedQuery(\n    api.items.paginateItems, {}, { initialNumItems: 2 },\n  );\n  return <div>\n    <output>{JSON.stringify({ names: results.map(item => item.name), status })}</output>\n    <button disabled={status !== \"CanLoadMore\"} onClick={() => loadMore(1)}>One more</button>\n    <button disabled={status !== \"CanLoadMore\"} onClick={() => loadMore(3)}>Three more</button>\n  </div>;\n}\n```\n\nWait for the first page, click One more and wait for it, then click Three more and wait for it. Read the names after each completed load.",
+      "question": "Which three name lists does the component show?",
+      "options": [
+        {
+          "id": "a",
+          "text": "[E, D] → [C] → [B, A]",
+          "rationale": "This predicts replacement with the newest page. The hook accumulates earlier pages in results."
+        },
+        {
+          "id": "b",
+          "text": "[E, D] → [E, D, C, B] → [E, D, C, B, A]",
+          "rationale": "This treats initialNumItems as the size of every subsequent request. loadMore(1) requests one new item."
+        },
+        {
+          "id": "c",
+          "text": "[E, D] → [E, D, C] → [E, D, C, B, A]",
+          "rationale": "The first page has two items, loadMore(1) appends one, and loadMore(3) appends the remaining two."
+        },
+        {
+          "id": "d",
+          "text": "[E, D] → [E] → [E, D, C]",
+          "rationale": "This predicts a new query starting at the beginning for each loadMore call. The hook continues from its saved cursor."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/items.ts",
+        "answer/src/App.tsx",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

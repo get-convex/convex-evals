@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "002-queries/006-three_level_join",
+  "coverageNotes": "Tests the membership edge of an indexed join. Outer traversal, user fetching and record accumulation are supplied. Missing-reference policy, independent traversal design and standalone JavaScript deduplication are not assessed.",
+  "questions": [
+    {
+      "id": "q006-1",
+      "concept": "Follow an indexed relationship using the referenced team ID",
+      "context": "Using Convex 1.44.0, a query is building an organization’s admin map. It has already loaded that organization’s teams and is iterating over them. args.organizationId has type Id<\"organizations\">, and team._id has type Id<\"teams\">. The installed membership table is:\n\n```ts\nteamMembers: defineTable({\n  teamId: v.id(\"teams\"), userId: v.id(\"users\"),\n  role: v.union(v.literal(\"member\"), v.literal(\"admin\")),\n}).index(\"by_team_role\", [\"teamId\", \"role\"])\n```\n\nEach team may have several admins. Its memberships fit within query limits. The code after this block fetches the referenced users and adds them to the result map.",
+      "question": "Which block loads the admin memberships for each team?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nconst members = await ctx.db.query(\"teamMembers\")\n  .withIndex(\"by_team_role\", (q) => q.eq(\"role\", \"admin\"))\n  .collect();\n```",
+          "rationale": "A role-only range skips the leading teamId index field. It is rejected statically and at runtime."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nconst members = await ctx.db.query(\"teamMembers\")\n  .withIndex(\"by_team_role\", (q) => q.eq(\"teamId\", args.organizationId).eq(\"role\", \"admin\"))\n  .collect();\n```",
+          "rationale": "organizationId identifies an organization, while teamId stores team IDs. The typechecker rejects the incompatible ID type; a bypassed runtime query finds no matching memberships."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nconst members = await ctx.db.query(\"teamMembers\")\n  .withIndex(\"by_team_role\", (q) => q.eq(\"teamId\", team._id).eq(\"role\", \"admin\"))\n  .take(1);\n```",
+          "rationale": "take(1) reads at most one admin per team and loses additional admins on the same team."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nconst members = await ctx.db.query(\"teamMembers\")\n  .withIndex(\"by_team_role\", (q) => q.eq(\"teamId\", team._id).eq(\"role\", \"admin\"))\n  .collect();\n```",
+          "rationale": "The range follows each team’s ID, then fixes role to admin and collects all matching memberships. The common code resolves user IDs and deduplicates the record."
+        }
+      ],
+      "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "answer/convex/public.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

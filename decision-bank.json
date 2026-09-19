@@ -1,0 +1,1059 @@
+{
+  "schemaVersion": 1,
+  "codingEvalCount": 112,
+  "banks": [
+    {
+      "sourceEval": "000-fundamentals/000-empty_functions",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "76af4c605db85a61af840b3022f2172b1cfb04b8b80ab4496989e2ecfd69608c",
+      "bankSha256": "1ec902a6a25b06e435ab970e9a71e76536b74f41fafe0f23144ae1cb64034482"
+    },
+    {
+      "sourceEval": "000-fundamentals/001-basic_schema",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "bd9080cc85b04edff34415ee296a70afadebfe8d88b617f7ce450fb3c9e20c36",
+      "bankSha256": "53d4d0d3a945c1c25d155013602055ae4224aa07887e813f1b59639c4263348e"
+    },
+    {
+      "sourceEval": "000-fundamentals/002-basic_http_endpoint",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "dce1b9a54dc25b1d8e90938f2a2d7708c6ced4c95d015e037c22f5bb1becbc2e",
+      "bankSha256": "f925baba4b1eb1fe4e2e620f7ea8b29c8aec3ad09e05918cca18d4eb0c3c8e03"
+    },
+    {
+      "sourceEval": "000-fundamentals/004-scheduler",
+      "questionIds": [
+        "q1",
+        "q-cancel"
+      ],
+      "sourceFingerprint": "f504bef5dbcfb5b347d8107bbe87aa7f85f5abd242527199282c3946f294ad4a",
+      "bankSha256": "59a99fe022a5cbb1ece2f1e55461e53fbe2dd18f24092d96d62b8f22010ed523"
+    },
+    {
+      "sourceEval": "000-fundamentals/005-function_calling",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "7ffe0189b107ee94c1ab249517ebad246c90d2fe3566b087ef9a51fab8c96296",
+      "bankSha256": "8be9f6d1b85d50c108245b74fca2f19eba34c3bc674bb34e20ae4be2cf2db10a"
+    },
+    {
+      "sourceEval": "000-fundamentals/006-database_crud",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "88611fcd9e752ffe961d8071f5506cc561e53b992e576348932911b496d68be8",
+      "bankSha256": "19e7d3295aa1327d801fc577b7c87cf2fff0f4c57e2522e7053aeb535e4f0ff8"
+    },
+    {
+      "sourceEval": "000-fundamentals/007-basic_file_storage",
+      "questionIds": [
+        "q1",
+        "q-delete-both"
+      ],
+      "sourceFingerprint": "0073a9d9054ed4256df83c95b73460a9f00fff078cc54831d918187492ce3515",
+      "bankSha256": "f47702b76bbf442d930b2e4dafa43eb737aa9c6e4207e1238e8cc1665ae96fc4"
+    },
+    {
+      "sourceEval": "000-fundamentals/008-helper_fns",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "497a66de929de26291dbe1d21d76c023b4f823506f58a967f392267d87aeab5a",
+      "bankSha256": "a16d202499b4fa792b1c94f29eb1b04c862b963dd95c057f53034b2f9b424ee8"
+    },
+    {
+      "sourceEval": "000-fundamentals/010-staged_index",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "07bdde45cf17a61be9fd6ca2a3acb43eea44199dbefd7ab621111f1c0f8641c5",
+      "bankSha256": "37ef6b92be7f87b7e463cd49c98b07a5fb03d24c3f5b2f72558c5bce66b5d6e0"
+    },
+    {
+      "sourceEval": "001-data_modeling/000-simple_datatypes",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "6848cb9c7c5cceb0f8a6af877c8e4de5b4b28011ce24655a7f77282ff133cca1",
+      "bankSha256": "9298856963068d51cf1bac2a9329153fa9c3bccc51e6cbd09db4bfc43946a0fd"
+    },
+    {
+      "sourceEval": "001-data_modeling/001-compound_datatypes",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "2e7b00a64d12a2eebf6007198245080b3b2d9339d7c466c1c47ca1c43ba661b9",
+      "bankSha256": "feae32b37bd8d5ac0a111403130e9557624e6f7d04ec4d2a4f4b65ac3520aa0f"
+    },
+    {
+      "sourceEval": "001-data_modeling/002-foreign_key",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "b34b98248a36768eaa087ad84cbe3ed3c87a64631f0532cb368de5697dda1120",
+      "bankSha256": "271d06eac8c556792f0e2d0f6b293cd09b8a174983b9612d112c3fac750d483d"
+    },
+    {
+      "sourceEval": "001-data_modeling/003-single_column_index",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "8418a11c41eb519ced38ceda27c2a8f52fca25fd88d5c1e610aec6ca18d46830",
+      "bankSha256": "be87f1fd6e63d856e8adf9746ede72219df9590f432208592e3a21e240cc88e4"
+    },
+    {
+      "sourceEval": "001-data_modeling/004-multi_column_index",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "fa8f4ec5ab9af2db7fb151952a3ba09de55f6671b6e3606fd88d409dbe62157d",
+      "bankSha256": "6553e702159bc93c1a3e0372c133c75e07b3a6c91536c495aee400ffa3f3daa0"
+    },
+    {
+      "sourceEval": "001-data_modeling/005-many_to_many",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "0c0725fb65864ebdbd34cd10361efacfb362b961cdb7b9b2cb6948c4c69a4d02",
+      "bankSha256": "cb0cfab60729c5480599d6e85e3e540ffef7d7f05aba1d7df54ac86d7348da7b"
+    },
+    {
+      "sourceEval": "001-data_modeling/006-literals",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "9961a6d140e4d38d5f07e9fe6f4d0fe491ac000223aff3ae3f8c55db5cb49d52",
+      "bankSha256": "cf831b2c194911357f450dfc481145e3955edce1cff5b4ebf45bb05005a5aa1e"
+    },
+    {
+      "sourceEval": "001-data_modeling/007-schema_evolution",
+      "questionIds": [
+        "migration-optional-field",
+        "q1"
+      ],
+      "sourceFingerprint": "a3af7b03ae183ac9d2edb7b92dc03f46d05d9857e014b2ae662e05581ebf63ef",
+      "bankSha256": "f8c0be4ff7b41d44aa20b8786fab4467b2f53ff3e09528eab0e8b7277a1ba9a2"
+    },
+    {
+      "sourceEval": "001-data_modeling/008-nullable_partial",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "369d1daa5e16623cd3fc6d0909ddbd762db21834e34e20af375e0b802e1fada9",
+      "bankSha256": "4e937db4213569da103c9d7eea61a8e3041810fe907f048869e92851a5c61b3d"
+    },
+    {
+      "sourceEval": "001-data_modeling/010-discriminated_union",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "b2691d23ba92ed0287af6021156fe6124dced15630f2f486ed4417421e535059",
+      "bankSha256": "05b1589ce6d5a1f1ad707b10ce9074a5465ac4d9e2c8f16adc4050fd4815eade"
+    },
+    {
+      "sourceEval": "001-data_modeling/011-deconstruct_validators",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "12877c46549c49015c62e24b47b2ce7cc4846791a8c44cd9a58eb46ac82e3635",
+      "bankSha256": "6a2f0690cebf6c478b04c4cf8493627c4e323f71d0ca201e6726f4f33793dd96"
+    },
+    {
+      "sourceEval": "001-data_modeling/012-denormalize_for_index",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "fbe83a62985a5a11279233a8900ede81714852f5fc4faba13315be32d594a32f",
+      "bankSha256": "63108c4bc1c6881748734b3ed50318d1bab1091d5968212ddf285d094ae17594"
+    },
+    {
+      "sourceEval": "001-data_modeling/013-unbounded_array",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "2d4ba022709f8b316f5409a672a4c489ff3977562822dcf6e038b74e72773cd0",
+      "bankSha256": "52cbf1c4505578ce9ec7302779a4462006927f6958777f4e645adba06215be24"
+    },
+    {
+      "sourceEval": "001-data_modeling/015-validator_composition",
+      "questionIds": [
+        "q1",
+        "q2",
+        "q3"
+      ],
+      "sourceFingerprint": "8e3595e3b06484f186dede96f9d03dfa9553a1bd464198d95f59bfb87413a137",
+      "bankSha256": "d45b2749d5b273748ee470ed6aa4ef22873a01e983aa1d4131af23755096cb6c"
+    },
+    {
+      "sourceEval": "001-data_modeling/016-schema_document_validator",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "5c271122064ed6b58720208fc81c156571723dda180013a6cc2651564263378a",
+      "bankSha256": "d2540f85821b4ea5a92f0632c839b794d8f94213f4206dbeb9c26a3bde754df2"
+    },
+    {
+      "sourceEval": "002-queries/000-all_rows",
+      "questionIds": [
+        "q000-1"
+      ],
+      "sourceFingerprint": "cc8838189f3d473ee9ba07de8de2a1203522024899d611e4e0297da634e2c83e",
+      "bankSha256": "94bc5048014f15363ec152f2c674cabcd5a9b6fad5646f1e6cb9e5f1818f6b92"
+    },
+    {
+      "sourceEval": "002-queries/001-single_column_index",
+      "questionIds": [
+        "q001-1"
+      ],
+      "sourceFingerprint": "5ef802bb8310062902fe49692c2a0f6c8719252cfc47ce704d420998f038e25e",
+      "bankSha256": "96222fa8338314be39c47fd159f6986f3a935d5bbec0bea13607bce61a02c657"
+    },
+    {
+      "sourceEval": "002-queries/002-userspace_filter",
+      "questionIds": [
+        "q002-1"
+      ],
+      "sourceFingerprint": "7258fa8a7e9e2bfd9c089489efb6bd5946b59f5c712dddd7494748cad1d97f79",
+      "bankSha256": "04beca64dfa8c2009c2815d561558d39cc26aa3545a9981ffae9827243f7ecc7"
+    },
+    {
+      "sourceEval": "002-queries/003-multicolumn_equality",
+      "questionIds": [
+        "q003-1"
+      ],
+      "sourceFingerprint": "24387e39c4c976178b39050b22c66b382d22f22916476f1ce7f5c40db461aeb7",
+      "bankSha256": "a79fad0a971b855fbc4b28c23155d2b058ddd5c7540ff4f29bd539f04f5acbd4"
+    },
+    {
+      "sourceEval": "002-queries/004-range_condition",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "1ff94d90a1e3f3501b85a51821b5a096f4f4fb3561ca101c77d6631dff418e69",
+      "bankSha256": "d6a0844299eeb86a82326aecdcc898f89923f818cee0b383c2ca5e5d67695352"
+    },
+    {
+      "sourceEval": "002-queries/005-creation_time",
+      "questionIds": [
+        "q005-1"
+      ],
+      "sourceFingerprint": "3c3432aa1a2dce775048f9c6c731255dc5271f241535a372495d72fa490c2fc7",
+      "bankSha256": "4cea1eaf16b187e70442fcaaa242000a8a1a9090d1b86b51e7ae746a977c05fe"
+    },
+    {
+      "sourceEval": "002-queries/006-three_level_join",
+      "questionIds": [
+        "q006-1"
+      ],
+      "sourceFingerprint": "4cafba6f0e420035090569a13a328425bb5acb54864439ae17a5b07640f9053d",
+      "bankSha256": "2ca993aad0b955876f1534723564bac9a72bdaa3366adf51469066818e9fafaf"
+    },
+    {
+      "sourceEval": "002-queries/009-text_search",
+      "questionIds": [
+        "q009-1"
+      ],
+      "sourceFingerprint": "7c16341d810a201a6386f31b5cd66ef25827ed97b16b05f172cadc840071b948",
+      "bankSha256": "b111c320e4e95eda2f9cfd79d0dbbccbc422a58157d69c0b1f9b1acd5bd0e68a"
+    },
+    {
+      "sourceEval": "002-queries/010-parallel_fetch",
+      "questionIds": [
+        "q010-native-iteration"
+      ],
+      "sourceFingerprint": "2b62e958ce0eb3a3c0b167c2b57225a7e70a391f1bf5e7c9ca7643aa04fb564b",
+      "bankSha256": "d21c71328ed0e119aa70fa048c69af9a4eebbfb45f50f829f430e6db831f451e"
+    },
+    {
+      "sourceEval": "002-queries/011-denormalize_pagination",
+      "questionIds": [
+        "q011-1"
+      ],
+      "sourceFingerprint": "7f5374021c0c0b79d34351111827ee38298fa08df4bb400c51730dbbd07378e0",
+      "bankSha256": "53dfc2595199e98ad9e76e07ffa55a1f86765ac960c6cad00c7661ffb9e95bd6"
+    },
+    {
+      "sourceEval": "002-queries/012-index_and_filter",
+      "questionIds": [
+        "q012-1"
+      ],
+      "sourceFingerprint": "3cae7cd4aafa6a7e84cac2196b521ed824bf5c7654ffb872f50665dff3d150de",
+      "bankSha256": "50bbd559b0c58cc32836d9579d738bfd8c79b0dab6147874beaf90b273fabf8d"
+    },
+    {
+      "sourceEval": "002-queries/013-async_iterator_filter",
+      "questionIds": [
+        "q013-1"
+      ],
+      "sourceFingerprint": "449bc5c3330adde49d9be34cc2ce9c7209523a70ae68203bf4ba88c2262b3165",
+      "bankSha256": "95460fe21e17771ab4350c95331524bcd400e161332627c5c23d115d4bfe5d6d"
+    },
+    {
+      "sourceEval": "002-queries/014-select_distinct",
+      "questionIds": [
+        "q014-1"
+      ],
+      "sourceFingerprint": "fef1386b7689d8d354ade69687936351b14604a6bd8a6f66a4812d62fa5438f4",
+      "bankSha256": "52f74c6931173b05115e9ecfe79c004aaa365b666632571a74252e64a8f26dad"
+    },
+    {
+      "sourceEval": "002-queries/015-pagination",
+      "questionIds": [
+        "q015-1"
+      ],
+      "sourceFingerprint": "7423fe909797f3411e619191f8c632a9056e1c649f02b28540a0f880dd059210",
+      "bankSha256": "9e7c8243d4e26b3742534c4133d34a441a4b71e77eb72aea344d7979199a2530"
+    },
+    {
+      "sourceEval": "002-queries/016-pagination_index",
+      "questionIds": [
+        "q016-1"
+      ],
+      "sourceFingerprint": "16319bedfb527e8a3c75ec5577ef922fca92074859522c613b2290633ff04be6",
+      "bankSha256": "8dc4981c541511af6df3717f04cafff041f1bb292c820494dfe1f69645b6c0b4"
+    },
+    {
+      "sourceEval": "002-queries/017-pagination_join",
+      "questionIds": [
+        "q017-1"
+      ],
+      "sourceFingerprint": "b0128979be5aaed7bd59fe5b842a321d25e044de7c40f5c685633520cadb7e54",
+      "bankSha256": "892656e03a1b77b0aadfd7a42274c06f404f1907dbb7d604c90372cb58830e7a"
+    },
+    {
+      "sourceEval": "002-queries/018-pagination_returns_validator",
+      "questionIds": [
+        "q018-1"
+      ],
+      "sourceFingerprint": "ab6d2a2f33f95ff41ddceaa51cf68affc260fe04c614c30d3337128d328a6ac9",
+      "bankSha256": "d832fa39cbce4442fbf61bcb90af4b9613e3f6fc09b21391c23190683bdfb2b5"
+    },
+    {
+      "sourceEval": "002-queries/019-no_scheduler",
+      "questionIds": [
+        "q019-1"
+      ],
+      "sourceFingerprint": "7ac0f97832105edbaf4ce27a06d16bb27c954a9c705e695ef23f8ee0652d2886",
+      "bankSha256": "5891be3536cd6c2dca6b0094633b9ba984db82fc715806f880a337824ea62752"
+    },
+    {
+      "sourceEval": "002-queries/022-unbounded_query_no_collect",
+      "questionIds": [
+        "q022-1"
+      ],
+      "sourceFingerprint": "a515106f88dca181101d353f2b1745b9f52edfabe8733ab2b92c435616f21f9c",
+      "bankSha256": "ed0e1fed8977df7622ee9e9f40696acde7ac33aabbd153e8818e9fe5b8fa48c2"
+    },
+    {
+      "sourceEval": "002-queries/023-count_without_collect",
+      "questionIds": [
+        "q023-1"
+      ],
+      "sourceFingerprint": "129995977f82a90433dbc66f4315128a4a7737df1e0429f4eb5f60da205913d1",
+      "bankSha256": "f9eb8de546e5a9352cb10ba94425ad426dd66d9e0300e30757b0f6ecd8d16210"
+    },
+    {
+      "sourceEval": "002-queries/024-time_window_argument",
+      "questionIds": [
+        "q024-1"
+      ],
+      "sourceFingerprint": "d850fce40de81659fa204516a9c03f61155d250474db6f8d66c42910bf2dae50",
+      "bankSha256": "67b0943ff8da322520969a00106e01cb0a63688491f0a76ba4c7761a4c0b0274"
+    },
+    {
+      "sourceEval": "002-queries/026-scheduled_flag_materialization",
+      "questionIds": [
+        "q026-1"
+      ],
+      "sourceFingerprint": "affa28ff014196d079013ba0b18a44e9dd44da9544ff601e59228ce3738860d8",
+      "bankSha256": "d169256509d2e97f54aee71302dbe761dbd80d7c5e2759b940e6ede45d94f838"
+    },
+    {
+      "sourceEval": "002-queries/027-budgeted_filtered_pagination",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "d70515de2e7f1812fd7d321bca07614cd23ded5cb021e04274a09a4d6dd31e43",
+      "bankSha256": "9fb6a29a90a981d805145cb64bc9b99232c9f7cd86283bafb4c31d24fb96b567"
+    },
+    {
+      "sourceEval": "003-mutations/000-delete",
+      "questionIds": [
+        "q000-1"
+      ],
+      "sourceFingerprint": "590797e5f01796968f49313ab3425373fb56a57bb68dcbc64aa07eaec72b023c",
+      "bankSha256": "e785c1933c9f805f0af1cb358070ffabe34fc83ac64f72519cafa93550f7a6a1"
+    },
+    {
+      "sourceEval": "003-mutations/001-insert",
+      "questionIds": [
+        "q001-1"
+      ],
+      "sourceFingerprint": "797d5e4538ac085a9071f4e7aa028e650d5e73eeae51079b5de312f99be7edda",
+      "bankSha256": "3b12c1e4c2c522fdf29c7c9a922d4919f9fdba4e31df84f2cfc9c5118bdfcc7a"
+    },
+    {
+      "sourceEval": "003-mutations/003-patch_nested",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "eacc9d3147eef43e0b09bbbae87b94c2f0c8b3cc3951136f4ec0f4d44855ad7a",
+      "bankSha256": "1aa21ca7ca31a08d7170f7b9d8606ec0ab2aedd13b92064577d5fff575d13752"
+    },
+    {
+      "sourceEval": "003-mutations/004-cascade_delete",
+      "questionIds": [
+        "q004-1"
+      ],
+      "sourceFingerprint": "a7436bf584e567034ce1dd9d789e758716600a5b9fefc60ce9621da90419eb8e",
+      "bankSha256": "e097e9ad6ddfa692445c460d89a9cb136be70693935ad2943c79bfff50df4103"
+    },
+    {
+      "sourceEval": "003-mutations/006-no_storage",
+      "questionIds": [
+        "q006-1"
+      ],
+      "sourceFingerprint": "12ce7eed3153970bb1f0e6f864acef9ede79462d2e76f55d5101b9300332446f",
+      "bankSha256": "ae01ed0a345fe2fe6c8f73ee7e595e74a3ebfb4e3ec2f0c0d6dfd11787646c9a"
+    },
+    {
+      "sourceEval": "003-mutations/007-batch_delete_self_schedule",
+      "questionIds": [
+        "q007-1"
+      ],
+      "sourceFingerprint": "494428dccc330d40fc066417eb33783426bee2274507b3b74245bee799933503",
+      "bankSha256": "a092ea79ed558ad3e1300659a532f9612616c075aea9662158960bd8e3cc5eb1"
+    },
+    {
+      "sourceEval": "003-mutations/008-atomic_idempotent_transfer",
+      "questionIds": [
+        "q008-occ"
+      ],
+      "sourceFingerprint": "d40f4c5bbf4206a4f42ecb5885866954f88969d9124ca556bf48058627182b34",
+      "bankSha256": "2be4d42bec95094e60198b6518d50c68a2d4811badcbd619ef90dd0142c59d9b"
+    },
+    {
+      "sourceEval": "004-actions/000-fetch",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "266253cf5e777f6a9a2e5d48ba5823e2df95b894a2517001da23b93c6c28ae09",
+      "bankSha256": "506819b429ad0593996e22a1cefc717d74a354faccf70147daab6570be2170f0"
+    },
+    {
+      "sourceEval": "004-actions/002-run_query_mutation",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "341102780db26dc75f678f259ec436ef730b53a8edfdd052449114fc7fab5b0c",
+      "bankSha256": "bfcc62b52ad25305f611f674c821404bf4dcf495adfd9aeb2c7432875b5b650b"
+    },
+    {
+      "sourceEval": "004-actions/003-mutation_schedule_action",
+      "questionIds": [
+        "q-schedule-commit"
+      ],
+      "sourceFingerprint": "4db3dfa1f1b3f86a73104b9625bd85fb3f03f81e749653d8c5e25d9d2eff76e5",
+      "bankSha256": "ebdf5692f1804dbd38ace0c59c66f3880b271a7b6bf8b355a993337d2bb371d2"
+    },
+    {
+      "sourceEval": "004-actions/004-storage",
+      "questionIds": [
+        "q1",
+        "q2"
+      ],
+      "sourceFingerprint": "c4b356b3ad23816dddd52bdc40c99a91de71ae439b80304116164eb00537c308",
+      "bankSha256": "f41a32e00ec0c7872ba40c84173f1b2699ecfac98b0a7037de647f9b9fcddf66"
+    },
+    {
+      "sourceEval": "004-actions/005-storage_http_action",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "24d19dc3a78781041c44ff6c73724a2d00cd59cce4da6eb2123d868c18ac46a2",
+      "bankSha256": "c4d08b5c61f2fdc7da4cc78222d7d9832d2f281794b8aa606b70c0775a89a584"
+    },
+    {
+      "sourceEval": "004-actions/006-node",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "cbb6d59500f5f1f2c7c9e033e4a48c8a7d1dc53955bc45421b95216c4d7e8640",
+      "bankSha256": "e63b5c45349020d84ceffe9f0948e71f62e98d3506ad8471cff059dc3b3661bd"
+    },
+    {
+      "sourceEval": "004-actions/008-vector_search_hydration",
+      "questionIds": [
+        "q1",
+        "q2"
+      ],
+      "sourceFingerprint": "a077cc7571c5ac311fc1b735f373106cc7f9b12302a50691bd558c2e64e08bfd",
+      "bankSha256": "dafd5a95af43532fc772bcd82c87327176d9f61d5f0cb0aff855bfb1d0c53b11"
+    },
+    {
+      "sourceEval": "004-actions/009-webhook_state_machine",
+      "questionIds": [
+        "q2"
+      ],
+      "sourceFingerprint": "402820a67d64f9f1424782bd66816bd79356eafd605d12572613a3429e165ca6",
+      "bankSha256": "54e0d17857e8b60b40d8f564693c993da4040a85b460d6c04adaea346ca633fd"
+    },
+    {
+      "sourceEval": "005-idioms/001-file_organization",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "bb81f5d12ef4c5e345841d4f5b61d4d46709c1fd1195235daced625a13eb8a88",
+      "bankSha256": "0a244cf9041aaeca38f79c33a38a49f977e413bab9475935bfd5ecbe166a62b8"
+    },
+    {
+      "sourceEval": "005-idioms/004-authentication_guard",
+      "questionIds": [
+        "q1",
+        "q-identity-key"
+      ],
+      "sourceFingerprint": "64041e86b67a45c0835bdfaadab1817ceb9044b95e67fd98a2eaae6bafd64e95",
+      "bankSha256": "aa155e32c6d36406b303bcec264a00ac4f37b9b2c114ed15781f423262d05544"
+    },
+    {
+      "sourceEval": "005-idioms/006-typed_env",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "d898e879db94dfaac46648877da9717fd7e95f557780b803b4190391f5e6daf7",
+      "bankSha256": "ccff05afb52dc1fd208647c9adaff162d25888c4de417aa3d41e14b362fab6a3"
+    },
+    {
+      "sourceEval": "005-idioms/008-nested_transaction_limits",
+      "questionIds": [
+        "q1",
+        "caught-child-outcome"
+      ],
+      "sourceFingerprint": "14141734e4b8628c36a379726aac8fa9269c0e564066598cb9af1172decb45a8",
+      "bankSha256": "8707300cd71cf5984f3b517da092cdd4524798cb2e1375e42a7017114679443f"
+    },
+    {
+      "sourceEval": "005-idioms/009-platform_env_urls",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "72fc23d88c8e3b9024d819f0a51a32aa7f1cf1e1a3cc4c0f4b675518dd10f474",
+      "bankSha256": "a728f5bd2be2d9b74eb48e7b50852914015f9640a84205887094aa74a77f6e12"
+    },
+    {
+      "sourceEval": "006-clients/000-use_query",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "364fd11a7a33ab1c5bccd4168b1d74daa0e028ebecbc7cef3190c7bc7744e002",
+      "bankSha256": "61888faf7b3374e166089210d3acdd1856188d7ebb55af3697a3e7e930f60552"
+    },
+    {
+      "sourceEval": "006-clients/001-use_mutation",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "94a18f70c2099981d4e3680ba0b5482f6ab602e9c71d47c90be83afadbf3c4f7",
+      "bankSha256": "b4ddd7ea64cf5a8e4cfdcbce7895932069d7f6e06c057f6acae7b43d3d5fe398"
+    },
+    {
+      "sourceEval": "006-clients/002-use_paginated_query",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "3bd57116c7a99fdcbf1977eb8516291a0d36641e19e71997bbbbf1c6c1a059de",
+      "bankSha256": "1c63d82249e2c0a35555967cdff396f520123380ce7acb4190adee88f9be2d95"
+    },
+    {
+      "sourceEval": "007-components/000-aggregate_leaderboard",
+      "questionIds": [
+        "q1",
+        "q2"
+      ],
+      "sourceFingerprint": "1ee7558f129f210b96cc6f44c97bd13f3b9d5fbd3eb2c5c5730516eb8d79d4ce",
+      "bankSha256": "a62bdf2d09d46557e3d1e7a1e366d466a6448330d7392a72c329af6ef92de855"
+    },
+    {
+      "sourceEval": "007-components/001-transactional_rate_limit",
+      "questionIds": [
+        "q1",
+        "q2"
+      ],
+      "sourceFingerprint": "49162369278f95efaf04a57870426ba618289fa1293ab64400433e7b654fe819",
+      "bankSha256": "cec75d16da3ad74b1bbdc03f64fcdd6214d4099fe527e22d3c57e5e53fed87bd"
+    },
+    {
+      "sourceEval": "007-components/002-component_subtransaction_boundary",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "47bdcbb3a4689b7717c0eef85b0128d70f7a033b4d396a5a7c002a25ff1455aa",
+      "bankSha256": "1dc534a5692ee7406d67c749ea39a54d99e0028b9d3792a3343962000f8f61a5"
+    },
+    {
+      "sourceEval": "007-components/003-function_handle_callback",
+      "questionIds": [
+        "q1",
+        "q-invoke-handle"
+      ],
+      "sourceFingerprint": "c74d8a34124399242b86989b647791fa1aac8a7a48e4f5a3d61d157999a9c263",
+      "bankSha256": "9ec39e8d5c1cf92579bb2a9e981c9d4708ff977e8f9e4ac9061f30cafc342e71"
+    },
+    {
+      "sourceEval": "007-components/004-choose_aggregate",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "4942e389db16fb24532aeaa43b2ef6e9e26a58226a2fe0275137a6e22dd40586",
+      "bankSha256": "b5b57ebbeb08fb78a96da5f469b190a2d3cb28af54f31cc30e14adf600f0c319"
+    },
+    {
+      "sourceEval": "007-components/005-choose_rate_limiter",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "5819889cabf3abe4cf95141ce2de8c3644b60e0517a67fdf2cae09ff420bcb64",
+      "bankSha256": "1007966d95de257620b6e412f62afa9a160f91aa65a3f0f9d2f9c490b2936c74"
+    },
+    {
+      "sourceEval": "007-components/006-choose_aggregate_offsets",
+      "questionIds": [
+        "q-position-entry"
+      ],
+      "sourceFingerprint": "e59fe3b4c0462e77a3c0f94167e3711f243149b5cc78741f25e1b78b46dda2b3",
+      "bankSha256": "c1d50f1004a85cb3261b0dd3f2755b26259d67b0aeb67a1a83fd1fd49b0b84d8"
+    },
+    {
+      "sourceEval": "007-components/007-choose_aggregate_range_sums",
+      "questionIds": [
+        "q-weighted-time-config"
+      ],
+      "sourceFingerprint": "91df07e8b02a9b8c1f3e3ad8f7bd041665942f99fad55a23ca0c79582b6a89b8",
+      "bankSha256": "8a0dd8f124a72545bac3969d6c9f091ebfcf3c85696cb97be812b34e6c707095"
+    },
+    {
+      "sourceEval": "007-components/008-choose_rate_limiter_cooldown",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "160314a50c4ad86cabf24253012e6aeda26925c1772307c90cd9ab08286456c1",
+      "bankSha256": "d67bc3f788b2ad0fc8b98798215b5fec20cd330b028022fa0b041eeeb490db34"
+    },
+    {
+      "sourceEval": "007-components/009-choose_rate_limiter_burst",
+      "questionIds": [
+        "q-burst-config"
+      ],
+      "sourceFingerprint": "d5cd2fc3f1cc6b7d1c7999d6c19283d0b8046adba5337c4deed1e09c81d5b145",
+      "bankSha256": "70bca7094abf20ac58388afdc4865cb58936bed902ee8cb07b32f3088b4ca29c"
+    },
+    {
+      "sourceEval": "007-components/010-workpool_completion_tracking",
+      "questionIds": [
+        "q1",
+        "q2"
+      ],
+      "sourceFingerprint": "fc924fbb171f8694ab66d75eca2e90d7709f4ad4b164b42dc92f560b794fd713",
+      "bankSha256": "b885f3ad3884ea020c72c4e5f1ef5503287510be1e826999b4f4b3e41a317edb"
+    },
+    {
+      "sourceEval": "007-components/011-choose_workpool_throttle",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "d5890d3f90df8426d983653fe3eee263ecb738374a632cca2957076737444405",
+      "bankSha256": "2ca9ac3f4b598526fadcd690ae554376b75e53c2c66d7c22f38fc5a06d941d67"
+    },
+    {
+      "sourceEval": "007-components/012-choose_workpool_serialize",
+      "questionIds": [
+        "q-pool-pause"
+      ],
+      "sourceFingerprint": "6da5836d05be9926cc364085f3cd72711a7a3ae0be8710e2048da38dc1338ea5",
+      "bankSha256": "66f1b09f2c3c509afbb09f5169b3fe933bc221fc5b21c1d1ffcdd937cb3968d4"
+    },
+    {
+      "sourceEval": "007-components/014-agent_thread_persistence",
+      "questionIds": [
+        "q1",
+        "q2"
+      ],
+      "sourceFingerprint": "6e0a67fe6adc6910f8741125006d2bbf1cbc3e2bac2d931aead7a31540f4f082",
+      "bankSha256": "9417c049c768283c4be7edaff0fd62b5604c3fdc7ca9b255d841ea778ccead1f"
+    },
+    {
+      "sourceEval": "007-components/015-choose_agent_threads",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "ffaa02415774c33ec4101452dac71849da60df3540c0e8721ca4c2a45e08bfc2",
+      "bankSha256": "84e031f0b7272c7523d9ce87909d625e3e1587f17a80e290e1ab8d74f40ad57d"
+    },
+    {
+      "sourceEval": "007-components/016-choose_agent_tools",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "20721ff17f1971f890c0e85c05f5b39c86d7d1cdff5a6197dce2c8dc4ca7a845",
+      "bankSha256": "98b39b00578fe036c379510c8882d24f087f1e536a7d5d9d308b6348774aabd6"
+    },
+    {
+      "sourceEval": "007-components/017-choose_agent_multi",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "c7945e5cca93cc611adfacbb34c364213c4f50e76ba00b6fa79ac27d2a80d3d3",
+      "bankSha256": "cd12de18255feffb9771b60a7a177af903ae8e37bda78c5530624829258fc48b"
+    },
+    {
+      "sourceEval": "007-components/018-presence_room_tracking",
+      "questionIds": [
+        "q1",
+        "q2"
+      ],
+      "sourceFingerprint": "8c1df348c6707a9c41ddd5adb7e570d05351b9e025278a3e63ae8abf8bba7c26",
+      "bankSha256": "3be75aa950607e9377870aad213e6ba40f124387ae8144b1cc521da608db9edc"
+    },
+    {
+      "sourceEval": "007-components/019-choose_presence_online",
+      "questionIds": [
+        "q1"
+      ],
+      "sourceFingerprint": "465ec0aecb98d37bce7494c3f276cb7fc70cece4a33014f40292e0158fe85c6f",
+      "bankSha256": "b053de4abb90768f91490a7fd2bc67784f58cea8499249c22808f8958603b1ed"
+    },
+    {
+      "sourceEval": "007-components/022-action_cache",
+      "questionIds": [
+        "q1",
+        "q2"
+      ],
+      "sourceFingerprint": "2c43f5977206ed7c18ebd57f7322fd1bd32abb2f328487588e2432dae9a68eee",
+      "bankSha256": "e772a8cb187777e9cabe2992c3888132eade8d020d34e125b58823ab2a92e50b"
+    }
+  ],
+  "omittedSources": [
+    {
+      "sourceEval": "000-fundamentals/003-crons",
+      "coverageLimits": [
+        "Exact labels and log strings are incidental app requirements. Optional string validation is covered elsewhere.",
+        "Monthly UTC cron field notation remains source coding coverage. The considered q-calendar split was omitted because the complete Convex API was supplied and only generic cron-string interpretation varied.",
+        "Redundant candidate omitted: q1. Shared knowledge remains at 002-queries/026-scheduled_flag_materialization/q026-1."
+      ],
+      "decisions": [
+        {
+          "id": "q1",
+          "reason": "Narrowed the mixed original to the useful Convex interval API target and preserved q1. A generic calendar-expression split was discarded because it added generic cron notation coverage, not a distinct Convex API decision. Final cross-bank selection: The newer scheduled-materialization interval-registration question tests the same native interval API with three plausible API-shape misconceptions. This foundational version spends two distractors on arithmetic duration mistakes. Keep the more focused API question rather than double-counting it. Shared coverage: 002-queries/026-scheduled_flag_materialization/q026-1."
+        }
+      ]
+    },
+    {
+      "sourceEval": "000-fundamentals/009-returns_validator",
+      "coverageLimits": [
+        "The raw-document system-fields target is covered more directly by 001-data_modeling/016-schema_document_validator. The source mixed-array handler order and error messages remain implementation requirements.",
+        "Redundant candidate omitted: q1. Shared knowledge remains at 001-data_modeling/010-discriminated_union/q1."
+      ],
+      "decisions": [
+        {
+          "id": "q1",
+          "reason": "Uses exact runtime validator expressions with literal-tag/payload controls; raw Post validator is shared. Final cross-bank selection: Repeats literal-discriminant and correlated-required-payload construction tested by the dedicated data-model union item. Both supply where the expression is used; neither independently tests wiring a return validator. Keep one representative of union construction and record return-boundary wiring as unconverted. Shared coverage: 001-data_modeling/010-discriminated_union/q1."
+        }
+      ]
+    },
+    {
+      "sourceEval": "001-data_modeling/009-normalize_json",
+      "coverageLimits": [
+        "Full normalization from nested organizational JSON into the organizations, departments and employees tables remains unconverted.",
+        "Optional manager relationship and optional employee fields remain unconverted.",
+        "Required organization/department/employee relationships and the exact single-field index design remain unconverted."
+      ],
+      "decisions": [
+        {
+          "id": "q1",
+          "reason": "The source TASK already supplies v.id relationships instead of inlined data. The narrowed question drops that condition and repeats the table-specific-ID/string/wrong-table target in foreign_key/q1. Retired after independent review B1."
+        }
+      ]
+    },
+    {
+      "sourceEval": "001-data_modeling/014-heartbeat_isolation",
+      "coverageLimits": [
+        "The separate-presence architecture that isolates frequent heartbeat writes from stable profile documents remains unconverted.",
+        "Implementing the complete indexed read/patch-or-insert mutation, including all missing-row and existing-row behavior, remains unconverted.",
+        "The inclusive online-window query and joining active presence records to user profiles remain unconverted."
+      ],
+      "decisions": [
+        {
+          "id": "q1",
+          "reason": "The narrowed question supplies separate presence storage, indexed lookup and missing-row insertion, leaving the same-row patch/replace/insert and document-identity target already tested by database_crud/q1. Retired after independent review B2."
+        }
+      ]
+    },
+    {
+      "sourceEval": "002-queries/007-aggregation",
+      "coverageLimits": [
+        "Quantity-weighted sums, average division, decimal rounding and numeric formatting are ordinary application logic. Indexed small-range reading is covered elsewhere."
+      ],
+      "decisions": [
+        {
+          "id": "q007-1",
+          "reason": "Retire because its alternatives test explicit arithmetic and formatting rules, with an obviously wrong string-concatenation distractor. The small indexed read overlaps retained collect/index questions; no new aggregation-component requirement is invented."
+        }
+      ]
+    },
+    {
+      "sourceEval": "002-queries/008-group_by",
+      "coverageLimits": [
+        "Grouping/sorting/rounding is generic implementation coverage. Do not assign the eval extra weight for re-testing compound equality already present elsewhere."
+      ],
+      "decisions": [
+        {
+          "id": "q008-1",
+          "reason": "Retire because its alternatives contradict explicit grouping, projection and sorting rules without requiring Convex-specific knowledge. Compound index scope overlaps the retained equality question; independent grouping implementation remains coding-only."
+        }
+      ]
+    },
+    {
+      "sourceEval": "002-queries/020-text_search_join",
+      "coverageLimits": [
+        "Unknown Author is an application policy; native search declaration already covered by 009-text_search.",
+        "Redundant candidate omitted: q020-1. Shared knowledge remains at 002-queries/013-async_iterator_filter/q013-1."
+      ],
+      "decisions": [
+        {
+          "id": "q020-1",
+          "reason": "Reframed as one focused Convex target with parallel alternatives and exact local evidence; unrelated source conditions are held constant. Final cross-bank selection: Repeats the same deleted-reference outcome as the shorter teams/admin item: no automatic cascade, no stored document snapshot, and get returns null. Search syntax is supplied and adds no tested distinction. Shared coverage: 002-queries/013-async_iterator_filter/q013-1."
+        }
+      ]
+    },
+    {
+      "sourceEval": "002-queries/021-intersection",
+      "coverageLimits": [
+        "Outer result formatting and ordinary active/published business selection; overlap with 003 compound prefix should be accounted for in scoring.",
+        "Shared equality-prefix validity only. Building the active-user traversal, compound query callback and result projection remains unconverted."
+      ],
+      "decisions": [
+        {
+          "id": "q021-1",
+          "reason": "Its distinctive Convex requirement is the authorId/published compound-index prefix, already covered by the focused compound-prefix item. Outer active-user selection and projection are supplied application logic. Retain the source as supporting overlap, without another index-prefix decision."
+        }
+      ]
+    },
+    {
+      "sourceEval": "002-queries/025-ordering_tiebreak",
+      "coverageLimits": [
+        "Schema authoring, input validation for n and full leaderboard implementation.",
+        "Shared implicit creation-time suffix and descending order within equal index values. The complete points-descending top-N query is not independently tested by that item."
+      ],
+      "decisions": [
+        {
+          "id": "q025-1",
+          "reason": "Implicit creation-time suffix and reversal of the complete descending index order are already covered by the focused index-order item. The source AST grader also rejects equivalent split-variable chains, so its lexical shape is not a new knowledge target."
+        }
+      ]
+    },
+    {
+      "sourceEval": "003-mutations/002-patch",
+      "coverageLimits": [
+        "Independent production of a mutation, argument validation and error wording remain implementation skills. Missing-row behavior has an execution control but no separate decision score."
+      ],
+      "decisions": [
+        {
+          "id": "q002-1",
+          "reason": "Shallow patch preservation is covered more strongly by 003-patch_nested/q1. The old read-before-patch premise was too strong: a direct awaited patch rejects a valid deleted ID, confirmed by a local control."
+        }
+      ]
+    },
+    {
+      "sourceEval": "003-mutations/005-cascade_delete_nested",
+      "coverageLimits": [
+        "Discovering all multi-hop and cross-user dependencies and implementing efficient deletion remain unconverted. Missing-user behavior is underspecified by TASK and stronger in grader."
+      ],
+      "decisions": [
+        {
+          "id": "q005-1",
+          "reason": "Generic graph enumeration; Convex manual-cascade knowledge is shared with 004-cascade_delete/q004-1. Multi-hop implementation remains unconverted."
+        },
+        {
+          "id": "q005-2",
+          "reason": "Duplicate of 004-cascade_delete/q004-2. Deleting the parent first does not permit partial commits in a failed mutation; the old rationale was false."
+        }
+      ]
+    },
+    {
+      "sourceEval": "003-mutations/009-budget_aware_batch_delete",
+      "coverageLimits": [
+        "Budget-aware deletion implementation remains unconverted: applying live transaction budgets and constructing bounded continuations across workloads under the source-provided API-reference condition. The accepted scheduled-boundary item covers separate transactions, not this implementation target. No accepted decision item replaces the retired metrics target.",
+        "Finite backend scenarios do not prove universal resource safety. Real deletion traces reach bytesRead and documentsRead reserves; bytesWritten/documentsWritten thresholds are isolated in predicate controls rather than separate natural limiting backend cases."
+      ],
+      "decisions": [
+        {
+          "id": "q009-1",
+          "reason": "Retired for Convex-knowledge relevance after independent review R1. The final question supplies the native metrics API, snapshot meaning and stop/schedule-once contract; its alternatives mainly test await, refreshing a snapshot, and return versus continuing. The exact key, failed alternatives and repairs are verified correct. This is not a runtime failure."
+        },
+        {
+          "id": "q009-2",
+          "reason": "The reserve OR policy is supplied common setup and separately exercised by predicate controls, not scored as generic Boolean knowledge."
+        }
+      ]
+    },
+    {
+      "sourceEval": "004-actions/001-run_mutation",
+      "coverageLimits": [
+        "Mutation authoring, schema creation, return type annotations and full HTTP implementation are supplied.",
+        "Redundant candidate omitted: q2. Shared knowledge remains at 004-actions/002-run_query_mutation/q1."
+      ],
+      "decisions": [
+        {
+          "id": "q1",
+          "reason": "Retired an incidental insert-and-return-ID application requirement. q2 supplies that helper and retains the action-to-database boundary."
+        },
+        {
+          "id": "q2",
+          "reason": "Rewritten around one supplied Convex boundary with parallel alternatives and exact local execution; incidental application requirements are held constant. Final cross-bank selection: The action database-boundary item covers invoking a supplied save mutation with runMutation after fetching, as well as the read/query boundary. Keep that representative instead of counting the same action-to-mutation dispatch knowledge twice. The supplied writer returns an inserted ID; implementing that writer and the complete fetch-and-save function remain unconverted by this shared recognition coverage. Shared coverage: 004-actions/002-run_query_mutation/q1."
+        }
+      ]
+    },
+    {
+      "sourceEval": "004-actions/007-http_action_routing",
+      "coverageLimits": [
+        "This source has no remaining decision question. Its HTTP method and literal-prefix knowledge is shared with the independently accepted 000-fundamentals/002-basic_http_endpoint/q1 in foundations-01. Specific endpoint names, payload implementation and HEAD behavior are not separately measured."
+      ],
+      "decisions": [
+        {
+          "id": "q1",
+          "reason": "Retired by parent reconciliation because the method and literal-prefix target duplicates the independently accepted foundations-01 item 000-fundamentals/002-basic_http_endpoint/q1. Preserve one representative instead of double-weighting this knowledge."
+        }
+      ]
+    },
+    {
+      "sourceEval": "005-idioms/000-internal_fns",
+      "coverageLimits": [
+        "Stats constants, log messages and event timestamp selection remain coding behavior rather than independent knowledge questions.",
+        "Admin-client invocation is explicitly supplied by the source TASK and deliberately omitted from this decision bank. The linked ordinary-client visibility, server dispatch and scheduling questions do not directly test admin-client callability."
+      ],
+      "decisions": [
+        {
+          "id": "q1",
+          "reason": "Ordinary-client builder visibility is shared with empty_functions; server-context dispatch and scheduling are shared with function_calling and no_scheduler. These replacements do not directly test admin-client invocation. That source-supplied capability is deliberately omitted rather than claimed as equivalent coverage."
+        },
+        {
+          "id": "q2",
+          "reason": "The timestamp/null results are incidental outputs specified by this app, not a separate Convex knowledge target."
+        }
+      ]
+    },
+    {
+      "sourceEval": "005-idioms/002-batch_queries",
+      "coverageLimits": [
+        "The specific empty result and indexed read bodies stay supplied. The QueryCtx helper target overlaps helper_fns, but this item adds composed reads and unnecessary dispatch avoidance.",
+        "No retained decision item directly measures helper factoring, nested-dispatch overhead or complete user/posts composition. No runtime benchmark or snapshot-race claim is made."
+      ],
+      "decisions": [
+        {
+          "id": "q1",
+          "reason": "Ordinary helper reuse is generic TypeScript organization. Once the no-subtransaction requirement is supplied, the choice is visible call structure, while nested runQuery is also transactionally consistent. Keep source coding coverage and do not call a valid implementation semantically wrong."
+        }
+      ]
+    },
+    {
+      "sourceEval": "005-idioms/003-authorization",
+      "coverageLimits": [
+        "Task text, completed:false and returned ID are incidental CRUD contracts. Auth configuration is explicitly preconfigured.",
+        "No retained decision item establishes per-project membership enforcement on reads and writes; preserve the original coding task for this application security behavior."
+      ],
+      "decisions": [
+        {
+          "id": "q1",
+          "reason": "The membership guard is application policy and indexed pair matching. Its Convex identity access and issuer-safe identity keys are covered by authentication_guard. Retire rather than score hidden tenant policy as a new Convex API target."
+        },
+        {
+          "id": "q2",
+          "reason": "completed:false and task ownership are app defaults; the task and grader do not require the ID-return detail in the old key."
+        }
+      ]
+    },
+    {
+      "sourceEval": "005-idioms/005-convex_testing",
+      "coverageLimits": [
+        "Writing a complete local test suite, applying the prescribed convex-test APIs and edge-runtime configuration, and implementing the requested empty/create/complete/remove assertions remain coding-eval coverage. This source has no retained decision question."
+      ],
+      "decisions": [
+        {
+          "id": "q1",
+          "reason": "TASK.txt:37-45 explicitly supplies t.query and t.mutation with the generated api. Asking the model to select t.mutation removes the source-supplied guidance and converts implementation of that guidance into API recall. Retire despite correct key and runtime evidence."
+        },
+        {
+          "id": "q2",
+          "reason": "Task lifecycle defaults are generic CRUD requirements. They remain control assertions and the full coding task."
+        }
+      ]
+    },
+    {
+      "sourceEval": "005-idioms/007-explicit_table_names",
+      "coverageLimits": [
+        "Implementing contact CRUD with the supplied explicit-table API signatures, validating document existence and preserving the requested behavior remain coding-eval coverage. This source has no retained decision question."
+      ],
+      "decisions": [
+        {
+          "id": "q1",
+          "reason": "TASK.txt:25-28 supplies ctx.db.get(\"contacts\", id) verbatim, and line 48 explicitly says the literal table name is the first argument to each ID-based operation. Asking for that argument order removes the source-supplied usage guidance. Retire despite correct key and runtime evidence."
+        },
+        {
+          "id": "q2",
+          "reason": "Patch-versus-replace and ID preservation duplicate retained basic mutation coverage in other sources. Implementing the prescribed explicit-table forms remains source coding coverage."
+        }
+      ]
+    },
+    {
+      "sourceEval": "007-components/013-choose_workpool_completion",
+      "coverageLimits": [
+        "Full endpoint implementation and source grader coverage are not replaced by decision recognition.",
+        "Source-specific upload ID typing, queued/processed status writes and deleted-upload failure path are not separately converted; shared enqueue/completion concepts map to source 010."
+      ],
+      "decisions": [
+        {
+          "id": "q1",
+          "reason": "Completion behavior duplicates 007-components/010-workpool_completion_tracking/q2. Shared concept retained there with failed-job runtime evidence."
+        },
+        {
+          "id": "q2",
+          "reason": "Background enqueue behavior duplicates 007-components/010-workpool_completion_tracking/q1. The original repeats its return contract rather than testing a distinct component fact."
+        }
+      ]
+    },
+    {
+      "sourceEval": "007-components/020-choose_presence_typing",
+      "coverageLimits": [
+        "Typing UI events and source unaided component selection are not independently assessed by the mapped outcome question.",
+        "Automatic expiry coverage remains pending review of the mapped source019 item."
+      ],
+      "decisions": [
+        {
+          "id": "q1",
+          "reason": "Retire the domain-label duplicate of document presence: both sources delegate heartbeat/list/disconnect to Presence, requiring automatic reactive expiry and room isolation."
+        }
+      ]
+    },
+    {
+      "sourceEval": "007-components/021-choose_presence_multisession",
+      "coverageLimits": [
+        "Unaided component choice is not measured by source018, which retains its original supplied-documentation condition.",
+        "Concurrent heartbeat/leave implementation and arbitrary interleaving correctness remain coding coverage; source018 outcome is sequential.",
+        "Multisession coverage remains pending review of mapped source018/q2."
+      ],
+      "decisions": [
+        {
+          "id": "q1",
+          "reason": "The proposed one-user/any-live-session/last-disconnect outcome duplicates the exact finalized source018/q2 question. Retire this additional weight rather than repeating it under workspace labels."
+        }
+      ]
+    }
+  ]
+}

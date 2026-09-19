@@ -8,8 +8,30 @@ import { SYSTEM_PROMPT } from "./models/index.js";
  * means. Eval directories, guidelines, and the system prompt are hashed
  * automatically below.
  */
-// JSONC type cleanup changes which otherwise-correct generated projects pass.
-export const BENCHMARK_PROTOCOL_VERSION = "3";
+// One shared suite now includes coding and multiple-choice knowledge evals.
+export const BENCHMARK_PROTOCOL_VERSION = "4";
+
+export const BENCHMARK_DECISION_SOURCE_FILES = [
+  "protocol.ts",
+  "coverage.ts",
+  "questions.ts",
+  "providers.ts",
+  "scoring.ts",
+  "report.ts",
+  "regrade.ts",
+  "run.ts",
+  "source.ts",
+] as const;
+export const BENCHMARK_DECISION_BACKEND_FILES = [
+  "decisionAdmin.ts",
+  "decisionConfig.ts",
+  "decisionScoring.ts",
+  "decisionIdentity.ts",
+  "decisionIngestionPerformance.ts",
+  "decisionSourceValidation.ts",
+  "decisionStorage.ts",
+  "documentKinds.ts",
+] as const;
 
 export interface BenchmarkDefinition {
   version: string;
@@ -21,6 +43,16 @@ const EXCLUDED_DIRECTORIES = new Set([
   "_generated",
   "__pycache__",
 ]);
+
+/** Old answer folders include local backend state. These are runtime outputs,
+ * not benchmark inputs, just like node_modules and generated API files. */
+export function isBenchmarkRuntimeArtifact(name: string): boolean {
+  return (
+    name === ".DS_Store" ||
+    /^backend\.(?:stdout|stderr)\.log$/.test(name) ||
+    /^convex_local_backend\.sqlite3(?:-wal|-shm)?$/.test(name)
+  );
+}
 
 function normalizedPath(path: string): string {
   return path.split(sep).join("/");
@@ -37,6 +69,7 @@ function hashDirectory(
 
   for (const entry of entries) {
     if (entry.isDirectory() && EXCLUDED_DIRECTORIES.has(entry.name)) continue;
+    if (entry.isFile() && isBenchmarkRuntimeArtifact(entry.name)) continue;
 
     const fullPath = join(directory, entry.name);
     if (entry.isDirectory()) {
@@ -81,6 +114,34 @@ export function computeBenchmarkDefinition(
   hasher.update("guidelines\0");
   hasher.update(readFileSync(guidelinesPath));
   hasher.update("\0");
+
+  // Decision questions live alongside TASK.txt and are hashed below. Include
+  // request/scoring semantics in this same shared identity, never a second
+  // decision-only benchmark. Missing files are allowed for historical fixtures.
+  for (const file of BENCHMARK_DECISION_SOURCE_FILES) {
+    const sourcePath = join(absoluteRoot, "runner", "decisions", file);
+    if (existsSync(sourcePath)) {
+      hasher.update(`decision-source\0${file}\0`);
+      hasher.update(readFileSync(sourcePath));
+      hasher.update("\0");
+    }
+  }
+
+  for (const file of BENCHMARK_DECISION_BACKEND_FILES) {
+    const sourcePath = join(absoluteRoot, "evalScores", "convex", file);
+    if (existsSync(sourcePath)) {
+      hasher.update(`decision-backend\0${file}\0`);
+      hasher.update(readFileSync(sourcePath));
+      hasher.update("\0");
+    }
+  }
+
+  const decisionManifest = join(absoluteRoot, "decision-bank.json");
+  if (existsSync(decisionManifest)) {
+    hasher.update("decision-coverage\0");
+    hasher.update(readFileSync(decisionManifest));
+    hasher.update("\0");
+  }
 
   for (const evalPath of sortedEvalPaths) {
     const absoluteEvalPath = resolve(absoluteRoot, evalPath);

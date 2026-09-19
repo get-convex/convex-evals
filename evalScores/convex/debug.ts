@@ -15,6 +15,7 @@ import { internalAction } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
+import type { CodingEval, CodingRun } from "./documentKinds.js";
 import JSZip from "jszip";
 
 // Text file extensions we'll extract content for
@@ -42,9 +43,7 @@ function isTextFile(path: string): boolean {
   return TEXT_EXTENSIONS.has(ext);
 }
 
-async function extractZipFiles(
-  blob: Blob,
-): Promise<Record<string, string>> {
+async function extractZipFiles(blob: Blob): Promise<Record<string, string>> {
   const arrayBuffer = await blob.arrayBuffer();
   const zip = await JSZip.loadAsync(arrayBuffer);
   const files: Record<string, string> = {};
@@ -68,7 +67,7 @@ type DebugResult = {
     evalPath: string;
     category: string;
     name: string;
-    status: Doc<"evals">["status"];
+    status: CodingEval["status"];
     task: string | null;
   };
   run?: {
@@ -77,7 +76,7 @@ type DebugResult = {
     provider: string | null;
     runId: string | null;
     experiment: string;
-    status: Doc<"runs">["status"];
+    status: CodingRun["status"];
   } | null;
   steps?: Array<{
     name: Doc<"steps">["name"];
@@ -93,7 +92,7 @@ export const getEvalDebugInfo = internalAction({
   },
   handler: async (ctx, args): Promise<DebugResult> => {
     // 1. Fetch the eval record
-    const evalDoc: Doc<"evals"> | null = await ctx.runQuery(
+    const evalDoc: CodingEval | null = await ctx.runQuery(
       internal.debugQueries.getEvalRecord,
       { evalId: args.evalId },
     );
@@ -108,7 +107,7 @@ export const getEvalDebugInfo = internalAction({
     );
 
     // 3. Fetch the run record for context
-    const run: Doc<"runs"> | null = await ctx.runQuery(
+    const run: CodingRun | null = await ctx.runQuery(
       internal.debugQueries.getRunRecord,
       { runId: evalDoc.runId },
     );

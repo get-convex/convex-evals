@@ -2,7 +2,7 @@ import { combineWebUsage, computeWebUsage, webUsageAverages } from "./webUsage";
 import { internalMutation, query, type QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
-import { experimentLiteral, languageModelUsage, evalStatus } from "./schema.js";
+import { experimentLiteral, languageModelUsage } from "./schema.js";
 import { internal } from "./_generated/api.js";
 import { resolveBenchmarkForRun } from "./benchmarkVersions";
 import {
@@ -14,6 +14,24 @@ import {
   hasCompleteBenchmarkPlan,
   computeRunScores,
 } from "./scoringUtils.js";
+import {
+  assertNever,
+  normalizeEval,
+  normalizeModelScore,
+  normalizeRun,
+  requireCodingEval,
+  requireCodingRun,
+  type CodingEval,
+  type CodingModelScore,
+  type CodingRun,
+} from "./documentKinds.js";
+import { deleteDecisionRunData } from "./decisionStorage.js";
+
+export {
+  decisionLeaderboard,
+  listDecisionRuns,
+  getDecisionRun,
+} from "./decisionViews.js";
 
 const ALL_BENCHMARK_VERSIONS = "all";
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -27,7 +45,7 @@ type ScoreSummary = {
 };
 
 type LeaderboardScoreRow = Pick<
-  Doc<"modelScores">,
+  CodingModelScore,
   | "webUsage"
   | "modelId"
   | "totalScore"
@@ -109,9 +127,7 @@ function combineSummaries(summaries: ScoreSummary[]): {
   return { mean, stdDev: Math.sqrt(variance) };
 }
 
-function combineModelScoreRows(
-  rows: Doc<"modelScores">[],
-): LeaderboardScoreRow {
+function combineModelScoreRows(rows: CodingModelScore[]): LeaderboardScoreRow {
   const latest = rows.reduce((current, row) =>
     row.latestRunTime > current.latestRunTime ? row : current,
   );
@@ -191,14 +207,12 @@ function combineModelScoreRows(
 async function getCurrentBenchmark(
   ctx: Pick<QueryCtx, "db">,
 ): Promise<Doc<"benchmarkVersions"> | null> {
-  const publicVersions = await ctx.db
+  return await ctx.db
     .query("benchmarkVersions")
     .withIndex("by_effectiveAt")
     .order("desc")
-    .take(1_000);
-  return (
-    publicVersions.find((version) => version.provenance !== "unminted") ?? null
-  );
+    .filter((q) => q.neq(q.field("provenance"), "unminted"))
+    .first();
 }
 
 export const createRun = internalMutation({
@@ -259,6 +273,7 @@ export const createRun = internalMutation({
 
     // Create the run
     const id = await ctx.db.insert("runs", {
+      kind: "coding",
       modelId,
       provider: args.provider,
       runId: args.runId,
@@ -318,8 +333,9 @@ export const completeRun = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const run = await ctx.db.get("runs", args.runId);
-    if (!run) return null;
+    const storedRun = await ctx.db.get("runs", args.runId);
+    if (!storedRun) return null;
+    const run = requireCodingRun(storedRun);
     const benchmarkVersion = run.benchmarkVersion;
 
     await ctx.db.patch("runs", args.runId, {
@@ -362,15 +378,41 @@ export const deleteRun = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const run = await ctx.db.get("runs", args.runId);
-    if (!run) return null;
+    const storedRun = await ctx.db.get("runs", args.runId);
+    if (!storedRun) return null;
+    const run = normalizeRun(storedRun);
+    switch (run.kind) {
+      case "decision":
+        await deleteDecisionRunData(ctx, run);
+        await ctx.db.delete("runs", run._id);
+        return null;
+      case "coding":
+        break;
+      default:
+        return assertNever(run);
+    }
     const benchmarkVersion = run.benchmarkVersion;
 
     // Collect all evals for this run
-    const evals = await ctx.db
+    const storedEvals = await ctx.db
       .query("evals")
       .withIndex("by_runId", (q) => q.eq("runId", args.runId))
       .collect();
+    const evals: CodingEval[] = [];
+    for (const storedEval of storedEvals) {
+      const evalDoc = normalizeEval(storedEval);
+      switch (evalDoc.kind) {
+        case "coding":
+          evals.push(evalDoc);
+          break;
+        case "decision":
+          throw new Error(
+            `Coding run ${run._id} has decision result ${evalDoc._id}`,
+          );
+        default:
+          assertNever(evalDoc);
+      }
+    }
 
     // Track stats for experiment counter adjustment
     const totalEvalsCount = evals.length;
@@ -461,14 +503,19 @@ export const getRunDetails = query({
     runId: v.id("runs"),
   },
   handler: async (ctx, args) => {
-    const run = await ctx.db.get("runs", args.runId);
-    if (!run) return null;
+    const storedRun = await ctx.db.get("runs", args.runId);
+    if (!storedRun) return null;
+    const run = requireCodingRun(storedRun);
     const model = run.modelId ? await ctx.db.get("models", run.modelId) : null;
 
     const evals = await ctx.db
       .query("evals")
       .withIndex("by_runId", (q) => q.eq("runId", args.runId))
-      .collect();
+      .filter((q) =>
+        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
+      )
+      .collect()
+      .then((rows) => rows.map(requireCodingEval));
 
     const evalsWithSteps = await Promise.all(
       evals.map(async (evalItem) => {
@@ -536,19 +583,36 @@ export const listRuns = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    let runsQuery = ctx.db.query("runs").order("desc");
+    let runsQuery = ctx.db
+      .query("runs")
+      .filter((q) =>
+        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
+      )
+      .order("desc");
 
     // Apply filters if provided
     if (args.experiment) {
       runsQuery = ctx.db
         .query("runs")
         .withIndex("by_experiment", (q) => q.eq("experiment", args.experiment))
+        .filter((q) =>
+          q.or(
+            q.eq(q.field("kind"), "coding"),
+            q.eq(q.field("kind"), undefined),
+          ),
+        )
         .order("desc");
     } else if (args.modelId) {
       const modelId = args.modelId;
       runsQuery = ctx.db
         .query("runs")
         .withIndex("by_modelId", (q) => q.eq("modelId", modelId))
+        .filter((q) =>
+          q.or(
+            q.eq(q.field("kind"), "coding"),
+            q.eq(q.field("kind"), undefined),
+          ),
+        )
         .order("desc");
     }
 
@@ -557,7 +621,7 @@ export const listRuns = query({
     const MAX_LIST_RUNS_LIMIT = 40;
     const requestedLimit = args.limit ?? 100;
     const limit = Math.min(Math.max(requestedLimit, 1), MAX_LIST_RUNS_LIMIT);
-    const runs = await runsQuery.take(limit);
+    const runs = (await runsQuery.take(limit)).map(requireCodingRun);
 
     // Fetch eval counts for each run
     const models = await ctx.db.query("models").collect();
@@ -567,7 +631,14 @@ export const listRuns = query({
         const evals = await ctx.db
           .query("evals")
           .withIndex("by_runId", (q) => q.eq("runId", run._id))
-          .collect();
+          .filter((q) =>
+            q.or(
+              q.eq(q.field("kind"), "coding"),
+              q.eq(q.field("kind"), undefined),
+            ),
+          )
+          .collect()
+          .then((rows) => rows.map(requireCodingEval));
 
         const passedCount = evals.filter(
           (e) => e.status.kind === "passed",
@@ -578,8 +649,9 @@ export const listRuns = query({
         const totalCount = evals.length;
 
         const model = modelMap.get(run.modelId);
+        const { kind: _kind, ...publicRun } = run;
         return {
-          ...run,
+          ...publicRun,
           model: model?.slug ?? "unknown-model",
           formattedName: model?.formattedName ?? "Unknown model",
           evalCounts: {
@@ -635,9 +707,22 @@ export const leaderboardScores = query({
     benchmarkVersion: v.optional(v.string()),
     includeRecentPreviousBenchmarks: v.optional(v.boolean()),
     limit: v.optional(v.number()),
+    modelId: v.optional(v.id("models")),
+    model: v.optional(v.string()),
   },
   returns: v.array(leaderboardScoreValidator),
   handler: async (ctx, args) => {
+    const modelBySlug = args.model
+      ? await ctx.db
+          .query("models")
+          .withIndex("by_slug", (q) => q.eq("slug", args.model!))
+          .unique()
+      : null;
+    if (args.model && !modelBySlug) return [];
+    if (args.modelId && modelBySlug && args.modelId !== modelBySlug._id) {
+      return [];
+    }
+    const targetModelId = args.modelId ?? modelBySlug?._id;
     let rows: LeaderboardScoreRow[];
     let returnedVersion: string;
     const scoreBenchmarkByModel = new Map<
@@ -654,16 +739,31 @@ export const leaderboardScores = query({
       );
       // This aggregate must include every public partition. A fixed take()
       // would silently change historical scores once the table grows past it.
-      const scoreRows = (
-        await ctx.db
-          .query("modelScores")
-          .withIndex("by_experiment", (q) =>
-            q.eq("experiment", args.experiment),
-          )
-          .collect()
-      ).filter((row) => publicIds.has(row.benchmarkVersion));
+      const storedScoreRows = targetModelId
+        ? await ctx.db
+            .query("modelScores")
+            .withIndex("by_modelId_experiment_benchmark", (q) =>
+              q.eq("modelId", targetModelId).eq("experiment", args.experiment),
+            )
+            .collect()
+        : await ctx.db
+            .query("modelScores")
+            .withIndex("by_experiment", (q) =>
+              q.eq("experiment", args.experiment),
+            )
+            .filter((q) =>
+              q.or(
+                q.eq(q.field("kind"), "coding"),
+                q.eq(q.field("kind"), undefined),
+              ),
+            )
+            .collect();
+      const scoreRows = storedScoreRows
+        .map((row) => normalizeModelScore(row))
+        .filter((row): row is CodingModelScore => row.kind === "coding")
+        .filter((row) => publicIds.has(row.benchmarkVersion));
 
-      const byModel = new Map<Id<"models">, Doc<"modelScores">[]>();
+      const byModel = new Map<Id<"models">, CodingModelScore[]>();
       for (const row of scoreRows) {
         const modelRows = byModel.get(row.modelId) ?? [];
         modelRows.push(row);
@@ -680,7 +780,6 @@ export const leaderboardScores = query({
         });
       }
     } else {
-      const currentBenchmark = await getCurrentBenchmark(ctx);
       const benchmark = args.benchmarkVersion
         ? await ctx.db
             .query("benchmarkVersions")
@@ -688,17 +787,36 @@ export const leaderboardScores = query({
               q.eq("version", args.benchmarkVersion!),
             )
             .unique()
-        : currentBenchmark;
+        : await getCurrentBenchmark(ctx);
       if (!benchmark) return [];
 
-      rows = await ctx.db
-        .query("modelScores")
-        .withIndex("by_experiment_benchmark", (q) =>
-          q
-            .eq("experiment", args.experiment)
-            .eq("benchmarkVersion", benchmark._id),
-        )
-        .collect();
+      const storedScoreRows = targetModelId
+        ? await ctx.db
+            .query("modelScores")
+            .withIndex("by_modelId_experiment_benchmark", (q) =>
+              q
+                .eq("modelId", targetModelId)
+                .eq("experiment", args.experiment)
+                .eq("benchmarkVersion", benchmark._id),
+            )
+            .collect()
+        : await ctx.db
+            .query("modelScores")
+            .withIndex("by_experiment_benchmark", (q) =>
+              q
+                .eq("experiment", args.experiment)
+                .eq("benchmarkVersion", benchmark._id),
+            )
+            .filter((q) =>
+              q.or(
+                q.eq(q.field("kind"), "coding"),
+                q.eq(q.field("kind"), undefined),
+              ),
+            )
+            .collect();
+      rows = storedScoreRows
+        .map(normalizeModelScore)
+        .filter((row): row is CodingModelScore => row.kind === "coding");
       returnedVersion = benchmark.version;
       for (const row of rows) {
         scoreBenchmarkByModel.set(row.modelId, {
@@ -709,6 +827,11 @@ export const leaderboardScores = query({
         });
       }
 
+      const currentBenchmark = args.includeRecentPreviousBenchmarks
+        ? args.benchmarkVersion
+          ? await getCurrentBenchmark(ctx)
+          : benchmark
+        : null;
       const isCurrentSelection = currentBenchmark?._id === benchmark._id;
       if (args.includeRecentPreviousBenchmarks && isCurrentSelection) {
         const publicBenchmarks = (
@@ -725,16 +848,31 @@ export const leaderboardScores = query({
         // modelScores rows are patched in place, so document creation order is
         // not score recency. Read the complete experiment before comparing
         // latestRunTime or a recently updated fallback could be omitted.
-        const previousRows = await ctx.db
-          .query("modelScores")
-          .withIndex("by_experiment", (q) =>
-            q.eq("experiment", args.experiment),
-          )
-          .collect();
-        const latestPreviousByModel = new Map<
-          Id<"models">,
-          Doc<"modelScores">
-        >();
+        const storedPreviousRows = targetModelId
+          ? await ctx.db
+              .query("modelScores")
+              .withIndex("by_modelId_experiment_benchmark", (q) =>
+                q
+                  .eq("modelId", targetModelId)
+                  .eq("experiment", args.experiment),
+              )
+              .collect()
+          : await ctx.db
+              .query("modelScores")
+              .withIndex("by_experiment", (q) =>
+                q.eq("experiment", args.experiment),
+              )
+              .filter((q) =>
+                q.or(
+                  q.eq(q.field("kind"), "coding"),
+                  q.eq(q.field("kind"), undefined),
+                ),
+              )
+              .collect();
+        const previousRows = storedPreviousRows
+          .map(normalizeModelScore)
+          .filter((row): row is CodingModelScore => row.kind === "coding");
+        const latestPreviousByModel = new Map<Id<"models">, CodingModelScore>();
 
         for (const row of previousRows) {
           if (
@@ -768,7 +906,13 @@ export const leaderboardScores = query({
     const modelIds = [...new Set(rows.map((row) => row.modelId))];
     const modelEntries = await Promise.all(
       modelIds.map(
-        async (modelId) => [modelId, await ctx.db.get(modelId)] as const,
+        async (modelId) =>
+          [
+            modelId,
+            modelBySlug?._id === modelId
+              ? modelBySlug
+              : await ctx.db.get(modelId),
+          ] as const,
       ),
     );
     const modelMap = new Map(modelEntries);
@@ -834,7 +978,6 @@ export const leaderboardVersions = query({
     experiment: v.optional(experimentLiteral),
   },
   handler: async (ctx, args) => {
-    const currentBenchmark = await getCurrentBenchmark(ctx);
     const benchmarks = await ctx.db
       .query("benchmarkVersions")
       .withIndex("by_effectiveAt")
@@ -843,9 +986,36 @@ export const leaderboardVersions = query({
     const scoreRows = await ctx.db
       .query("modelScores")
       .withIndex("by_experiment", (q) => q.eq("experiment", args.experiment))
-      .collect();
-    const models = await ctx.db.query("models").collect();
-    const modelSlugs = new Map(models.map((model) => [model._id, model.slug]));
+      .filter((q) =>
+        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
+      )
+      .collect()
+      .then((rows) =>
+        rows
+          .map(normalizeModelScore)
+          .filter((row): row is CodingModelScore => row.kind === "coding"),
+      );
+    // Versions need metadata only for models that have a score in this
+    // experiment. Unrelated registered models do not affect the selector.
+    const modelIds = [...new Set(scoreRows.map((row) => row.modelId))];
+    const models = await Promise.all(modelIds.map((id) => ctx.db.get(id)));
+    const modelSlugs = new Map(
+      models.flatMap((model) =>
+        model ? [[model._id, model.slug] as const] : [],
+      ),
+    );
+    const currentBenchmark = benchmarks.find(
+      (benchmark) => benchmark.provenance !== "unminted",
+    );
+    const scoresByBenchmark = new Map<
+      Id<"benchmarkVersions">,
+      CodingModelScore[]
+    >();
+    for (const row of scoreRows) {
+      const rows = scoresByBenchmark.get(row.benchmarkVersion) ?? [];
+      rows.push(row);
+      scoresByBenchmark.set(row.benchmarkVersion, rows);
+    }
     // A reconstructed partition can become empty after its runs are proven to
     // belong to a later full-content benchmark. Do not leave an empty duplicate
     // in the public selector just because its provenance record remains.
@@ -860,9 +1030,7 @@ export const leaderboardVersions = query({
     );
 
     const versions = publicBenchmarks.map((benchmark) => {
-      const rows = scoreRows.filter(
-        (row) => row.benchmarkVersion === benchmark._id,
-      );
+      const rows = scoresByBenchmark.get(benchmark._id) ?? [];
       const scoredSlugs = new Set(
         rows.map((row) => modelSlugs.get(row.modelId)).filter(Boolean),
       );
@@ -972,28 +1140,30 @@ export const leaderboardModelHistory = query({
       args.limit !== undefined && args.limit > 0
         ? Math.min(args.limit, 100)
         : LEADERBOARD_HISTORY_SIZE;
-    let runs: Doc<"runs">[];
+    let candidateRuns: AsyncIterable<Doc<"runs">>;
+    let benchmarkById: Map<Id<"benchmarkVersions">, Doc<"benchmarkVersions">>;
     if (args.benchmarkVersion === ALL_BENCHMARK_VERSIONS) {
       const publicBenchmarks = (
         await ctx.db.query("benchmarkVersions").collect()
       ).filter((benchmark) => benchmark.provenance !== "unminted");
-      const benchmarkById = new Map(
+      benchmarkById = new Map(
         publicBenchmarks.map((benchmark) => [benchmark._id, benchmark]),
       );
-      runs = await ctx.db
+      // This index preserves creation order across benchmark versions.
+      candidateRuns = ctx.db
         .query("runs")
         .withIndex("by_modelId", (q) => q.eq("modelId", targetModelId))
-        .order("desc")
-        .collect();
-      runs = runs.filter((run) => {
-        const benchmark = benchmarkById.get(run.benchmarkVersion);
-        return (
-          run.experiment === args.experiment &&
-          run.status.kind === "completed" &&
-          benchmark !== undefined &&
-          hasCompleteBenchmarkPlan(run, benchmark.evalCount)
-        );
-      });
+        .filter((q) =>
+          q.and(
+            q.or(
+              q.eq(q.field("kind"), "coding"),
+              q.eq(q.field("kind"), undefined),
+            ),
+            q.eq(q.field("experiment"), args.experiment),
+            q.eq(q.field("status.kind"), "completed"),
+          ),
+        )
+        .order("desc");
     } else {
       const benchmark = args.benchmarkVersion
         ? await ctx.db
@@ -1004,8 +1174,8 @@ export const leaderboardModelHistory = query({
             .unique()
         : await getCurrentBenchmark(ctx);
       if (!benchmark) return [];
-
-      runs = await ctx.db
+      benchmarkById = new Map([[benchmark._id, benchmark]]);
+      candidateRuns = ctx.db
         .query("runs")
         .withIndex("by_modelId_experiment_benchmark", (q) =>
           q
@@ -1013,14 +1183,16 @@ export const leaderboardModelHistory = query({
             .eq("experiment", args.experiment)
             .eq("benchmarkVersion", benchmark._id),
         )
-        .filter((q) => q.eq(q.field("status.kind"), "completed"))
-        .order("desc")
-        .collect();
-      runs = runs.filter(
-        (run) =>
-          run.status.kind === "completed" &&
-          hasCompleteBenchmarkPlan(run, benchmark.evalCount),
-      );
+        .filter((q) =>
+          q.and(
+            q.or(
+              q.eq(q.field("kind"), "coding"),
+              q.eq(q.field("kind"), undefined),
+            ),
+            q.eq(q.field("status.kind"), "completed"),
+          ),
+        )
+        .order("desc");
     }
 
     // Fetch evals and filter to only fully-completed runs, computing scores
@@ -1050,107 +1222,116 @@ export const leaderboardModelHistory = query({
       }>;
     };
     const results: HistoryResult[] = [];
-    await Promise.all(
-      runs.map(async (run) => {
-        const evals = await ctx.db
-          .query("evals")
-          .withIndex("by_runId", (q) => q.eq("runId", run._id))
-          .collect();
-        if (!isFullyCompletedRun(run, evals)) return;
-        const { totalScore, scores } = computeRunScores(evals);
-        const webUsage =
-          run.experiment === "no_guidelines_with_web"
-            ? webUsageAverages(computeWebUsage(evals))
-            : webUsageAverages(undefined);
-        const terminalEvals = evals.filter(
-          (evalDoc) =>
-            evalDoc.status.kind === "passed" ||
-            evalDoc.status.kind === "failed",
-        );
-        let inputTokens = 0;
-        let outputTokens = 0;
-        let reasoningTokens = 0;
-        let hasCompleteInputTokens = terminalEvals.length > 0;
-        let hasCompleteOutputTokens = terminalEvals.length > 0;
-        let hasCompleteReasoningTokens = terminalEvals.length > 0;
-        let providerUsageIsComplete = true;
-        for (const evalDoc of terminalEvals) {
-          if (
-            evalDoc.status.kind !== "passed" &&
-            evalDoc.status.kind !== "failed"
-          ) {
-            continue;
-          }
-          const usage = evalDoc.status.usage;
-          if (hasIncompleteProviderUsage(evalDoc)) {
-            providerUsageIsComplete = false;
-          }
-          if (typeof usage?.inputTokens === "number") {
-            inputTokens += usage.inputTokens;
-          } else {
-            hasCompleteInputTokens = false;
-          }
-          if (typeof usage?.outputTokens === "number") {
-            outputTokens += usage.outputTokens;
-          } else {
-            hasCompleteOutputTokens = false;
-          }
-          const evalReasoningTokens =
-            usage?.outputTokenDetails?.reasoningTokens ??
-            usage?.reasoningTokens;
-          if (typeof evalReasoningTokens === "number") {
-            reasoningTokens += evalReasoningTokens;
-          } else {
-            hasCompleteReasoningTokens = false;
-          }
+    // Stop only after enough valid runs. Taking candidates first would let
+    // recent partial runs hide older complete runs; collecting first would
+    // read every historical run and its evals on each model-page request.
+    for await (const storedRun of candidateRuns) {
+      const run = requireCodingRun(storedRun);
+      const benchmark = benchmarkById.get(run.benchmarkVersion);
+      if (!benchmark || !hasCompleteBenchmarkPlan(run, benchmark.evalCount))
+        continue;
+      const evals = await ctx.db
+        .query("evals")
+        .withIndex("by_runId", (q) => q.eq("runId", run._id))
+        .filter((q) =>
+          q.or(
+            q.eq(q.field("kind"), "coding"),
+            q.eq(q.field("kind"), undefined),
+          ),
+        )
+        .collect()
+        .then((rows) => rows.map(requireCodingEval));
+      if (!isFullyCompletedRun(run, evals)) continue;
+      const { totalScore, scores } = computeRunScores(evals);
+      const webUsage =
+        run.experiment === "no_guidelines_with_web"
+          ? webUsageAverages(computeWebUsage(evals))
+          : webUsageAverages(undefined);
+      const terminalEvals = evals.filter(
+        (evalDoc) =>
+          evalDoc.status.kind === "passed" || evalDoc.status.kind === "failed",
+      );
+      let inputTokens = 0;
+      let outputTokens = 0;
+      let reasoningTokens = 0;
+      let hasCompleteInputTokens = terminalEvals.length > 0;
+      let hasCompleteOutputTokens = terminalEvals.length > 0;
+      let hasCompleteReasoningTokens = terminalEvals.length > 0;
+      let providerUsageIsComplete = true;
+      for (const evalDoc of terminalEvals) {
+        if (
+          evalDoc.status.kind !== "passed" &&
+          evalDoc.status.kind !== "failed"
+        ) {
+          continue;
         }
-        const failedEvals = terminalEvals.filter(
-          (evalDoc) => evalDoc.status.kind === "failed",
-        );
-        results.push({
-          _creationTime: run._creationTime,
-          runId: run._id,
-          totalScore,
-          scores,
-          runCostUsd: computeRunCostUsd(evals),
-          averageGenerationTimeMs: computeRunDurationMs(evals),
-          averageWebSearchesPerEval: webUsage.averageWebSearchesPerEval,
-          averageWebSearchesEstimated: webUsage.averageWebSearchesEstimated,
-          webSearchTelemetryEvalCount: webUsage.webSearchTelemetryEvalCount,
-          webUsageEvalCount: webUsage.webUsageEvalCount,
-          evalCount: terminalEvals.length,
-          passedEvalCount: terminalEvals.length - failedEvals.length,
-          failedEvalCount: failedEvals.length,
-          inputTokens:
-            providerUsageIsComplete && hasCompleteInputTokens
-              ? inputTokens
-              : null,
-          outputTokens:
-            providerUsageIsComplete && hasCompleteOutputTokens
-              ? outputTokens
-              : null,
-          reasoningTokens:
-            providerUsageIsComplete && hasCompleteReasoningTokens
-              ? reasoningTokens
-              : null,
-          failures: failedEvals.slice(0, 8).map((evalDoc) => ({
-            evalId: evalDoc._id,
-            evalPath: evalDoc.evalPath,
-            category: evalDoc.category,
-            name: evalDoc.name,
-            failureReason:
-              evalDoc.status.kind === "failed"
-                ? evalDoc.status.failureReason
-                : "Unknown failure",
-          })),
-        });
-      }),
-    );
+        const usage = evalDoc.status.usage;
+        if (hasIncompleteProviderUsage(evalDoc)) {
+          providerUsageIsComplete = false;
+        }
+        if (typeof usage?.inputTokens === "number") {
+          inputTokens += usage.inputTokens;
+        } else {
+          hasCompleteInputTokens = false;
+        }
+        if (typeof usage?.outputTokens === "number") {
+          outputTokens += usage.outputTokens;
+        } else {
+          hasCompleteOutputTokens = false;
+        }
+        const evalReasoningTokens =
+          usage?.outputTokenDetails?.reasoningTokens ?? usage?.reasoningTokens;
+        if (typeof evalReasoningTokens === "number") {
+          reasoningTokens += evalReasoningTokens;
+        } else {
+          hasCompleteReasoningTokens = false;
+        }
+      }
+      const failedEvals = terminalEvals.filter(
+        (evalDoc) => evalDoc.status.kind === "failed",
+      );
+      results.push({
+        _creationTime: run._creationTime,
+        runId: run._id,
+        totalScore,
+        scores,
+        runCostUsd: computeRunCostUsd(evals),
+        averageGenerationTimeMs: computeRunDurationMs(evals),
+        averageWebSearchesPerEval: webUsage.averageWebSearchesPerEval,
+        averageWebSearchesEstimated: webUsage.averageWebSearchesEstimated,
+        webSearchTelemetryEvalCount: webUsage.webSearchTelemetryEvalCount,
+        webUsageEvalCount: webUsage.webUsageEvalCount,
+        evalCount: terminalEvals.length,
+        passedEvalCount: terminalEvals.length - failedEvals.length,
+        failedEvalCount: failedEvals.length,
+        inputTokens:
+          providerUsageIsComplete && hasCompleteInputTokens
+            ? inputTokens
+            : null,
+        outputTokens:
+          providerUsageIsComplete && hasCompleteOutputTokens
+            ? outputTokens
+            : null,
+        reasoningTokens:
+          providerUsageIsComplete && hasCompleteReasoningTokens
+            ? reasoningTokens
+            : null,
+        failures: failedEvals.slice(0, 8).map((evalDoc) => ({
+          evalId: evalDoc._id,
+          evalPath: evalDoc.evalPath,
+          category: evalDoc.category,
+          name: evalDoc.name,
+          failureReason:
+            evalDoc.status.kind === "failed"
+              ? evalDoc.status.failureReason
+              : "Unknown failure",
+        })),
+      });
+      if (results.length >= historyLimit) break;
+    }
 
-    // Re-sort chronologically since async may shuffle order
-    results.sort((a, b) => a._creationTime - b._creationTime);
-
-    return results.slice(-historyLimit);
+    // Candidates were read newest first; charts display oldest first.
+    return results.reverse();
   },
 });
 
@@ -1168,8 +1349,12 @@ export const getModelSummary = query({
     const runs = await ctx.db
       .query("runs")
       .withIndex("by_modelId", (q) => q.eq("modelId", args.modelId))
+      .filter((q) =>
+        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
+      )
       .order("desc")
-      .take(MODEL_SUMMARY_RUNS_PER_MODEL);
+      .take(MODEL_SUMMARY_RUNS_PER_MODEL)
+      .then((rows) => rows.map(requireCodingRun));
 
     if (runs.length === 0) {
       return {
@@ -1193,7 +1378,14 @@ export const getModelSummary = query({
       const evals = await ctx.db
         .query("evals")
         .withIndex("by_runId", (q) => q.eq("runId", run._id))
-        .collect();
+        .filter((q) =>
+          q.or(
+            q.eq(q.field("kind"), "coding"),
+            q.eq(q.field("kind"), undefined),
+          ),
+        )
+        .collect()
+        .then((rows) => rows.map(requireCodingEval));
 
       const scorable = evals.filter(
         (e) => e.status.kind === "passed" || e.status.kind === "failed",
@@ -1218,6 +1410,9 @@ export const getLatestRunTime = query({
     const latestRun = await ctx.db
       .query("runs")
       .withIndex("by_modelId", (q) => q.eq("modelId", args.modelId))
+      .filter((q) =>
+        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
+      )
       .order("desc")
       .first();
 

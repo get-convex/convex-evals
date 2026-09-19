@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "sourceEval": "007-components/014-agent_thread_persistence",
+  "coverageNotes": "Focused local decision coverage. Full implementation, scale, authorization and provider quality remain outside this bank; see author records.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Standalone Agent helpers append durable messages without generation",
+      "context": "Convex 1.41.0, Agent 0.6.4, ai 6.0.229, provider-utils 4.0.39, convex-helpers 0.1.120. The app schema is empty and the Agent component is mounted. Source-provided helper signatures: `createThread(ctx, components.agent, { userId, title })` returns a thread ID; `saveMessage(ctx, components.agent, { threadId, message: { role, content } })` saves a message; `listMessages(ctx, components.agent, { threadId, paginationOpts })` returns `{ page, isDone, continueCursor }`. These standalone helpers need no Agent instance or model provider.\n\nA mutation creates one thread. Two subsequent mutations call saveMessage for that same thread ID: first `{ role: \"user\", content: \"m1\" }`, then `{ role: \"assistant\", content: \"m2\" }`. No generation method is called.",
+      "question": "What is stored in that thread after both mutations commit?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Only m2; saving with the same threadId replaces the earlier message.",
+          "rationale": "threadId identifies the conversation, not a message upsert key. Both saves append."
+        },
+        {
+          "id": "b",
+          "text": "Only m1; an assistant message is persisted only after model generation.",
+          "rationale": "The standalone helper directly accepts an assistant message; generation is unnecessary."
+        },
+        {
+          "id": "c",
+          "text": "Both m1 and m2, with their supplied roles.",
+          "rationale": "Both standalone saves append durable component messages, independent of any model."
+        },
+        {
+          "id": "d",
+          "text": "Nothing; the helpers buffer messages until an Agent generates a reply.",
+          "rationale": "The standalone helper performs durable component mutations immediately within the transaction."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    },
+    {
+      "id": "q2",
+      "concept": "Agent pagination continues with its opaque component cursor",
+      "context": "Convex 1.41.0, Agent 0.6.4, ai 6.0.229, provider-utils 4.0.39, convex-helpers 0.1.120. Source-provided helper signatures: `createThread(ctx, components.agent, { userId, title })` returns a thread ID; `saveMessage(ctx, components.agent, { threadId, message: { role, content } })` saves a message; `listMessages(ctx, components.agent, { threadId, paginationOpts })` returns `{ page, isDone, continueCursor }`. These standalone helpers need no Agent instance or model provider.\n\ngetPage executes the call below. Every option returns the same page, reversed for oldest-first display, and passes through result.isDone. MessageDoc has `_id` (message ID) and `order` (turn position). Clients request two messages at a time and pass getPage.continueCursor to the next call.\n\n```ts\nconst result = await listMessages(ctx, components.agent, { threadId, paginationOpts });\n```",
+      "question": "Which expression should getPage return as continueCursor?",
+      "options": [
+        {
+          "id": "a",
+          "text": "`result.continueCursor`",
+          "rationale": "The component cursor carries the traversal state expected by the next listMessages call."
+        },
+        {
+          "id": "b",
+          "text": "`result.page[result.page.length - 1]?._id ?? \"\"`",
+          "rationale": "A message ID is not a valid component pagination cursor."
+        },
+        {
+          "id": "c",
+          "text": "`String(result.page[result.page.length - 1]?.order ?? \"\")`",
+          "rationale": "A turn position is not the encoded component pagination cursor."
+        },
+        {
+          "id": "d",
+          "text": "`paginationOpts.cursor ?? \"\"`",
+          "rationale": "Reusing the incoming cursor does not advance traversal; the empty fallback is invalid here."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "002-queries/009-text_search",
+  "coverageNotes": "Tests native search callback construction. Fixed limit and preview formatting are exercised but not independently scored. No claim about relevance internals or production performance.",
+  "questions": [
+    {
+      "id": "q009-1",
+      "concept": "Search field versus search-index equality filters",
+      "context": "Using Convex 1.44.0, articles has title: string, content: string, author: string, tags: string[], isPublished: boolean and this search index:\n\n```ts\n.searchIndex(\"search_articles\", {\n  searchField: \"content\",\n  filterFields: [\"author\", \"isPublished\"],\n})\n```\n\nA query validates { searchTerm: string, author: string }. It must use native full-text search on content and return up to ten published matches belonging to that author. The handler is:\n\n```ts\nconst articles = await ctx.db.query(\"articles\")\n  .withSearchIndex(\"search_articles\", (q) =>\n    /* Insert one option here. */)\n  .take(10);\nreturn articles.map((article) => ({\n  title: article.title, author: article.author,\n  preview: article.content.slice(0, 100), tags: article.tags,\n}));\n```",
+      "question": "Which callback expression completes the search?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nq.search(\"content\", args.searchTerm).eq(\"author\", args.author).eq(\"isPublished\", true)\n```",
+          "rationale": "search targets the declared content field and eq applies the declared author and isPublished filters before take(10)."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nq.search(\"title\", args.searchTerm).eq(\"author\", args.author).eq(\"isPublished\", true)\n```",
+          "rationale": "title is not this index’s searchField. Changing only title to content repairs the option."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nq.search(\"content\", args.searchTerm).search(\"author\", args.author).eq(\"isPublished\", true)\n```",
+          "rationale": "The typed builder returned by search does not expose another search call. With typechecking bypassed, that method exists but the backend rejects author because only content is the declared search field. author requires eq."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nq.eq(\"content\", args.searchTerm).eq(\"author\", args.author).eq(\"isPublished\", true)\n```",
+          "rationale": "String equality on content does not replace the required text-search expression, and content is not a declared equality filter field."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "answer/convex/public.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

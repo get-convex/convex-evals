@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "001-data_modeling/011-deconstruct_validators",
+  "coverageNotes": "Tests reuse of a shared runtime validator as a table field, distinguishing the validator value from wrapping, its JSON descriptor, and object field extraction. The original schema remains unchanged. Alternatives execute using SDK table descriptors and function argument validators; no alternative application schema is installed. Does not measure schema implementation or cross-file import design.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Reusing a Convex validator value as a field validator",
+      "context": "Convex 1.44.0. This shared validator is already defined:\n\n```ts\nconst resultValidator = v.union(\n  v.object({ success: v.literal(true), value: v.string() }),\n  v.object({ success: v.literal(false), error: v.string() }),\n);\n```\n\nBoth table definitions will use the same `resultField`:\n\n```ts\nllm_calls: defineTable({ prompt: v.string(), result: resultField }),\napi_calls: defineTable({ url: v.string(), result: resultField }),\n```\n\nThe stored `result` should keep the shape `{ success: true, value: string }` or `{ success: false, error: string }`. `v` and `defineTable` are imported.",
+      "question": "Which assignment reuses the complete shared validator without changing the stored result shape?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nconst resultField = v.object({ result: resultValidator });\n```",
+          "rationale": "Wraps the reusable validator in an additional result field, so stored result would need an extra nesting level."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nconst resultField = resultValidator.json;\n```",
+          "rationale": "The JSON descriptor is serialized validator data, not a Convex validator instance accepted as a field validator."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nconst resultField = resultValidator;\n```",
+          "rationale": "A Convex validator is a reusable runtime value that can be passed directly as the field validator in both table definitions."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nconst resultField = resultValidator.fields;\n```",
+          "rationale": "Confuses object-validator field extraction with reuse of a union validator. A union has members, not a fields property; the result is undefined at runtime."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "004-actions/000-fetch",
+  "coverageNotes": "Recognizes the documented Convex boundary under supplied conditions. Does not establish independent implementation skill or all source requirements.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "External fetch requires an action runtime",
+      "context": "Convex 1.44.0. A reachable HTTP endpoint returns valid JSON. A client invokes each of these functions through its matching API (query, mutation or action).\n\nconvex/index.ts\n```ts\nimport { query, mutation, action } from \"./_generated/server\";\nimport { v } from \"convex/values\";\nconst definition = {\n  args: { url: v.string() },\n  handler: async (_ctx: unknown, args: { url: string }) => {\n    const response = await fetch(args.url);\n    return await response.json();\n  },\n};\nexport const read = query(definition);\nexport const write = mutation(definition);\nexport const request = action(definition);\n```",
+      "question": "Which calls can return the endpoint's parsed JSON?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Only request.",
+          "rationale": "The action runtime supports fetch; the query and mutation runtimes reject it."
+        },
+        {
+          "id": "b",
+          "text": "Only read and request.",
+          "rationale": "Queries cannot perform fetch, even for a read-only HTTP request."
+        },
+        {
+          "id": "c",
+          "text": "Only write and request.",
+          "rationale": "Mutations cannot perform fetch merely because they can write database state."
+        },
+        {
+          "id": "d",
+          "text": "All three.",
+          "rationale": "Deterministic queries and mutations reject fetch; only the action completes."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

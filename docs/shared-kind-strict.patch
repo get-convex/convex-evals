@@ -1,0 +1,1041 @@
+diff --git a/evalScores/convex/benchmarkVersions.ts b/evalScores/convex/benchmarkVersions.ts
+--- a/evalScores/convex/benchmarkVersions.ts
++++ b/evalScores/convex/benchmarkVersions.ts
+@@ -537,7 +537,7 @@
+     for (const id of runIds) {
+       const evals = (await ctx.db
+         .query("evals")
+-        .withIndex("by_runId", (q) => q.eq("runId", id))
++        .withIndex("by_kind_runId", (q) => q.eq("kind", "coding").eq("runId", id))
+         .take(112)).map(requireCodingEval);
+       if (
+         evals.length !== 111 ||
+diff --git a/evalScores/convex/codingUnionConsumers.test.ts b/evalScores/convex/codingUnionConsumers.test.ts
+--- a/evalScores/convex/codingUnionConsumers.test.ts
++++ b/evalScores/convex/codingUnionConsumers.test.ts
+@@ -26,6 +26,7 @@
+       lastSeenAt: 1,
+     });
+     const legacyRun = await ctx.db.insert("runs", {
++      kind: "coding",
+       modelId,
+       provider: "test",
+       plannedEvals: ["cat/legacy"],
+diff --git a/evalScores/convex/debugQueries.ts b/evalScores/convex/debugQueries.ts
+--- a/evalScores/convex/debugQueries.ts
++++ b/evalScores/convex/debugQueries.ts
+@@ -56,9 +56,8 @@
+ 
+     const evals = await ctx.db
+       .query("evals")
+-      .withIndex("by_runId", (q) => q.eq("runId", args.runId))
+-      .filter((q) =>
+-        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
++      .withIndex("by_kind_runId", (q) =>
++        q.eq("kind", "coding").eq("runId", args.runId),
+       )
+       .collect()
+       .then((rows) => rows.map(requireCodingEval));
+diff --git a/evalScores/convex/decisionConfig.ts b/evalScores/convex/decisionConfig.ts
+--- a/evalScores/convex/decisionConfig.ts
++++ b/evalScores/convex/decisionConfig.ts
+@@ -1,8 +1,8 @@
+ /**
+- * Decision reporting stays off for the compatibility deployment. The strict
+- * post-migration activation patch changes this literal to true.
++ * Enabled only by the separately deployed strict stage, after the complete
++ * document-kind audit confirms that the tag migration has finished.
+  */
+-export const DECISION_INGESTION_ENABLED = false;
++export const DECISION_INGESTION_ENABLED = true;
+ 
+ export const MAX_DECISION_RECORD_BATCH = 25;
+ export const MAX_DECISION_REPETITIONS = 10;
+diff --git a/evalScores/convex/decisionStorage.test.ts b/evalScores/convex/decisionStorage.test.ts
+--- a/evalScores/convex/decisionStorage.test.ts
++++ b/evalScores/convex/decisionStorage.test.ts
+@@ -6,11 +6,11 @@
+ import { assertDecisionIngestionEnabled } from "./decisionConfig.js";
+ 
+ describe("decision shared-table lifecycle", () => {
+-  it("keeps Stage 1 disabled while allowing an explicit test override", () => {
+-    expect(() => assertDecisionIngestionEnabled()).toThrow(
++  it("enables reporting after the strict rollout and still enforces a disabled gate", () => {
++    expect(() => assertDecisionIngestionEnabled()).not.toThrow();
++    expect(() => assertDecisionIngestionEnabled(false)).toThrow(
+       "strict kind migration",
+     );
+-    expect(() => assertDecisionIngestionEnabled(true)).not.toThrow();
+   });
+ 
+   it("records immutable results, finalizes the exact plan, and materializes its cohort", async () => {
+diff --git a/evalScores/convex/documentKinds.test.ts b/evalScores/convex/documentKinds.test.ts
+--- a/evalScores/convex/documentKinds.test.ts
++++ b/evalScores/convex/documentKinds.test.ts
+@@ -36,6 +36,7 @@
+       sha256: "a".repeat(64),
+     };
+     const legacyRun = await ctx.db.insert("runs", {
++      kind: "coding",
+       modelId,
+       provider: "test",
+       plannedEvals: ["cat/task"],
+@@ -71,6 +72,7 @@
+       status: "running",
+     });
+     const legacyEval = await ctx.db.insert("evals", {
++      kind: "coding",
+       runId: legacyRun,
+       evalPath: "cat/task",
+       category: "cat",
+@@ -115,7 +117,10 @@
+       latestRunId: legacyRun,
+       latestRunTime: 1,
+     };
+-    const legacyScore = await ctx.db.insert("modelScores", scoreFields);
++    const legacyScore = await ctx.db.insert("modelScores", {
++      ...scoreFields,
++      kind: "coding",
++    });
+     const taggedScore = await ctx.db.insert("modelScores", {
+       ...scoreFields,
+       kind: "coding",
+@@ -191,6 +196,7 @@
+     await t.run(async (ctx) => {
+       for (let index = 0; index < 12; index++) {
+         await ctx.db.insert("evals", {
++          kind: "coding",
+           runId: ids.legacyRun,
+           evalPath: `cat/large-${index}`,
+           category: "cat",
+@@ -234,67 +240,15 @@
+     expect(pages).toBeGreaterThan(1);
+     expect(scanned).toBe(15);
+     expect({ missingKind, coding, decision, codingByBenchmark }).toEqual({
+-      missingKind: 13,
++      missingKind: 0,
+       coding: 14,
+       decision: 1,
+       codingByBenchmark: 14,
+     });
+   });
+ 
+-  it("tags all three tables in resumable pages and preserves every other field on repeated runs", async () => {
++  it("audits strict tags and relationships in resumable pages", async () => {
+     const { t, ids } = await fixture();
+-    const snapshot = () =>
+-      t.run(async (ctx) =>
+-        Promise.all(Object.values(ids).map((id) => ctx.db.get(id))),
+-      );
+-    const before = await snapshot();
+-    for (const table of ["runs", "evals", "modelScores"] as const) {
+-      const audit = await t.query(internal.migrations.auditDocumentKinds, {
+-        table,
+-        paginationOpts: { cursor: null, numItems: 100 },
+-      });
+-      expect(audit).toMatchObject({
+-        scanned: 3,
+-        missingKind: 1,
+-        coding: 2,
+-        decision: 1,
+-        relationshipErrors: [],
+-      });
+-    }
+-    for (let replay = 0; replay < 2; replay++) {
+-      for (const migration of [
+-        internal.migrations.backfillRunKinds,
+-        internal.migrations.backfillEvalKinds,
+-        internal.migrations.backfillModelScoreKinds,
+-      ]) {
+-        let cursor: string | null = null;
+-        let pages = 0;
+-        while (true) {
+-          const page: {
+-            isDone: boolean;
+-            continueCursor: string;
+-            processed: number;
+-          } = await t.mutation(migration, {
+-            cursor,
+-            batchSize: 1,
+-            dryRun: false,
+-          });
+-          pages++;
+-          if (page.isDone) break;
+-          cursor = page.continueCursor;
+-        }
+-        expect(pages).toBeGreaterThan(1);
+-      }
+-      const after = await snapshot();
+-      before.forEach((document, index) => {
+-        expect(document).not.toBeNull();
+-        expect(after[index]).toEqual(
+-          document?.kind === undefined
+-            ? { ...document, kind: "coding" }
+-            : document,
+-        );
+-      });
+-    }
+     for (const table of ["runs", "evals", "modelScores"] as const) {
+       let cursor: string | null = null;
+       let scanned = 0;
+@@ -315,16 +269,16 @@
+     }
+   });
+ 
+-  it("normalizes historical coding records and rejects the opposite kind", async () => {
++  it("narrows strict coding records and rejects the opposite kind", async () => {
+     const { t, ids } = await fixture();
+     await t.run(async (ctx) => {
+-      const legacy = await ctx.db.get("runs", ids.legacyRun);
++      const coding = await ctx.db.get("runs", ids.legacyRun);
+       const decision = await ctx.db.get("runs", ids.decisionRun);
+-      if (!legacy || !decision) throw new Error("Missing fixtures");
+-      expect(requireCodingRun(legacy).kind).toBe("coding");
++      if (!coding || !decision) throw new Error("Missing fixtures");
++      expect(requireCodingRun(coding).kind).toBe("coding");
+       expect(requireDecisionRun(decision)).toEqual(decision);
+       expect(() => requireCodingRun(decision)).toThrow("coding run");
+-      expect(() => requireDecisionRun(legacy)).toThrow("decision run");
++      expect(() => requireDecisionRun(coding)).toThrow("decision run");
+     });
+   });
+ 
+diff --git a/evalScores/convex/documentKinds.ts b/evalScores/convex/documentKinds.ts
+--- a/evalScores/convex/documentKinds.ts
++++ b/evalScores/convex/documentKinds.ts
+@@ -1,18 +1,8 @@
+ import type { Doc } from "./_generated/dataModel.js";
+ 
+-// Only the persistence boundary accepts historical records without a tag.
+-// Application dispatchers always see a strict discriminated union.
+-export type StoredCodingRun = Extract<Doc<"runs">, { kind?: "coding" }>;
+-export type StoredCodingEval = Extract<Doc<"evals">, { kind?: "coding" }>;
+-export type StoredCodingModelScore = Extract<
+-  Doc<"modelScores">,
+-  { kind?: "coding" }
+->;
+-export type CodingRun = Omit<StoredCodingRun, "kind"> & { kind: "coding" };
+-export type CodingEval = Omit<StoredCodingEval, "kind"> & { kind: "coding" };
+-export type CodingModelScore = Omit<StoredCodingModelScore, "kind"> & {
+-  kind: "coding";
+-};
++export type CodingRun = Extract<Doc<"runs">, { kind: "coding" }>;
++export type CodingEval = Extract<Doc<"evals">, { kind: "coding" }>;
++export type CodingModelScore = Extract<Doc<"modelScores">, { kind: "coding" }>;
+ export type DecisionRun = Extract<Doc<"runs">, { kind: "decision" }>;
+ export type DecisionResult = Extract<Doc<"evals">, { kind: "decision" }>;
+ export type DecisionModelScore = Extract<
+@@ -27,45 +17,8 @@
+   throw new Error("Unhandled document kind");
+ }
+ 
+-export function normalizeRun(run: Doc<"runs">): Run {
++export function isCodingRun(run: Doc<"runs">): run is CodingRun {
+   switch (run.kind) {
+-    case undefined:
+-    case "coding":
+-      return { ...run, kind: "coding" };
+-    case "decision":
+-      return run;
+-    default:
+-      return assertNever(run);
+-  }
+-}
+-
+-export function normalizeEval(evalDoc: Doc<"evals">): Eval {
+-  switch (evalDoc.kind) {
+-    case undefined:
+-    case "coding":
+-      return { ...evalDoc, kind: "coding" };
+-    case "decision":
+-      return evalDoc;
+-    default:
+-      return assertNever(evalDoc);
+-  }
+-}
+-
+-export function normalizeModelScore(score: Doc<"modelScores">): ModelScore {
+-  switch (score.kind) {
+-    case undefined:
+-    case "coding":
+-      return { ...score, kind: "coding" };
+-    case "decision":
+-      return score;
+-    default:
+-      return assertNever(score);
+-  }
+-}
+-
+-export function isCodingRun(run: Doc<"runs">): run is StoredCodingRun {
+-  switch (run.kind) {
+-    case undefined:
+     case "coding":
+       return true;
+     case "decision":
+@@ -75,11 +28,8 @@
+   }
+ }
+ 
+-export function isCodingEval(
+-  evalDoc: Doc<"evals">,
+-): evalDoc is StoredCodingEval {
++export function isCodingEval(evalDoc: Doc<"evals">): evalDoc is CodingEval {
+   switch (evalDoc.kind) {
+-    case undefined:
+     case "coding":
+       return true;
+     case "decision":
+@@ -91,9 +41,8 @@
+ 
+ export function isCodingModelScore(
+   score: Doc<"modelScores">,
+-): score is StoredCodingModelScore {
++): score is CodingModelScore {
+   switch (score.kind) {
+-    case undefined:
+     case "coding":
+       return true;
+     case "decision":
+@@ -103,8 +52,7 @@
+   }
+ }
+ 
+-export function requireCodingRun(value: Doc<"runs">): CodingRun {
+-  const run = normalizeRun(value);
++export function requireCodingRun(run: Doc<"runs">): CodingRun {
+   switch (run.kind) {
+     case "coding":
+       return run;
+@@ -115,8 +63,7 @@
+   }
+ }
+ 
+-export function requireCodingEval(value: Doc<"evals">): CodingEval {
+-  const evalDoc = normalizeEval(value);
++export function requireCodingEval(evalDoc: Doc<"evals">): CodingEval {
+   switch (evalDoc.kind) {
+     case "coding":
+       return evalDoc;
+@@ -127,8 +74,7 @@
+   }
+ }
+ 
+-export function requireDecisionRun(value: Doc<"runs">): DecisionRun {
+-  const run = normalizeRun(value);
++export function requireDecisionRun(run: Doc<"runs">): DecisionRun {
+   switch (run.kind) {
+     case "decision":
+       return run;
+@@ -140,9 +86,8 @@
+ }
+ 
+ export function requireCodingModelScore(
+-  value: Doc<"modelScores">,
++  score: Doc<"modelScores">,
+ ): CodingModelScore {
+-  const score = normalizeModelScore(value);
+   switch (score.kind) {
+     case "coding":
+       return score;
+@@ -153,8 +98,7 @@
+   }
+ }
+ 
+-export function requireDecisionResult(value: Doc<"evals">): DecisionResult {
+-  const evalDoc = normalizeEval(value);
++export function requireDecisionResult(evalDoc: Doc<"evals">): DecisionResult {
+   switch (evalDoc.kind) {
+     case "decision":
+       return evalDoc;
+@@ -166,9 +110,8 @@
+ }
+ 
+ export function requireDecisionModelScore(
+-  value: Doc<"modelScores">,
++  score: Doc<"modelScores">,
+ ): DecisionModelScore {
+-  const score = normalizeModelScore(value);
+   switch (score.kind) {
+     case "decision":
+       return score;
+diff --git a/evalScores/convex/migrations.ts b/evalScores/convex/migrations.ts
+--- a/evalScores/convex/migrations.ts
++++ b/evalScores/convex/migrations.ts
+@@ -5,14 +5,7 @@
+ import { historicalBenchmarkForRun } from "./historicalBenchmarks";
+ import { paginationOptsValidator, type PaginationOptions } from "convex/server";
+ import { v } from "convex/values";
+-import {
+-  assertNever,
+-  isCodingEval,
+-  isCodingRun,
+-  normalizeRun,
+-  normalizeEval,
+-  normalizeModelScore,
+-} from "./documentKinds.js";
++import { assertNever, isCodingEval, isCodingRun } from "./documentKinds.js";
+ 
+ export const migrations = new Migrations<DataModel>(components.migrations);
+ 
+@@ -109,7 +102,12 @@
+ export const auditBenchmarkVersionBackfill = internalQuery({
+   args: {},
+   handler: async (ctx) => {
+-    const runs = (await ctx.db.query("runs").collect()).filter(isCodingRun);
++    const runs = (
++      await ctx.db
++        .query("runs")
++        .withIndex("by_kind", (q) => q.eq("kind", "coding"))
++        .collect()
++    ).filter(isCodingRun);
+     const counts = new Map<Id<"benchmarkVersions">, number>();
+     let unresolved = 0;
+ 
+@@ -150,45 +148,6 @@
+ export const runAll = migrations.runner([
+   internal.migrations.backfillRunBenchmarkVersionIds,
+   internal.migrations.backfillEvalGenerationDurations,
+-]);
+-
+-/** The dedicated discriminator migration changes only this one field. It does
+- * not rerun historical repairs, rewrite IDs, or recalculate existing scores. */
+-export function codingKindPatch(document: { kind?: "coding" | "decision" }) {
+-  switch (document.kind) {
+-    case undefined:
+-      return { kind: "coding" as const };
+-    case "coding":
+-    case "decision":
+-      return;
+-    default:
+-      return assertNever(document.kind);
+-  }
+-}
+-
+-export const backfillRunKinds = migrations.define({
+-  table: "runs",
+-  batchSize: 25,
+-  migrateOne: async (_ctx, document) => codingKindPatch(document),
+-});
+-
+-export const backfillEvalKinds = migrations.define({
+-  table: "evals",
+-  batchSize: 25,
+-  migrateOne: async (_ctx, document) => codingKindPatch(document),
+-});
+-
+-export const backfillModelScoreKinds = migrations.define({
+-  table: "modelScores",
+-  batchSize: 25,
+-  migrateOne: async (_ctx, document) => codingKindPatch(document),
+-});
+-
+-// Intentionally separate from runAll: rollout must not change unrelated data.
+-export const runKindBackfill = migrations.runner([
+-  internal.migrations.backfillRunKinds,
+-  internal.migrations.backfillEvalKinds,
+-  internal.migrations.backfillModelScoreKinds,
+ ]);
+ 
+ export const AUDIT_MAX_PAGE_BYTES = 2 * 1024 * 1024;
+@@ -287,9 +246,7 @@
+         continueCursor = result.continueCursor;
+         isDone = result.isDone;
+         scanned = result.page.length;
+-        for (const document of result.page) {
+-          if (document.kind === undefined) counts.missingKind += 1;
+-          const run = normalizeRun(document);
++        for (const run of result.page) {
+           counts[run.kind] += 1;
+           if (run.kind === "coding") addBenchmark(run.benchmarkVersion);
+           if (!(await getBenchmark(run.benchmarkVersion))) {
+@@ -306,12 +263,10 @@
+         continueCursor = result.continueCursor;
+         isDone = result.isDone;
+         scanned = result.page.length;
+-        for (const document of result.page) {
+-          if (document.kind === undefined) counts.missingKind += 1;
+-          const evalDoc = normalizeEval(document);
++        for (const evalDoc of result.page) {
+           counts[evalDoc.kind] += 1;
+           const parent = await getRun(evalDoc.runId);
+-          if (!parent || normalizeRun(parent).kind !== evalDoc.kind) {
++          if (!parent || parent.kind !== evalDoc.kind) {
+             relationshipErrors.push({
+               id: evalDoc._id,
+               reason: "Missing or opposite-kind parent run",
+@@ -328,15 +283,13 @@
+         continueCursor = result.continueCursor;
+         isDone = result.isDone;
+         scanned = result.page.length;
+-        for (const document of result.page) {
+-          if (document.kind === undefined) counts.missingKind += 1;
+-          const score = normalizeModelScore(document);
++        for (const score of result.page) {
+           counts[score.kind] += 1;
+           if (score.kind === "coding") addBenchmark(score.benchmarkVersion);
+           const parent = await getRun(score.latestRunId);
+           if (
+             !parent ||
+-            normalizeRun(parent).kind !== score.kind ||
++            parent.kind !== score.kind ||
+             parent.benchmarkVersion !== score.benchmarkVersion
+           ) {
+             relationshipErrors.push({
+diff --git a/evalScores/convex/modelScores.ts b/evalScores/convex/modelScores.ts
+--- a/evalScores/convex/modelScores.ts
++++ b/evalScores/convex/modelScores.ts
+@@ -47,15 +47,8 @@
+   handler: async (ctx) => {
+     const runs = await ctx.db
+       .query("runs")
+-      .filter((q) =>
+-        q.and(
+-          q.or(
+-            q.eq(q.field("kind"), "coding"),
+-            q.eq(q.field("kind"), undefined),
+-          ),
+-          q.eq(q.field("status.kind"), "completed"),
+-        ),
+-      )
++      .withIndex("by_kind", (q) => q.eq("kind", "coding"))
++      .filter((q) => q.eq(q.field("status.kind"), "completed"))
+       .collect()
+       .then((rows) => rows.map(requireCodingRun));
+     const benchmarks = await ctx.db.query("benchmarkVersions").collect();
+@@ -110,11 +103,11 @@
+     // model appear to have never run.
+     const rows = await ctx.db
+       .query("modelScores")
+-      .withIndex("by_modelId_experiment", (q) =>
+-        q.eq("modelId", args.modelId).eq("experiment", args.experiment),
+-      )
+-      .filter((q) =>
+-        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
++      .withIndex("by_kind_modelId_experiment", (q) =>
++        q
++          .eq("kind", "coding")
++          .eq("modelId", args.modelId)
++          .eq("experiment", args.experiment),
+       )
+       .collect()
+       .then((scoreRows) => scoreRows.map(requireCodingModelScore));
+@@ -144,9 +137,8 @@
+   handler: async (ctx, args) => {
+     const latestRuns = await ctx.db
+       .query("runs")
+-      .withIndex("by_modelId", (q) => q.eq("modelId", args.modelId))
+-      .filter((q) =>
+-        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
++      .withIndex("by_kind_modelId", (q) =>
++        q.eq("kind", "coding").eq("modelId", args.modelId),
+       )
+       .order("desc")
+       .take(50)
+@@ -157,11 +149,11 @@
+ 
+     const rows = await ctx.db
+       .query("modelScores")
+-      .withIndex("by_modelId_experiment", (q) =>
+-        q.eq("modelId", args.modelId).eq("experiment", args.experiment),
+-      )
+-      .filter((q) =>
+-        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
++      .withIndex("by_kind_modelId_experiment", (q) =>
++        q
++          .eq("kind", "coding")
++          .eq("modelId", args.modelId)
++          .eq("experiment", args.experiment),
+       )
+       .collect()
+       .then((scoreRows) => scoreRows.map(requireCodingModelScore));
+@@ -193,21 +185,14 @@
+     // status and the minted suite size exclude incomplete and filtered runs.
+     const candidateRuns = ctx.db
+       .query("runs")
+-      .withIndex("by_modelId_experiment_benchmark", (q) =>
++      .withIndex("by_kind_modelId_experiment_benchmark", (q) =>
+         q
++          .eq("kind", "coding")
+           .eq("modelId", args.modelId)
+           .eq("experiment", args.experiment)
+           .eq("benchmarkVersion", args.benchmarkVersion),
+       )
+-      .filter((q) =>
+-        q.and(
+-          q.or(
+-            q.eq(q.field("kind"), "coding"),
+-            q.eq(q.field("kind"), undefined),
+-          ),
+-          q.eq(q.field("status.kind"), "completed"),
+-        ),
+-      )
++      .filter((q) => q.and(q.eq(q.field("status.kind"), "completed")))
+       .order("desc");
+ 
+     // Score each run, stopping once we have enough
+@@ -227,12 +212,8 @@
+       if (!hasCompleteBenchmarkPlan(run, benchmark.evalCount)) continue;
+       const evals = await ctx.db
+         .query("evals")
+-        .withIndex("by_runId", (q) => q.eq("runId", run._id))
+-        .filter((q) =>
+-          q.or(
+-            q.eq(q.field("kind"), "coding"),
+-            q.eq(q.field("kind"), undefined),
+-          ),
++        .withIndex("by_kind_runId", (q) =>
++          q.eq("kind", "coding").eq("runId", run._id),
+         )
+         .collect()
+         .then((evals) => evals.map(requireCodingEval));
+@@ -251,14 +232,12 @@
+     // If no scored runs remain (e.g. after deletion), remove the row
+     const existing = await ctx.db
+       .query("modelScores")
+-      .withIndex("by_modelId_experiment_benchmark", (q) =>
++      .withIndex("by_kind_modelId_experiment_benchmark", (q) =>
+         q
++          .eq("kind", "coding")
+           .eq("modelId", args.modelId)
+           .eq("experiment", args.experiment)
+           .eq("benchmarkVersion", args.benchmarkVersion),
+-      )
+-      .filter((q) =>
+-        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
+       )
+       .unique();
+ 
+@@ -352,9 +331,7 @@
+   handler: async (ctx) => {
+     const rows = await ctx.db
+       .query("modelScores")
+-      .filter((q) =>
+-        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
+-      )
++      .withIndex("by_kind", (q) => q.eq("kind", "coding"))
+       .collect();
+     for (const row of rows) await ctx.db.delete("modelScores", row._id);
+     await ctx.scheduler.runAfter(
+diff --git a/evalScores/convex/runMaintenance.ts b/evalScores/convex/runMaintenance.ts
+--- a/evalScores/convex/runMaintenance.ts
++++ b/evalScores/convex/runMaintenance.ts
+@@ -3,7 +3,7 @@
+  * Called by cron jobs to clean up stuck or stale runs.
+  */
+ import { internalMutation } from "./_generated/server";
+-import { assertNever, normalizeRun } from "./documentKinds.js";
++import { assertNever } from "./documentKinds.js";
+ import { interruptDecisionRun } from "./decisionStorage.js";
+ 
+ /** Maximum age (in ms) before a pending/running run is considered stuck (3 hours) */
+@@ -40,8 +40,7 @@
+       .collect();
+ 
+     let failedCount = 0;
+-    for (const storedRun of candidates) {
+-      const run = normalizeRun(storedRun);
++    for (const run of candidates) {
+       const elapsedMs = now - run._creationTime;
+       switch (run.kind) {
+         case "coding": {
+diff --git a/evalScores/convex/runs.ts b/evalScores/convex/runs.ts
+--- a/evalScores/convex/runs.ts
++++ b/evalScores/convex/runs.ts
+@@ -16,9 +16,7 @@
+ } from "./scoringUtils.js";
+ import {
+   assertNever,
+-  normalizeEval,
+-  normalizeModelScore,
+-  normalizeRun,
++  requireCodingModelScore,
+   requireCodingEval,
+   requireCodingRun,
+   type CodingEval,
+@@ -380,7 +378,7 @@
+   handler: async (ctx, args) => {
+     const storedRun = await ctx.db.get("runs", args.runId);
+     if (!storedRun) return null;
+-    const run = normalizeRun(storedRun);
++    const run = storedRun;
+     switch (run.kind) {
+       case "decision":
+         await deleteDecisionRunData(ctx, run);
+@@ -396,11 +394,23 @@
+     // Collect all evals for this run
+     const storedEvals = await ctx.db
+       .query("evals")
+-      .withIndex("by_runId", (q) => q.eq("runId", args.runId))
++      .withIndex("by_kind_runId", (q) =>
++        q.eq("kind", "coding").eq("runId", args.runId),
++      )
+       .collect();
++    const wrongKindEval = await ctx.db
++      .query("evals")
++      .withIndex("by_kind_runId", (q) =>
++        q.eq("kind", "decision").eq("runId", args.runId),
++      )
++      .first();
++    if (wrongKindEval) {
++      throw new Error(
++        `Coding run ${run._id} has decision result ${wrongKindEval._id}`,
++      );
++    }
+     const evals: CodingEval[] = [];
+-    for (const storedEval of storedEvals) {
+-      const evalDoc = normalizeEval(storedEval);
++    for (const evalDoc of storedEvals) {
+       switch (evalDoc.kind) {
+         case "coding":
+           evals.push(evalDoc);
+@@ -510,9 +520,8 @@
+ 
+     const evals = await ctx.db
+       .query("evals")
+-      .withIndex("by_runId", (q) => q.eq("runId", args.runId))
+-      .filter((q) =>
+-        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
++      .withIndex("by_kind_runId", (q) =>
++        q.eq("kind", "coding").eq("runId", args.runId),
+       )
+       .collect()
+       .then((rows) => rows.map(requireCodingEval));
+@@ -585,33 +594,23 @@
+   handler: async (ctx, args) => {
+     let runsQuery = ctx.db
+       .query("runs")
+-      .filter((q) =>
+-        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
+-      )
++      .withIndex("by_kind", (q) => q.eq("kind", "coding"))
+       .order("desc");
+ 
+     // Apply filters if provided
+     if (args.experiment) {
+       runsQuery = ctx.db
+         .query("runs")
+-        .withIndex("by_experiment", (q) => q.eq("experiment", args.experiment))
+-        .filter((q) =>
+-          q.or(
+-            q.eq(q.field("kind"), "coding"),
+-            q.eq(q.field("kind"), undefined),
+-          ),
++        .withIndex("by_kind_experiment", (q) =>
++          q.eq("kind", "coding").eq("experiment", args.experiment),
+         )
+         .order("desc");
+     } else if (args.modelId) {
+       const modelId = args.modelId;
+       runsQuery = ctx.db
+         .query("runs")
+-        .withIndex("by_modelId", (q) => q.eq("modelId", modelId))
+-        .filter((q) =>
+-          q.or(
+-            q.eq(q.field("kind"), "coding"),
+-            q.eq(q.field("kind"), undefined),
+-          ),
++        .withIndex("by_kind_modelId", (q) =>
++          q.eq("kind", "coding").eq("modelId", modelId),
+         )
+         .order("desc");
+     }
+@@ -630,12 +629,8 @@
+       runs.map(async (run) => {
+         const evals = await ctx.db
+           .query("evals")
+-          .withIndex("by_runId", (q) => q.eq("runId", run._id))
+-          .filter((q) =>
+-            q.or(
+-              q.eq(q.field("kind"), "coding"),
+-              q.eq(q.field("kind"), undefined),
+-            ),
++          .withIndex("by_kind_runId", (q) =>
++            q.eq("kind", "coding").eq("runId", run._id),
+           )
+           .collect()
+           .then((rows) => rows.map(requireCodingEval));
+@@ -742,24 +737,21 @@
+       const storedScoreRows = targetModelId
+         ? await ctx.db
+             .query("modelScores")
+-            .withIndex("by_modelId_experiment_benchmark", (q) =>
+-              q.eq("modelId", targetModelId).eq("experiment", args.experiment),
++            .withIndex("by_kind_modelId_experiment_benchmark", (q) =>
++              q
++                .eq("kind", "coding")
++                .eq("modelId", targetModelId)
++                .eq("experiment", args.experiment),
+             )
+             .collect()
+         : await ctx.db
+             .query("modelScores")
+-            .withIndex("by_experiment", (q) =>
+-              q.eq("experiment", args.experiment),
+-            )
+-            .filter((q) =>
+-              q.or(
+-                q.eq(q.field("kind"), "coding"),
+-                q.eq(q.field("kind"), undefined),
+-              ),
++            .withIndex("by_kind_experiment", (q) =>
++              q.eq("kind", "coding").eq("experiment", args.experiment),
+             )
+             .collect();
+       const scoreRows = storedScoreRows
+-        .map((row) => normalizeModelScore(row))
++        .map(requireCodingModelScore)
+         .filter((row): row is CodingModelScore => row.kind === "coding")
+         .filter((row) => publicIds.has(row.benchmarkVersion));
+ 
+@@ -793,8 +785,9 @@
+       const storedScoreRows = targetModelId
+         ? await ctx.db
+             .query("modelScores")
+-            .withIndex("by_modelId_experiment_benchmark", (q) =>
++            .withIndex("by_kind_modelId_experiment_benchmark", (q) =>
+               q
++                .eq("kind", "coding")
+                 .eq("modelId", targetModelId)
+                 .eq("experiment", args.experiment)
+                 .eq("benchmarkVersion", benchmark._id),
+@@ -802,20 +795,15 @@
+             .collect()
+         : await ctx.db
+             .query("modelScores")
+-            .withIndex("by_experiment_benchmark", (q) =>
++            .withIndex("by_kind_experiment_benchmark", (q) =>
+               q
++                .eq("kind", "coding")
+                 .eq("experiment", args.experiment)
+                 .eq("benchmarkVersion", benchmark._id),
+             )
+-            .filter((q) =>
+-              q.or(
+-                q.eq(q.field("kind"), "coding"),
+-                q.eq(q.field("kind"), undefined),
+-              ),
+-            )
+             .collect();
+       rows = storedScoreRows
+-        .map(normalizeModelScore)
++        .map(requireCodingModelScore)
+         .filter((row): row is CodingModelScore => row.kind === "coding");
+       returnedVersion = benchmark.version;
+       for (const row of rows) {
+@@ -851,26 +839,21 @@
+         const storedPreviousRows = targetModelId
+           ? await ctx.db
+               .query("modelScores")
+-              .withIndex("by_modelId_experiment_benchmark", (q) =>
++              .withIndex("by_kind_modelId_experiment_benchmark", (q) =>
+                 q
++                  .eq("kind", "coding")
+                   .eq("modelId", targetModelId)
+                   .eq("experiment", args.experiment),
+               )
+               .collect()
+           : await ctx.db
+               .query("modelScores")
+-              .withIndex("by_experiment", (q) =>
+-                q.eq("experiment", args.experiment),
+-              )
+-              .filter((q) =>
+-                q.or(
+-                  q.eq(q.field("kind"), "coding"),
+-                  q.eq(q.field("kind"), undefined),
+-                ),
++              .withIndex("by_kind_experiment", (q) =>
++                q.eq("kind", "coding").eq("experiment", args.experiment),
+               )
+               .collect();
+         const previousRows = storedPreviousRows
+-          .map(normalizeModelScore)
++          .map(requireCodingModelScore)
+           .filter((row): row is CodingModelScore => row.kind === "coding");
+         const latestPreviousByModel = new Map<Id<"models">, CodingModelScore>();
+ 
+@@ -985,14 +968,13 @@
+       .collect();
+     const scoreRows = await ctx.db
+       .query("modelScores")
+-      .withIndex("by_experiment", (q) => q.eq("experiment", args.experiment))
+-      .filter((q) =>
+-        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
++      .withIndex("by_kind_experiment", (q) =>
++        q.eq("kind", "coding").eq("experiment", args.experiment),
+       )
+       .collect()
+       .then((rows) =>
+         rows
+-          .map(normalizeModelScore)
++          .map(requireCodingModelScore)
+           .filter((row): row is CodingModelScore => row.kind === "coding"),
+       );
+     // Versions need metadata only for models that have a score in this
+@@ -1152,13 +1134,11 @@
+       // This index preserves creation order across benchmark versions.
+       candidateRuns = ctx.db
+         .query("runs")
+-        .withIndex("by_modelId", (q) => q.eq("modelId", targetModelId))
++        .withIndex("by_kind_modelId", (q) =>
++          q.eq("kind", "coding").eq("modelId", targetModelId),
++        )
+         .filter((q) =>
+           q.and(
+-            q.or(
+-              q.eq(q.field("kind"), "coding"),
+-              q.eq(q.field("kind"), undefined),
+-            ),
+             q.eq(q.field("experiment"), args.experiment),
+             q.eq(q.field("status.kind"), "completed"),
+           ),
+@@ -1177,21 +1157,14 @@
+       benchmarkById = new Map([[benchmark._id, benchmark]]);
+       candidateRuns = ctx.db
+         .query("runs")
+-        .withIndex("by_modelId_experiment_benchmark", (q) =>
++        .withIndex("by_kind_modelId_experiment_benchmark", (q) =>
+           q
++            .eq("kind", "coding")
+             .eq("modelId", targetModelId)
+             .eq("experiment", args.experiment)
+             .eq("benchmarkVersion", benchmark._id),
+         )
+-        .filter((q) =>
+-          q.and(
+-            q.or(
+-              q.eq(q.field("kind"), "coding"),
+-              q.eq(q.field("kind"), undefined),
+-            ),
+-            q.eq(q.field("status.kind"), "completed"),
+-          ),
+-        )
++        .filter((q) => q.and(q.eq(q.field("status.kind"), "completed")))
+         .order("desc");
+     }
+ 
+@@ -1232,12 +1205,8 @@
+         continue;
+       const evals = await ctx.db
+         .query("evals")
+-        .withIndex("by_runId", (q) => q.eq("runId", run._id))
+-        .filter((q) =>
+-          q.or(
+-            q.eq(q.field("kind"), "coding"),
+-            q.eq(q.field("kind"), undefined),
+-          ),
++        .withIndex("by_kind_runId", (q) =>
++          q.eq("kind", "coding").eq("runId", run._id),
+         )
+         .collect()
+         .then((rows) => rows.map(requireCodingEval));
+@@ -1348,9 +1317,8 @@
+   handler: async (ctx, args) => {
+     const runs = await ctx.db
+       .query("runs")
+-      .withIndex("by_modelId", (q) => q.eq("modelId", args.modelId))
+-      .filter((q) =>
+-        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
++      .withIndex("by_kind_modelId", (q) =>
++        q.eq("kind", "coding").eq("modelId", args.modelId),
+       )
+       .order("desc")
+       .take(MODEL_SUMMARY_RUNS_PER_MODEL)
+@@ -1377,12 +1345,8 @@
+     for (const run of runs.slice(0, MODEL_SUMMARY_EVALS_RUNS)) {
+       const evals = await ctx.db
+         .query("evals")
+-        .withIndex("by_runId", (q) => q.eq("runId", run._id))
+-        .filter((q) =>
+-          q.or(
+-            q.eq(q.field("kind"), "coding"),
+-            q.eq(q.field("kind"), undefined),
+-          ),
++        .withIndex("by_kind_runId", (q) =>
++          q.eq("kind", "coding").eq("runId", run._id),
+         )
+         .collect()
+         .then((rows) => rows.map(requireCodingEval));
+@@ -1409,9 +1373,8 @@
+   handler: async (ctx, args) => {
+     const latestRun = await ctx.db
+       .query("runs")
+-      .withIndex("by_modelId", (q) => q.eq("modelId", args.modelId))
+-      .filter((q) =>
+-        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
++      .withIndex("by_kind_modelId", (q) =>
++        q.eq("kind", "coding").eq("modelId", args.modelId),
+       )
+       .order("desc")
+       .first();
+diff --git a/evalScores/convex/schema.ts b/evalScores/convex/schema.ts
+--- a/evalScores/convex/schema.ts
++++ b/evalScores/convex/schema.ts
+@@ -160,8 +160,7 @@
+ 
+ // One top-level union per shared table; each branch owns its required fields.
+ export const codingRun = v.object({
+-  // Temporary compatibility for existing records; writers always set coding.
+-  kind: v.optional(v.literal("coding")),
++  kind: v.literal("coding"),
+   modelId: v.id("models"),
+   provider: v.string(),
+   runId: v.optional(v.string()),
+@@ -212,8 +211,7 @@
+ });
+ 
+ export const codingEval = v.object({
+-  // Temporary compatibility for existing records; writers always set coding.
+-  kind: v.optional(v.literal("coding")),
++  kind: v.literal("coding"),
+   runId: v.id("runs"),
+   evalPath: v.string(),
+   category: v.string(),
+@@ -247,8 +245,7 @@
+ });
+ 
+ export const codingModelScore = v.object({
+-  // Temporary compatibility for existing records; writers always set coding.
+-  kind: v.optional(v.literal("coding")),
++  kind: v.literal("coding"),
+   modelId: v.id("models"),
+   experiment: v.optional(experimentLiteral),
+   benchmarkVersion: v.id("benchmarkVersions"),
+@@ -334,13 +331,6 @@
+     .index("by_name", ["name"]),
+ 
+   runs: defineTable(v.union(codingRun, decisionRun))
+-    .index("by_modelId", ["modelId"])
+-    .index("by_experiment", ["experiment"])
+-    .index("by_modelId_experiment_benchmark", [
+-      "modelId",
+-      "experiment",
+-      "benchmarkVersion",
+-    ])
+     .index("by_kind", ["kind"])
+     .index("by_kind_modelId", ["kind", "modelId"])
+     .index("by_kind_experiment", ["kind", "experiment"])
+@@ -362,8 +352,6 @@
+     .index("by_effectiveAt", ["effectiveAt"]),
+ 
+   evals: defineTable(v.union(codingEval, decisionResult))
+-    .index("by_runId", ["runId"])
+-    .index("by_evalPath", ["evalPath"])
+     .index("by_kind", ["kind"])
+     .index("by_kind_runId", ["kind", "runId"])
+     .index("by_kind_evalPath", ["kind", "evalPath"])
+@@ -390,14 +378,6 @@
+   // The leaderboardScores query reads directly from this table instead of
+   // recomputing from runs + evals on every request. Always select the kind first.
+   modelScores: defineTable(v.union(codingModelScore, decisionModelScore))
+-    .index("by_modelId_experiment", ["modelId", "experiment"])
+-    .index("by_experiment", ["experiment"])
+-    .index("by_modelId_experiment_benchmark", [
+-      "modelId",
+-      "experiment",
+-      "benchmarkVersion",
+-    ])
+-    .index("by_experiment_benchmark", ["experiment", "benchmarkVersion"])
+     .index("by_kind", ["kind"])
+     .index("by_kind_modelId_experiment", ["kind", "modelId", "experiment"])
+     .index("by_kind_experiment", ["kind", "experiment"])

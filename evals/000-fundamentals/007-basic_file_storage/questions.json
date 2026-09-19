@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "sourceEval": "000-fundamentals/007-basic_file_storage",
+  "coverageNotes": "Tests applying the supplied ctx.db.system.get() reader to the storage table and ID, plus choosing the download-URL ID. Does not test recalling the metadata-reader API, upload flow or missing-file errors. Tests separate storage/application row lifecycles; does not test upload UI or concurrent deletion.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Applying supplied storage metadata lookup",
+      "context": "Using Convex 1.44.0 inside a query, file is a loaded Doc<\"files\">. The files table contains only storageId: v.id(\"_storage\"). The stored object exists. The task supplies ctx.db.system.get() for retrieving storage metadata.",
+      "question": "Which code reads its download URL and storage metadata?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nconst url = await ctx.storage.getUrl(file._id);\nconst metadata = await ctx.db.system.get(\"_storage\", file.storageId);\n```",
+          "rationale": "getUrl needs the storage ID, not the application files-row ID."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nconst url = await ctx.storage.getUrl(file.storageId);\nconst metadata = await ctx.db.get(\"_storage\", file.storageId);\n```",
+          "rationale": "System metadata requires db.system; the ordinary db.get reader rejects system-table access."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nconst url = await ctx.storage.getUrl(file.storageId);\nconst metadata = await ctx.db.get(\"files\", file._id);\n```",
+          "rationale": "This returns the linking application row, not size/hash/content-type metadata."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nconst url = await ctx.storage.getUrl(file.storageId);\nconst metadata = await ctx.db.system.get(\"_storage\", file.storageId);\n```",
+          "rationale": "Both calls address the stored object using its storage ID, with db.system reading its metadata."
+        }
+      ],
+      "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    },
+    {
+      "id": "q-delete-both",
+      "concept": "Independent file and application-row lifecycles",
+      "context": "Using Convex 1.44.0 inside a mutation, file is a loaded Doc<\"files\"> with an existing storageId. The files schema has only storageId: v.id(\"_storage\").",
+      "question": "Which code deletes both this stored object and its files row?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nawait ctx.storage.delete(file.storageId);\n```",
+          "rationale": "Deleting the stored object leaves the application row."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nawait ctx.db.delete(\"files\", file._id);\n```",
+          "rationale": "Deleting the application row leaves the stored object."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nawait ctx.storage.delete(file.storageId);\nawait ctx.db.delete(\"files\", file._id);\n```",
+          "rationale": "The object and application row have separate APIs and IDs, so both are explicitly removed."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nawait ctx.storage.delete(file.storageId);\nawait ctx.db.delete(\"files\", file.storageId);\n```",
+          "rationale": "The second call uses a storage ID where a files-row ID is required; the transaction fails."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

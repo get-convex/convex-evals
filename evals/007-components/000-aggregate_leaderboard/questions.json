@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "sourceEval": "007-components/000-aggregate_leaderboard",
+  "coverageNotes": "Applies supplied API documentation. Does not assess mounting, independent upsert implementation or large-table performance. Applies supplied documentation to one bounded read. No independent synchronization or scale benchmark.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Synchronizing a TableAggregate replacement",
+      "context": "Convex 1.41.0, @convex-dev/aggregate 0.2.2. Supplied package reference: `insert(ctx, doc)` adds a full stored document; `replace(ctx, oldDoc, newDoc)` synchronizes a replacement in the same mutation as the table write. Reads include `count(ctx)`, `count(ctx, { bounds: { lower: { key, inclusive: false } } })`, and `indexOf(ctx, key)`. Bounds also support `upper` and `inclusive: true`.\n\nA mounted `scoreAggregate` sorts stored `scores` documents by `-doc.score`. New users are already inserted into both the table and aggregate. For a returning user, the mutation has loaded `existing`, patched its score, and loaded the full `updated` document. Complete its synchronization step.",
+      "question": "Which call keeps one aggregate entry for the user as their score changes?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nawait scoreAggregate.replace(ctx, updated, updated);\n```",
+          "rationale": "Uses the new key as the old key. When the score moves, deleting the old entry at that new key fails."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nawait scoreAggregate.insert(ctx, updated);\n```",
+          "rationale": "Adds the new key without deleting the old key, so score changes leave duplicate entries for this user."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nawait scoreAggregate.replace(ctx, existing, updated);\n```",
+          "rationale": "Deletes the entry at the old score and inserts the new score inside the same transaction."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nawait scoreAggregate.replace(ctx, updated, existing);\n```",
+          "rationale": "Reverses old and new: deletion looks for the new key before it exists."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/package.json",
+        "answer/convex/index.ts",
+        "answer/convex/convex.config.ts",
+        "grader.test.ts"
+      ]
+    },
+    {
+      "id": "q2",
+      "concept": "Strict score bounds for competition rank",
+      "context": "Convex 1.41.0, @convex-dev/aggregate 0.2.2. Supplied package reference: `insert(ctx, doc)` adds a full stored document; `replace(ctx, oldDoc, newDoc)` synchronizes a replacement in the same mutation as the table write. Reads include `count(ctx)`, `count(ctx, { bounds: { lower: { key, inclusive: false } } })`, and `indexOf(ctx, key)`. Bounds also support `upper` and `inclusive: true`.\n\nThe aggregate is synchronized and sorts by `-doc.score`. `doc` is the requested stored score. Equal scores share a rank: scores 100, 100, 50 rank 1, 1, 3. Unknown-user handling and total count are already implemented.",
+      "question": "Which expression returns the requested user's rank?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\n1 + await scoreAggregate.count(ctx, { bounds: { upper: { key: -doc.score, inclusive: false } } })\n```",
+          "rationale": "Counts strictly smaller negated keys, which are strictly higher scores."
+        },
+        {
+          "id": "b",
+          "text": "```ts\n1 + await scoreAggregate.count(ctx, { bounds: { upper: { key: -doc.score, inclusive: true } } })\n```",
+          "rationale": "Includes the user and every tied user, moving the rank past the tie group."
+        },
+        {
+          "id": "c",
+          "text": "```ts\n1 + await scoreAggregate.count(ctx, { bounds: { lower: { key: -doc.score, inclusive: false } } })\n```",
+          "rationale": "Counts lower scores, reversing the ranking direction."
+        },
+        {
+          "id": "d",
+          "text": "```ts\n1 + await scoreAggregate.count(ctx, { bounds: { upper: { key: doc.score, inclusive: false } } })\n```",
+          "rationale": "Uses an unnegated boundary against negated stored keys, counting the wrong range."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/package.json",
+        "answer/convex/index.ts",
+        "answer/convex/convex.config.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "005-idioms/001-file_organization",
+  "coverageNotes": "Covers generated API module/export addressing. Does not measure CRUD implementation, missing-document policy or indexes.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Generated module and export references",
+      "context": "Convex 1.44.0. `convex/users.ts` exports a public query `get` taking `{ id: Id<\"users\"> }`. `convex/posts.ts` exports a public query `get` taking `{ id: Id<\"posts\"> }`. Both return the matching document. A client imports the generated `api`; `postId` is a valid post ID.",
+      "question": "Which call invokes the posts query?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nclient.query(api.get.posts, { id: postId })\n```",
+          "rationale": "This reverses the module and exported function names."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nclient.query(api[\"posts.ts\"].get, { id: postId })\n```",
+          "rationale": "Generated module references omit the .ts extension."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nclient.query(api.posts.get, { id: postId })\n```",
+          "rationale": "The module name posts and exported name get form api.posts.get."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nclient.query(api.users.get, { id: postId })\n```",
+          "rationale": "This invokes the users query, whose validator rejects a post ID."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/users.ts",
+        "answer/convex/posts.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

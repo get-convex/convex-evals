@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "001-data_modeling/006-literals",
+  "coverageNotes": "Measures one representative finite mixed-scalar set; other literal fields and the nested feature object remain coding coverage.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Mixed scalar literal union",
+      "context": "Using Convex SDK 1.44.0, the required `enabled` field may be the number `0`, the number `1`, or the boolean `false`. No other value is allowed. `v` is imported from `convex/values`.",
+      "question": "Which validator accepts exactly those values?",
+      "options": [
+        {
+          "id": "a",
+          "text": "v.union(v.number(), v.literal(false))",
+          "rationale": "The broad number validator also accepts 2 and other numbers."
+        },
+        {
+          "id": "b",
+          "text": "v.union(v.literal(0), v.literal(1), v.literal(false))",
+          "rationale": "Each allowed scalar is represented by its own literal validator."
+        },
+        {
+          "id": "c",
+          "text": "v.union(v.literal(0), v.literal(1), v.boolean())",
+          "rationale": "The broad boolean validator also accepts true."
+        },
+        {
+          "id": "d",
+          "text": "v.union(v.literal(0), v.literal(1), v.literal(\"false\"))",
+          "rationale": "The string \"false\" differs from the required boolean false."
+        }
+      ],
+      "correctOptionId": "b",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

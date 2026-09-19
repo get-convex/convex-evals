@@ -4,17 +4,22 @@
  */
 import { internalQuery } from "./_generated/server";
 import { v } from "convex/values";
+import { requireCodingEval, requireCodingRun } from "./documentKinds.js";
 
 export const getEvalRecord = internalQuery({
   args: { evalId: v.id("evals") },
   handler: async (ctx, args) => {
-    return await ctx.db.get("evals", args.evalId);
+    const evalDoc = await ctx.db.get("evals", args.evalId);
+    return evalDoc ? requireCodingEval(evalDoc) : null;
   },
 });
 
 export const getStepsForEval = internalQuery({
   args: { evalId: v.id("evals") },
   handler: async (ctx, args) => {
+    const evalDoc = await ctx.db.get("evals", args.evalId);
+    if (!evalDoc) return [];
+    requireCodingEval(evalDoc);
     return await ctx.db
       .query("steps")
       .withIndex("by_evalId", (q) => q.eq("evalId", args.evalId))
@@ -25,7 +30,8 @@ export const getStepsForEval = internalQuery({
 export const getRunRecord = internalQuery({
   args: { runId: v.id("runs") },
   handler: async (ctx, args) => {
-    return await ctx.db.get("runs", args.runId);
+    const run = await ctx.db.get("runs", args.runId);
+    return run ? requireCodingRun(run) : null;
   },
 });
 
@@ -44,13 +50,18 @@ export const getModelRecord = internalQuery({
 export const getFailedEvalsForRun = internalQuery({
   args: { runId: v.id("runs") },
   handler: async (ctx, args) => {
-    const run = await ctx.db.get("runs", args.runId);
-    if (!run) return null;
+    const storedRun = await ctx.db.get("runs", args.runId);
+    if (!storedRun) return null;
+    const run = requireCodingRun(storedRun);
 
     const evals = await ctx.db
       .query("evals")
       .withIndex("by_runId", (q) => q.eq("runId", args.runId))
-      .collect();
+      .filter((q) =>
+        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
+      )
+      .collect()
+      .then((rows) => rows.map(requireCodingEval));
 
     const failed = evals.filter((e) => e.status.kind === "failed");
 
@@ -85,7 +96,9 @@ export const getFailedEvalsForRun = internalQuery({
         };
       }),
     );
-    const modelDoc = run.modelId ? await ctx.db.get("models", run.modelId) : null;
+    const modelDoc = run.modelId
+      ? await ctx.db.get("models", run.modelId)
+      : null;
 
     return {
       run: {

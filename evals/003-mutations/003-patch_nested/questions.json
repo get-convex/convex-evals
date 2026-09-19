@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "003-mutations/003-patch_nested",
+  "coverageNotes": "Tests one shallow patch operation. Missing-document checking and argument validation are supplied as shared setup; concurrency, authorization and creation are not measured. Static rejection and runtime rejection are recorded separately for B and C.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Shallow document patch and replacing a nested object",
+      "context": "Convex 1.44.0. A document has this shape:\n\n```ts\n{\n  metadata: {\n    title: string,\n    author: { name: string, contact: { email: string, phone?: string } },\n    tags: string[]\n  },\n  content: string\n}\n```\n\nInside a mutation, `doc` is the existing document fetched using `args.documentId`; a missing document has already caused an error. `args.author` is validated as a complete replacement author with the shape above.",
+      "question": "Which update replaces the author exactly, including removing an omitted phone, while preserving title, tags, and content?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nawait ctx.db.patch(\"documents\", args.documentId, {\n  metadata: { ...doc.metadata, author: args.author },\n});\n```",
+          "rationale": "Convex patch replaces supplied top-level fields. Rebuilding metadata preserves its siblings while replacing author, and content stays untouched."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nawait ctx.db.patch(\"documents\", args.documentId, {\n  metadata: { author: args.author },\n});\n```",
+          "rationale": "Assumes a recursive merge. The supplied metadata replaces the old object and lacks required title and tags; TypeScript and schema validation reject it."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nawait ctx.db.patch(\"documents\", args.documentId, {\n  \"metadata.author\": args.author,\n});\n```",
+          "rationale": "Assumes Mongo-style dotted update paths. Convex patch treats keys as top-level fields; metadata.author is not a declared document field."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nawait ctx.db.patch(\"documents\", args.documentId, {\n  metadata: {\n    ...doc.metadata,\n    author: {\n      ...args.author,\n      contact: { ...doc.metadata.author.contact, ...args.author.contact },\n    },\n  },\n});\n```",
+          "rationale": "Explicitly merging the old contact keeps its optional phone when the replacement omits phone, violating complete replacement."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

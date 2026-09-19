@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "002-queries/000-all_rows",
+  "coverageNotes": "Basic terminal-operation recognition. Does not test schema authoring, pagination, production throughput, or independent implementation.",
+  "questions": [
+    {
+      "id": "q000-1",
+      "concept": "Materialize every matching document",
+      "context": "Using Convex 1.44.0, products contains name: string, price: number, and inStock: boolean. The table fits within query limits. A public query takes no arguments and must return an array of every product, including system fields. Its ctx is in scope.",
+      "question": "Which handler returns the required array for an empty table as well as a table of any size within those limits?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nreturn await ctx.db.query(\"products\").collect();\n```",
+          "rationale": "collect returns the complete array of documents, including system fields; the 0, 1, and 11-row cases pass."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nreturn await ctx.db.query(\"products\").first();\n```",
+          "rationale": "first returns null or one document, not the required array of all documents."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nreturn await ctx.db.query(\"products\").take(10);\n```",
+          "rationale": "take(10) caps the result at ten and omits the eleventh document."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nreturn await ctx.db.query(\"products\").unique();\n```",
+          "rationale": "unique returns null or one document and throws when the table has multiple rows."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "answer/convex/public.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

@@ -79,6 +79,7 @@
     "generate:answer-types": "bun run scripts/generateAnswerTypes.ts",
     "generate:evalscores-types": "cd evalScores && bun run codegen",
     "visualizer:dev": "cd visualizer && bun run dev",
-    "visualizer:build": "cd visualizer && bun run build"
+    "visualizer:build": "cd visualizer && bun run build",
+    "decisions": "bun run runner/decisions/cli.ts"
   }
 }

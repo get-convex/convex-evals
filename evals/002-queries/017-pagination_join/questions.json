@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "002-queries/017-pagination_join",
+  "coverageNotes": "Does not establish all hook behavior, independent join implementation or a performance benefit from Promise.all.",
+  "questions": [
+    {
+      "id": "q017-1",
+      "concept": "Preserve the native pagination envelope during hydration",
+      "context": "Use Convex 1.44.0. This query hydrates authors for the current page. Return the same pagination metadata along with the hydrated page for usePaginatedQuery.\n\n```ts\nimport { query } from \"./_generated/server\";\nimport { v } from \"convex/values\";\nimport { paginationOptsValidator, paginationResultValidator } from \"convex/server\";\nexport const candidate = query({\n  args: { paginationOpts: paginationOptsValidator },\n  handler: async (ctx, args) => {\n    const result = await ctx.db.query(\"messages\").order(\"desc\")\n      .paginate(args.paginationOpts);\n    const hydrated = await Promise.all(result.page.map(async message => {\n      const author = await ctx.db.get(\"users\", message.authorId);\n      if (!author) throw new Error(\"Author not found\");\n      return { ...message, author: author.name };\n    }));\n    /* OPTION */\n  },\n});\n```",
+      "question": "Which return statement preserves that result?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nreturn { ...result, page: hydrated, continueCursor: args.paginationOpts.cursor };\n```",
+          "rationale": "Incorrect: replacing the outgoing continuation cursor with the incoming cursor prevents forward progress and yields null initially."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nreturn { ...result, page: hydrated, isDone: result.page.length === args.paginationOpts.numItems };\n```",
+          "rationale": "Incorrect: a full page does not mean the query is done. This replaces native completion metadata with an unrelated length test."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nreturn { ...result, messages: hydrated };\n```",
+          "rationale": "Incorrect: native consumers read page. This leaves unhydrated documents in page and adds the names under an unused messages property."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nreturn { ...result, page: hydrated };\n```",
+          "rationale": "Correct: only page changes. continueCursor, isDone and any optional split metadata are preserved by the spread."
+        }
+      ],
+      "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

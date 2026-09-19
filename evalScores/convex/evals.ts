@@ -1,6 +1,9 @@
 import { internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { languageModelUsage } from "./schema.js";
+import { requireCodingEval, requireCodingRun } from "./documentKinds.js";
+
+export { decisionResults } from "./decisionViews.js";
 
 export const createEval = internalMutation({
   args: {
@@ -13,7 +16,12 @@ export const createEval = internalMutation({
   },
   returns: v.id("evals"),
   handler: async (ctx, args) => {
+    const storedRun = await ctx.db.get("runs", args.runId);
+    if (!storedRun) throw new Error(`Run ${args.runId} not found`);
+    const run = requireCodingRun(storedRun);
+
     const id = await ctx.db.insert("evals", {
+      kind: "coding",
       runId: args.runId,
       evalPath: args.evalPath,
       category: args.category,
@@ -22,23 +30,20 @@ export const createEval = internalMutation({
       task: args.task,
       evalSourceStorageId: args.evalSourceStorageId,
     });
-    
+
     // Update experiment total evals count
-    const run = await ctx.db.get("runs", args.runId);
-    if (run) {
-      const expName = run.experiment ?? "default";
-      const experiment = await ctx.db
-        .query("experiments")
-        .withIndex("by_name", (q) => q.eq("name", expName))
-        .unique();
-      
-      if (experiment) {
-        await ctx.db.patch("experiments", experiment._id, {
-          totalEvals: experiment.totalEvals + 1,
-        });
-      }
+    const expName = run.experiment ?? "default";
+    const experiment = await ctx.db
+      .query("experiments")
+      .withIndex("by_name", (q) => q.eq("name", expName))
+      .unique();
+
+    if (experiment) {
+      await ctx.db.patch("experiments", experiment._id, {
+        totalEvals: experiment.totalEvals + 1,
+      });
     }
-    
+
     return id;
   },
 });
@@ -52,11 +57,15 @@ export const updateEvalOutput = internalMutation({
   handler: async (ctx, args) => {
     const evalDoc = await ctx.db.get("evals", args.evalId);
     if (!evalDoc) return null;
+    const codingEval = requireCodingEval(evalDoc);
+    const storedRun = await ctx.db.get("runs", codingEval.runId);
+    if (!storedRun) throw new Error(`Run ${codingEval.runId} not found`);
+    requireCodingRun(storedRun);
 
     // Only update if the eval is still running
-    if (evalDoc.status.kind === "running") {
+    if (codingEval.status.kind === "running") {
       await ctx.db.patch("evals", args.evalId, {
-        status: { ...evalDoc.status, outputStorageId: args.outputStorageId },
+        status: { ...codingEval.status, outputStorageId: args.outputStorageId },
       });
     }
     return null;
@@ -88,29 +97,30 @@ export const completeEval = internalMutation({
   handler: async (ctx, args) => {
     const evalDoc = await ctx.db.get("evals", args.evalId);
     if (!evalDoc) return null;
-    
+    const codingEval = requireCodingEval(evalDoc);
+    const storedRun = await ctx.db.get("runs", codingEval.runId);
+    if (!storedRun) throw new Error(`Run ${codingEval.runId} not found`);
+    const run = requireCodingRun(storedRun);
+
     await ctx.db.patch("evals", args.evalId, {
       status: args.status,
     });
-    
+
     // Update experiment passed evals count if this eval passed
     if (args.status.kind === "passed") {
-      const run = await ctx.db.get("runs", evalDoc.runId);
-      if (run) {
-        const expName = run.experiment ?? "default";
-        const experiment = await ctx.db
-          .query("experiments")
-          .withIndex("by_name", (q) => q.eq("name", expName))
-          .unique();
-        
-        if (experiment) {
-          await ctx.db.patch("experiments", experiment._id, {
-            passedEvals: experiment.passedEvals + 1,
-          });
-        }
+      const expName = run.experiment ?? "default";
+      const experiment = await ctx.db
+        .query("experiments")
+        .withIndex("by_name", (q) => q.eq("name", expName))
+        .unique();
+
+      if (experiment) {
+        await ctx.db.patch("experiments", experiment._id, {
+          passedEvals: experiment.passedEvals + 1,
+        });
       }
     }
-    
+
     return null;
   },
 });

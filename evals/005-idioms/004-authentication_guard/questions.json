@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "sourceEval": "005-idioms/004-authentication_guard",
+  "coverageNotes": "Two distinct authentication targets: getUserIdentity returns null without a token; tokenIdentifier maps an authenticated identity to the existing application user across issuers. Source TASK does not prescribe the property, so the recognition target is not supplied knowledge. Does not cover provider setup or project membership policy.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "getUserIdentity resolves to null for an unauthenticated request",
+      "context": "Auth is configured in this Convex 1.44.0 app. A client calls this mutation without an authentication token.\n\n```ts\nimport { mutation } from \"./_generated/server\";\nexport const inspectCaller = mutation({\n  args: {},\n  handler: async (ctx) => {\n    const identity = await ctx.auth.getUserIdentity();\n    return {\n      isNull: identity === null,\n      isUndefined: identity === undefined,\n      identity,\n    };\n  },\n});\n```",
+      "question": "How does `ctx.auth.getUserIdentity()` behave for this request?",
+      "options": [
+        {
+          "id": "a",
+          "text": "It rejects with an authentication error.",
+          "rationale": "The API reports no identity as a normal null result; the application must choose whether to throw."
+        },
+        {
+          "id": "b",
+          "text": "It resolves to undefined.",
+          "rationale": "The absent-identity sentinel is null, as the explicit diagnostic comparisons show."
+        },
+        {
+          "id": "c",
+          "text": "It resolves to null.",
+          "rationale": "An unauthenticated request has no user identity; the API resolves to null."
+        },
+        {
+          "id": "d",
+          "text": "It resolves to an identity object for an anonymous user.",
+          "rationale": "Convex does not synthesize an anonymous UserIdentity for an unauthenticated request."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/package.json",
+        "grader.test.ts"
+      ]
+    },
+    {
+      "id": "q-identity-key",
+      "concept": "Map a Convex identity to an application user",
+      "context": "An export mutation must use the caller's existing user record. The `users.tokenIdentifier` field stores Convex's stable identity identifier, which distinguishes the same subject at different issuers. Auth is configured. Unknown or unauthenticated callers must be rejected.\n\nThe helper runs inside a mutation using Convex 1.44.0:\n\n```ts\nconst identity = await ctx.auth.getUserIdentity();\nif (identity === null) throw new Error(\"Not authenticated\");\nconst user = await ctx.db.query(\"users\")\n  .withIndex(\"by_tokenIdentifier\", q => q.eq(\"tokenIdentifier\", TOKEN))\n  .unique();\nif (user === null) throw new Error(\"User not found\");\nreturn user._id;\n```",
+      "question": "Which expression should replace `TOKEN`?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nidentity.subject\n```",
+          "rationale": "The subject alone is scoped to an issuer and does not match the stored Convex tokenIdentifier."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nidentity.issuer\n```",
+          "rationale": "The issuer identifies the provider rather than its individual user."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nidentity.tokenIdentifier\n```",
+          "rationale": "Convex supplies tokenIdentifier as the stable issuer-and-subject identity key."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nidentity.email ?? \"\"\n```",
+          "rationale": "Email is an optional profile field, not the stored stable Convex identity key."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/package.json",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

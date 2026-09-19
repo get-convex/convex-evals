@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "sourceEval": "007-components/010-workpool_completion_tracking",
+  "coverageNotes": "Focused local decision coverage. Full implementation, scale, authorization and provider quality remain outside this bank; see author records.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Awaiting Workpool enqueue returns a work ID before job execution",
+      "context": "Convex 1.41.0, Workpool 0.4.8, convex-helpers 0.1.111. The mounted pool has maxParallelism: 2. `computeSquare` is an internal mutation returning input * input. Its onComplete callback inserts a receipt. The receipts table starts empty, and no other work exists. Source-provided API excerpt: `enqueueMutation(ctx, internal.job, args, { onComplete: internal.callback, context })`; `vOnCompleteArgs(v.string())` validates callback arguments `{ workId, context, result }`, where result.kind is success, failed, or canceled. Success carries returnValue; failure carries error.\n\n```ts\nexport const enqueueProbe = mutation({\n  args: { input: v.number() },\n  handler: async (ctx, { input }) => {\n    const workId: string = await pool.enqueueMutation(ctx, internal.index.computeSquare,\n      { input }, { onComplete: internal.index.recordReceipt, context: String(input) });\n    const receiptCount = (await ctx.db.query(\"receipts\").collect()).length;\n    return { workId, receiptCount };\n  },\n});\n```",
+      "question": "What does enqueueProbe return for input: 3?",
+      "options": [
+        {
+          "id": "a",
+          "text": "{ workId: 9, receiptCount: 1 }",
+          "rationale": "The enqueue result is not the job return value, and the background callback cannot write before this enclosing mutation commits."
+        },
+        {
+          "id": "b",
+          "text": "{ workId: a string ID, receiptCount: 0 }",
+          "rationale": "Enqueue returns a durable work identifier. The callback has not executed inside the enqueueing transaction."
+        },
+        {
+          "id": "c",
+          "text": "{ workId: a string ID, receiptCount: 1 }",
+          "rationale": "The work ID is right, but enqueue does not synchronously run the completion callback."
+        },
+        {
+          "id": "d",
+          "text": "{ workId: 9, receiptCount: 0 }",
+          "rationale": "The empty receipts table is right, but enqueue returns the work ID rather than the square."
+        }
+      ],
+      "correctOptionId": "b",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    },
+    {
+      "id": "q2",
+      "concept": "Workpool failure callbacks retain enqueue context",
+      "context": "Convex 1.41.0, Workpool 0.4.8, convex-helpers 0.1.111. Source-provided API excerpt: `enqueueMutation(ctx, internal.job, args, { onComplete: internal.callback, context })`; `vOnCompleteArgs(v.string())` validates callback arguments `{ workId, context, result }`, where result.kind is success, failed, or canceled. Success carries returnValue; failure carries error.\n\nsubmitJobs enqueues an internal computeSquare mutation with `{ input: -1 }`, `context: String(input)` and the callback below. computeSquare throws for -1. There are no retries or cancellations. Only this callback writes receipts.\n\n```ts\nexport const recordReceipt = internalMutation({\n  args: vOnCompleteArgs(v.string()),\n  handler: async (ctx, args) => {\n    await ctx.db.insert(\"receipts\", {\n      jobKey: args.context,\n      kind: args.result.kind === \"success\" ? \"success\" : \"failed\",\n      value:\n        args.result.kind === \"success\"\n          ? (args.result.returnValue as number)\n          : null,\n    });\n  },\n});\n```",
+      "question": "After the job finishes, which receipt is stored for this submission?",
+      "options": [
+        {
+          "id": "a",
+          "text": "No receipt; the job error rejects the enqueue and cancels its callback.",
+          "rationale": "The enqueue succeeds before the later job runs. Its failed result is delivered to onComplete."
+        },
+        {
+          "id": "b",
+          "text": "{ jobKey: \"-1\", kind: \"success\", value: null }",
+          "rationale": "A thrown job is reported with kind failed, not successful null output."
+        },
+        {
+          "id": "c",
+          "text": "{ jobKey: \"-1\", kind: \"failed\", value: null }",
+          "rationale": "The failed result reaches the callback with the original enqueue context; the callback commits its failure receipt."
+        },
+        {
+          "id": "d",
+          "text": "{ jobKey: \"null\", kind: \"failed\", value: null }",
+          "rationale": "Failure does not replace callback context with the absent return value."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "007-components/019-choose_presence_online",
+  "coverageNotes": "Focused local decision coverage. Full implementation, scale, authorization and provider quality remain outside this bank; see author records.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Presence expiry updates a live subscription through server-side state",
+      "context": "Convex 1.41.0 and Presence 0.3.2. docHeartbeat delegates to presence.heartbeat, and whoIsViewing uses the line below. Alice is the only viewer in document A. Her tab sends a successful heartbeat with interval 400 ms, the subscription sees online:true, and the tab then stops all heartbeats without calling leave. Clients only subscribe: no polling, cleanup, or other client writes occur.\n\n```ts\nreturn await presence.list(ctx, roomToken);\n```",
+      "question": "Once the component processes the missed-heartbeat timeout, what does the existing subscription receive?",
+      "options": [
+        {
+          "id": "a",
+          "text": "No change until another viewer writes to the same document.",
+          "rationale": "The component schedules its own persisted timeout transition; another client write is unnecessary."
+        },
+        {
+          "id": "b",
+          "text": "The Alice entry disappears from the room list.",
+          "rationale": "The tested component retains recently offline entries and changes online to false."
+        },
+        {
+          "id": "c",
+          "text": "Periodic query results driven only by Date.now(), eventually showing Alice offline.",
+          "rationale": "A wall-clock read does not itself invalidate a Convex subscription. The control query stayed unchanged after its deadline."
+        },
+        {
+          "id": "d",
+          "text": "An updated list retaining Alice with online:false.",
+          "rationale": "The scheduled component timeout changes persisted presence state, delivering the offline transition to the existing subscription."
+        }
+      ],
+      "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

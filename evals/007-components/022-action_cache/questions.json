@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "sourceEval": "007-components/022-action_cache",
+  "coverageNotes": "Applies source-supplied ActionCache documentation to argument placement, identity and TTL reuse. Does not test mounting, independent implementation, stampede prevention or external services.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "ActionCache generator arguments and freshness options",
+      "context": "Convex 1.41.0 and @convex-dev/action-cache 0.3.1, mounted as components.actionCache. A result is cached separately for each productId and language. maxAgeMs is an optional finite nonnegative freshness override; zero must generate a fresh result. The code must typecheck.\n\nSupplied API reference:\n- Import ActionCache from \"@convex-dev/action-cache\".\n- Import the component definition from\n  \"@convex-dev/action-cache/convex.config\" and mount it with app.use(...)\n  on a defineApp() instance. Its default generated name is actionCache.\n- new ActionCache(components.actionCache, { action: internal.index.generateDescription,\n  ttl: 3_600_000 }) creates a client. An optional name changes its namespace.\n- await cache.fetch(ctx, generatorArgs, { ttl: optionalOverride }) reads or\n  generates a value. The final options argument is optional. Cache keys use\n  namespace and generatorArgs. TTLs are in milliseconds; omitted overrides\n  use the configured default. A shorter TTL can expire an existing entry.\n- Give getDescription's handler an explicit Promise return type to avoid\n  circular inference through generated internal references.\n\n```ts\nimport { v } from \"convex/values\";\nimport { ActionCache } from \"@convex-dev/action-cache\";\nimport { action, internalAction } from \"./_generated/server\";\nimport { components, internal } from \"./_generated/api\";\n\ntype Description = { text: string; generationId: string };\n\nexport const generateDescription = internalAction({\n  args: { productId: v.string(), language: v.string() },\n  handler: async (_ctx, args): Promise<Description> => ({\n    text: `${args.productId}:${args.language}`,\n    generationId: crypto.randomUUID(),\n  }),\n});\n\nconst cache = new ActionCache(components.actionCache, {\n  action: internal.index.generateDescription,\n  ttl: 60 * 60 * 1000,\n});\n\nexport const getDescription = action({\n  args: {\n    productId: v.string(),\n    language: v.string(),\n    maxAgeMs: v.optional(v.number()),\n  },\n  handler: async (ctx, args): Promise<Description> => {\n    // INSERT ONE OPTION HERE\n  },\n});\n```",
+      "question": "Which completion passes the generator arguments and freshness override correctly?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nreturn await cache.fetch(ctx, { productId: args.productId, language: args.language, maxAgeMs: args.maxAgeMs });\n```",
+          "rationale": "maxAgeMs belongs in fetch options. It is not a generator argument; this exact object fails typechecking and supplied maxAgeMs fails generator validation when typechecking is bypassed."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nreturn await cache.fetch(ctx, { productId: args.productId }, { ttl: args.maxAgeMs });\n```",
+          "rationale": "The generator requires language as well as productId; omitting it fails typechecking and generator validation."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nreturn await cache.fetch(ctx, { productId: args.productId, language: args.language }, { ttl: args.maxAgeMs || 3_600_000 });\n```",
+          "rationale": "The logical-or fallback treats zero as absent, so a zero override incorrectly reuses a cached generation."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nreturn await cache.fetch(ctx, { productId: args.productId, language: args.language }, { ttl: args.maxAgeMs });\n```",
+          "rationale": "The two generator arguments define identity; the optional ttl is passed separately and preserves zero."
+        }
+      ],
+      "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "answer/convex/convex.config.ts",
+        "grader.test.ts"
+      ]
+    },
+    {
+      "id": "q2",
+      "concept": "TTL zero and original-entry freshness",
+      "context": "Convex 1.41.0 and @convex-dev/action-cache 0.3.1, mounted as components.actionCache. The cache starts empty; calls below are sequential and finish within one second. Each generator invocation returns a distinct generationId.\n\nSupplied API reference:\n- Import ActionCache from \"@convex-dev/action-cache\".\n- Import the component definition from\n  \"@convex-dev/action-cache/convex.config\" and mount it with app.use(...)\n  on a defineApp() instance. Its default generated name is actionCache.\n- new ActionCache(components.actionCache, { action: internal.index.generateDescription,\n  ttl: 3_600_000 }) creates a client. An optional name changes its namespace.\n- await cache.fetch(ctx, generatorArgs, { ttl: optionalOverride }) reads or\n  generates a value. The final options argument is optional. Cache keys use\n  namespace and generatorArgs. TTLs are in milliseconds; omitted overrides\n  use the configured default. A shorter TTL can expire an existing entry.\n- Give getDescription's handler an explicit Promise return type to avoid\n  circular inference through generated internal references.\n\nThe source contract specifies that a fetch respects the shorter of the stored entry's original TTL and the current request TTL. Zero requires a fresh generation.\n\n```ts\nimport { v } from \"convex/values\";\nimport { ActionCache } from \"@convex-dev/action-cache\";\nimport { action, internalAction } from \"./_generated/server\";\nimport { components, internal } from \"./_generated/api\";\n\ntype Description = { text: string; generationId: string };\n\nexport const generateDescription = internalAction({\n  args: { productId: v.string(), language: v.string() },\n  handler: async (_ctx, args): Promise<Description> => ({\n    text: `${args.productId}:${args.language}`,\n    generationId: crypto.randomUUID(),\n  }),\n});\n\nconst cache = new ActionCache(components.actionCache, {\n  action: internal.index.generateDescription,\n  ttl: 60 * 60 * 1000,\n});\n\nexport const getDescription = action({\n  args: {\n    productId: v.string(),\n    language: v.string(),\n    maxAgeMs: v.optional(v.number()),\n  },\n  handler: async (ctx, args): Promise<Description> => {\n    // Freshness controls cache lookup, not the identity of the generated value.\n    return await cache.fetch(\n      ctx,\n      { productId: args.productId, language: args.language },\n      { ttl: args.maxAgeMs },\n    );\n  },\n});\n```\n\n```ts\nconst first = await client.action(api.index.getDescription, { productId: \"book\", language: \"en\" });\nconst second = await client.action(api.index.getDescription, { productId: \"book\", language: \"en\" });\nconst third = await client.action(api.index.getDescription, { productId: \"book\", language: \"en\", maxAgeMs: 0 });\nconst fourth = await client.action(api.index.getDescription, { productId: \"book\", language: \"en\" });\nconst fifth = await client.action(api.index.getDescription, { productId: \"book\", language: \"en\" });\n```",
+      "question": "Which generationId pattern do the five calls return? Each new letter means a distinct ID.",
+      "options": [
+        {
+          "id": "a",
+          "text": "X, X, Y, Z, Z",
+          "rationale": "The default call hits; zero regenerates and stores a zero-TTL entry; the following default call must regenerate again, and its next call hits."
+        },
+        {
+          "id": "b",
+          "text": "X, X, Y, Y, Y",
+          "rationale": "This assumes a later longer default TTL revives the zero-TTL entry, contrary to its original expiry."
+        },
+        {
+          "id": "c",
+          "text": "X, X, X, X, X",
+          "rationale": "This treats zero as an omitted override, but zero forces a miss."
+        },
+        {
+          "id": "d",
+          "text": "X, Y, Z, W, V",
+          "rationale": "This assumes independent action calls cannot share persistent cached results."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "answer/convex/convex.config.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

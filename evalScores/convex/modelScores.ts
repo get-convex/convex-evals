@@ -12,7 +12,7 @@ import { computeWebUsage } from "./webUsage";
  */
 import { internalMutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api.js";
 import { experimentLiteral } from "./schema.js";
 import {
@@ -24,6 +24,13 @@ import {
   computeRunDurationMs,
   computeRunScores,
 } from "./scoringUtils.js";
+import {
+  requireCodingEval,
+  requireCodingModelScore,
+  requireCodingRun,
+  type CodingEval,
+  type CodingRun,
+} from "./documentKinds.js";
 
 // ── One-shot backfill action ──────────────────────────────────────────
 
@@ -40,8 +47,17 @@ export const backfillAllModelScores = internalMutation({
   handler: async (ctx) => {
     const runs = await ctx.db
       .query("runs")
-      .filter((q) => q.eq(q.field("status.kind"), "completed"))
-      .collect();
+      .filter((q) =>
+        q.and(
+          q.or(
+            q.eq(q.field("kind"), "coding"),
+            q.eq(q.field("kind"), undefined),
+          ),
+          q.eq(q.field("status.kind"), "completed"),
+        ),
+      )
+      .collect()
+      .then((rows) => rows.map(requireCodingRun));
     const benchmarks = await ctx.db.query("benchmarkVersions").collect();
     const benchmarkById = new Map(
       benchmarks.map((benchmark) => [benchmark._id, benchmark]),
@@ -51,7 +67,7 @@ export const backfillAllModelScores = internalMutation({
     const seen = new Set<string>();
     const pairs: Array<{
       modelId: Id<"models">;
-      experiment?: Doc<"runs">["experiment"];
+      experiment?: CodingRun["experiment"];
       benchmarkVersion: Id<"benchmarkVersions">;
     }> = [];
     for (const run of runs) {
@@ -97,7 +113,11 @@ export const getLatestRunTime = query({
       .withIndex("by_modelId_experiment", (q) =>
         q.eq("modelId", args.modelId).eq("experiment", args.experiment),
       )
-      .collect();
+      .filter((q) =>
+        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
+      )
+      .collect()
+      .then((scoreRows) => scoreRows.map(requireCodingModelScore));
 
     return rows.reduce<number | null>(
       (latest, row) =>
@@ -125,8 +145,12 @@ export const getSchedulingStats = query({
     const latestRuns = await ctx.db
       .query("runs")
       .withIndex("by_modelId", (q) => q.eq("modelId", args.modelId))
+      .filter((q) =>
+        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
+      )
       .order("desc")
-      .take(50);
+      .take(50)
+      .then((runs) => runs.map(requireCodingRun));
     const latestAttempt = latestRuns.find(
       (run) => run.experiment === args.experiment,
     );
@@ -136,7 +160,11 @@ export const getSchedulingStats = query({
       .withIndex("by_modelId_experiment", (q) =>
         q.eq("modelId", args.modelId).eq("experiment", args.experiment),
       )
-      .collect();
+      .filter((q) =>
+        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
+      )
+      .collect()
+      .then((scoreRows) => scoreRows.map(requireCodingModelScore));
     const row = rows.sort((a, b) => b.latestRunTime - a.latestRunTime)[0];
     const latestRunTime = latestAttempt?._creationTime ?? row?.latestRunTime;
 
@@ -163,7 +191,7 @@ export const recomputeModelScores = internalMutation({
 
     // The composite index narrows this to one model/experiment/version, then
     // status and the minted suite size exclude incomplete and filtered runs.
-    const candidateRuns = await ctx.db
+    const candidateRuns = ctx.db
       .query("runs")
       .withIndex("by_modelId_experiment_benchmark", (q) =>
         q
@@ -171,33 +199,43 @@ export const recomputeModelScores = internalMutation({
           .eq("experiment", args.experiment)
           .eq("benchmarkVersion", args.benchmarkVersion),
       )
-      .filter((q) => q.eq(q.field("status.kind"), "completed"))
-      .order("desc")
-      .collect();
-
-    const completedRuns = candidateRuns.filter(
-      (r) =>
-        r.status.kind === "completed" &&
-        hasCompleteBenchmarkPlan(r, benchmark?.evalCount),
-    );
+      .filter((q) =>
+        q.and(
+          q.or(
+            q.eq(q.field("kind"), "coding"),
+            q.eq(q.field("kind"), undefined),
+          ),
+          q.eq(q.field("status.kind"), "completed"),
+        ),
+      )
+      .order("desc");
 
     // Score each run, stopping once we have enough
     type ScoredRun = {
-      run: Doc<"runs">;
-      evals: Doc<"evals">[];
+      run: CodingRun;
+      evals: CodingEval[];
       scores: ReturnType<typeof computeRunScores>;
       durationMs: number | null;
       costUsd: number | null;
     };
 
     const scoredRuns: ScoredRun[] = [];
-    for (const run of completedRuns) {
-      if (scoredRuns.length >= LEADERBOARD_HISTORY_SIZE) break;
-      if (run.status.kind !== "completed") continue;
+    // Iterate newest first so older history is never loaded after we have
+    // enough eligible runs. Partial plans and incomplete evals still get skipped.
+    for await (const storedRun of candidateRuns) {
+      const run = requireCodingRun(storedRun);
+      if (!hasCompleteBenchmarkPlan(run, benchmark.evalCount)) continue;
       const evals = await ctx.db
         .query("evals")
         .withIndex("by_runId", (q) => q.eq("runId", run._id))
-        .collect();
+        .filter((q) =>
+          q.or(
+            q.eq(q.field("kind"), "coding"),
+            q.eq(q.field("kind"), undefined),
+          ),
+        )
+        .collect()
+        .then((evals) => evals.map(requireCodingEval));
       if (!isFullyCompletedRun(run, evals)) continue;
       const durationMs = computeRunDurationMs(evals);
       scoredRuns.push({
@@ -207,6 +245,7 @@ export const recomputeModelScores = internalMutation({
         durationMs,
         costUsd: computeRunCostUsd(evals),
       });
+      if (scoredRuns.length >= LEADERBOARD_HISTORY_SIZE) break;
     }
 
     // If no scored runs remain (e.g. after deletion), remove the row
@@ -217,6 +256,9 @@ export const recomputeModelScores = internalMutation({
           .eq("modelId", args.modelId)
           .eq("experiment", args.experiment)
           .eq("benchmarkVersion", args.benchmarkVersion),
+      )
+      .filter((q) =>
+        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
       )
       .unique();
 
@@ -269,6 +311,7 @@ export const recomputeModelScores = internalMutation({
     }
 
     const row = {
+      kind: "coding" as const,
       ...(args.experiment === "no_guidelines_with_web"
         ? { webUsage: computeWebUsage(scoredRuns.flatMap((sr) => sr.evals)) }
         : {}),
@@ -307,7 +350,12 @@ export const rebuildAllModelScores = internalMutation({
   args: {},
   returns: v.object({ deleted: v.number() }),
   handler: async (ctx) => {
-    const rows = await ctx.db.query("modelScores").collect();
+    const rows = await ctx.db
+      .query("modelScores")
+      .filter((q) =>
+        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
+      )
+      .collect();
     for (const row of rows) await ctx.db.delete("modelScores", row._id);
     await ctx.scheduler.runAfter(
       0,

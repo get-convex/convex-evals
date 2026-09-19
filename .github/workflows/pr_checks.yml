@@ -1,9 +1,8 @@
 name: PR Checks
 
 on:
+  # Also validate the strict-stage PR while it is stacked on compatibility.
   pull_request:
-    branches:
-      - main
 
 jobs:
   test:
@@ -36,6 +35,11 @@ jobs:
 
       - name: Run tests
         run: bun run test
+
+      - name: Verify accepted decision bank and archived evidence
+        run: |
+          bun run decisions validate
+          node verification/decisions/verify.mjs
 
       # The unit suite uses Bun at the root, but eval graders run through Vitest.
       # Exercise that runtime too so incompatible Vitest/Vite pairs fail in CI.

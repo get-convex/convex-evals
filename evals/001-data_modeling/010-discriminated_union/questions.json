@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sourceEval": "001-data_modeling/010-discriminated_union",
+  "coverageNotes": "Covers three literal-tagged branches and field correlation, shared with compound-types. Does not measure independently authoring a complete schema. Exact descriptors and argument-validation wrappers preserve the original schema.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Tagged object union",
+      "context": "Convex 1.44.0. The notifications table must match this TypeScript union:\n\n```ts\ntype Notification =\n  | { kind: \"message\"; senderId: string; messageText: string }\n  | { kind: \"friendRequest\"; requesterId: string }\n  | { kind: \"achievement\"; achievementName: string; points: number };\n```\n\nThe field validators are already defined:\n\n```ts\nconst message = { senderId: v.string(), messageText: v.string() };\nconst friendRequest = { requesterId: v.string() };\nconst achievement = { achievementName: v.string(), points: v.number() };\nconst kinds = v.union(v.literal(\"message\"), v.literal(\"friendRequest\"), v.literal(\"achievement\"));\n```\n\n`v` and `defineTable` are imported.",
+      "question": "Which expression belongs inside `defineTable(...)`?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nv.union(\n  v.object({ kind: v.literal(\"message\"), ...message }),\n  v.object({ kind: v.literal(\"friendRequest\"), ...friendRequest }),\n  v.object({ kind: v.literal(\"achievement\"), ...achievement }),\n)\n```",
+          "rationale": "Each literal tag is paired with exactly its own required payload fields."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nv.union(\n  v.object({ kind: v.string(), ...message }),\n  v.object({ kind: v.string(), ...friendRequest }),\n  v.object({ kind: v.string(), ...achievement }),\n)\n```",
+          "rationale": "String tags accept unknown tags and tags paired with another branch\u2019s payload."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nv.object({\n  kind: kinds,\n  senderId: v.optional(v.string()), messageText: v.optional(v.string()),\n  requesterId: v.optional(v.string()),\n  achievementName: v.optional(v.string()), points: v.optional(v.number()),\n})\n```",
+          "rationale": "Optional independent fields accept missing and mixed payloads."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nv.object({\n  kind: kinds,\n  payload: v.union(v.object(message), v.object(friendRequest), v.object(achievement)),\n})\n```",
+          "rationale": "This requires an extra payload object and does not model the flat union."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

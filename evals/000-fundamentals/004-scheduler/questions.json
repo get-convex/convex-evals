@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "sourceEval": "000-fundamentals/004-scheduler",
+  "coverageNotes": "Tests runAt absolute milliseconds versus runAfter delay; no timing precision or action scheduling guarantee. Tests scheduler cancellation identity; does not guarantee canceling work that has already started.",
+  "questions": [
+    {
+      "id": "q1",
+      "concept": "Absolute scheduler timestamps",
+      "context": "Using Convex 1.44.0 inside a mutation, target is internal.index.logAction and args is { message: \"Hello, world!\" }. deadline is a Unix timestamp in milliseconds, exactly 10 seconds after Date.now().",
+      "question": "Which call uses deadline as the scheduled execution time?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nawait ctx.scheduler.runAfter(deadline, target, args);\n```",
+          "rationale": "runAfter interprets its first argument as a delay. Here that would be decades ahead, and the tested backend rejects it for exceeding its five-year limit."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nawait ctx.scheduler.runAt(deadline / 1000, target, args);\n```",
+          "rationale": "runAt expects milliseconds. Dividing by 1000 produces a timestamp near 1970, which the tested backend rejects for exceeding its five-year past limit."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nawait ctx.scheduler.runAt(deadline, target, args);\n```",
+          "rationale": "runAt takes the absolute Unix timestamp in milliseconds."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nawait ctx.scheduler.runAt(deadline - Date.now(), target, args);\n```",
+          "rationale": "This supplies a relative delay to runAt. Its timestamp near the Unix epoch is rejected by the tested backend for exceeding its five-year past limit."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    },
+    {
+      "id": "q-cancel",
+      "concept": "Canceling a scheduled function",
+      "context": "Using Convex 1.44.0 inside a mutation, target is internal.index.logAction and args is { message: \"Hello, world!\" }.\n\n```ts\nconst scheduledId = await ctx.scheduler.runAfter(60000, target, args);\n```",
+      "question": "Which call cancels this scheduled invocation?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nawait ctx.scheduler.cancel(target);\n```",
+          "rationale": "A function reference identifies the function, not the scheduled invocation."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nawait ctx.scheduler.cancel(scheduledId);\n```",
+          "rationale": "cancel accepts the ID returned by runAfter or runAt."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nawait ctx.scheduler.cancel({ id: scheduledId });\n```",
+          "rationale": "cancel takes the ID directly, not an object wrapper."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nawait ctx.scheduler.cancel(\"_scheduled_functions\", scheduledId);\n```",
+          "rationale": "cancel is not the explicit-table database API and takes one argument."
+        }
+      ],
+      "correctOptionId": "b",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

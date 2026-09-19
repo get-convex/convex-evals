@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "002-queries/016-pagination_index",
+  "coverageNotes": "Does not test channel existence validation or frontend hook integration.",
+  "questions": [
+    {
+      "id": "q016-1",
+      "concept": "Scope the indexed range before pagination",
+      "context": "Use Convex 1.44.0. Messages have channelId:string and the by_channel index on [\"channelId\"]. args.channelId is an Id<\"channels\">. Return native descending pagination over that channel's equality range, so unrelated channels do not consume positions in its pages.\n\n```ts\nimport { query } from \"./_generated/server\";\nimport { v } from \"convex/values\";\nimport { paginationOptsValidator, paginationResultValidator } from \"convex/server\";\nexport const candidate = query({\n  args: { channelId: v.id(\"channels\"), paginationOpts: paginationOptsValidator },\n  handler: async (ctx, args) => {\n    /* OPTION */\n  },\n});\n```",
+      "question": "Which handler body applies that range before pagination?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nreturn ctx.db.query(\"messages\")\n  .withIndex(\"by_channel\", q => q.eq(\"channelId\", args.channelId))\n  .order(\"desc\").paginate(args.paginationOpts);\n```",
+          "rationale": "Correct: equality on channelId scopes the native index before descending creation ordering within the channel and pagination."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nconst result = await ctx.db.query(\"messages\")\n  .withIndex(\"by_channel\").order(\"desc\").paginate(args.paginationOpts);\nreturn { ...result, page: result.page.filter(m => m.channelId === args.channelId) };\n```",
+          "rationale": "Incorrect: this paginates the entire index first. Other channels consume page positions before the JavaScript filter removes them."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nreturn ctx.db.query(\"messages\")\n  .filter(q => q.eq(q.field(\"channelId\"), args.channelId))\n  .withIndex(\"by_channel\").order(\"desc\").paginate(args.paginationOpts);\n```",
+          "rationale": "Incorrect: withIndex belongs to QueryInitializer; a Query produced by filter no longer provides it."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nreturn ctx.db.query(\"messages\")\n  .withIndex(\"by_channel\", q => q.eq(\"_id\", args.channelId))\n  .order(\"desc\").paginate(args.paginationOpts);\n```",
+          "rationale": "Incorrect: by_channel begins with channelId, not _id. A channel document ID belongs in the message channelId field."
+        }
+      ],
+      "correctOptionId": "a",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "answer/convex/schema.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}

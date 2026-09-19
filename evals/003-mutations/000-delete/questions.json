@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sourceEval": "003-mutations/000-delete",
+  "coverageNotes": "Does not test authorization, cascades, or missing-user policy. Both current table-scoped and valid legacy signatures exist; only the displayed table-scoped shapes are compared.",
+  "questions": [
+    {
+      "id": "q000-1",
+      "concept": "Deleting by a validated document ID",
+      "context": "Convex 1.44.0. `users` has `{ email: string, name: string, age: number }`.\n\n```ts\nimport { mutation } from \"./_generated/server\";\nimport { v } from \"convex/values\";\nexport const deleteUserById = mutation({\n  args: { id: v.id(\"users\") },\n  handler: async (ctx, args) => {\n    // Insert one option here.\n    return null;\n  },\n});\n```",
+      "question": "Which call compiles and deletes the user with this ID?",
+      "options": [
+        {
+          "id": "a",
+          "text": "```ts\nawait ctx.db.delete(\"users\", { _id: args.id });\n```",
+          "rationale": "The second argument is the ID itself, not an object containing the document system field."
+        },
+        {
+          "id": "b",
+          "text": "```ts\nawait ctx.db.delete(\"users\", [args.id]);\n```",
+          "rationale": "delete takes one document ID, not an array of IDs."
+        },
+        {
+          "id": "c",
+          "text": "```ts\nawait ctx.db.delete(\"users\", args.id);\n```",
+          "rationale": "The table-scoped delete call accepts the validated users ID directly."
+        },
+        {
+          "id": "d",
+          "text": "```ts\nawait ctx.db.delete(\"users\", { id: args.id });\n```",
+          "rationale": "delete does not accept an options object containing id."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/schema.ts",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    }
+  ]
+}
