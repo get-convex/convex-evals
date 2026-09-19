@@ -2,7 +2,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "convex": "1.41.0",
+    "convex": "1.46.0",
     "typescript": "5.7.3",
     "@types/node": "22.10.5"
   }
