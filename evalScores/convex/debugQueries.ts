@@ -56,9 +56,8 @@ export const getFailedEvalsForRun = internalQuery({
 
     const evals = await ctx.db
       .query("evals")
-      .withIndex("by_runId", (q) => q.eq("runId", args.runId))
-      .filter((q) =>
-        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
+      .withIndex("by_kind_runId", (q) =>
+        q.eq("kind", "coding").eq("runId", args.runId),
       )
       .collect()
       .then((rows) => rows.map(requireCodingEval));

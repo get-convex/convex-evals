@@ -36,6 +36,7 @@ async function fixture() {
       sha256: "a".repeat(64),
     };
     const legacyRun = await ctx.db.insert("runs", {
+      kind: "coding",
       modelId,
       provider: "test",
       plannedEvals: ["cat/task"],
@@ -71,6 +72,7 @@ async function fixture() {
       status: "running",
     });
     const legacyEval = await ctx.db.insert("evals", {
+      kind: "coding",
       runId: legacyRun,
       evalPath: "cat/task",
       category: "cat",
@@ -115,7 +117,10 @@ async function fixture() {
       latestRunId: legacyRun,
       latestRunTime: 1,
     };
-    const legacyScore = await ctx.db.insert("modelScores", scoreFields);
+    const legacyScore = await ctx.db.insert("modelScores", {
+      ...scoreFields,
+      kind: "coding",
+    });
     const taggedScore = await ctx.db.insert("modelScores", {
       ...scoreFields,
       kind: "coding",
@@ -191,6 +196,7 @@ describe("shared document kind compatibility", () => {
     await t.run(async (ctx) => {
       for (let index = 0; index < 12; index++) {
         await ctx.db.insert("evals", {
+          kind: "coding",
           runId: ids.legacyRun,
           evalPath: `cat/large-${index}`,
           category: "cat",
@@ -234,67 +240,15 @@ describe("shared document kind compatibility", () => {
     expect(pages).toBeGreaterThan(1);
     expect(scanned).toBe(15);
     expect({ missingKind, coding, decision, codingByBenchmark }).toEqual({
-      missingKind: 13,
+      missingKind: 0,
       coding: 14,
       decision: 1,
       codingByBenchmark: 14,
     });
   });
 
-  it("tags all three tables in resumable pages and preserves every other field on repeated runs", async () => {
+  it("audits strict tags and relationships in resumable pages", async () => {
     const { t, ids } = await fixture();
-    const snapshot = () =>
-      t.run(async (ctx) =>
-        Promise.all(Object.values(ids).map((id) => ctx.db.get(id))),
-      );
-    const before = await snapshot();
-    for (const table of ["runs", "evals", "modelScores"] as const) {
-      const audit = await t.query(internal.migrations.auditDocumentKinds, {
-        table,
-        paginationOpts: { cursor: null, numItems: 100 },
-      });
-      expect(audit).toMatchObject({
-        scanned: 3,
-        missingKind: 1,
-        coding: 2,
-        decision: 1,
-        relationshipErrors: [],
-      });
-    }
-    for (let replay = 0; replay < 2; replay++) {
-      for (const migration of [
-        internal.migrations.backfillRunKinds,
-        internal.migrations.backfillEvalKinds,
-        internal.migrations.backfillModelScoreKinds,
-      ]) {
-        let cursor: string | null = null;
-        let pages = 0;
-        while (true) {
-          const page: {
-            isDone: boolean;
-            continueCursor: string;
-            processed: number;
-          } = await t.mutation(migration, {
-            cursor,
-            batchSize: 1,
-            dryRun: false,
-          });
-          pages++;
-          if (page.isDone) break;
-          cursor = page.continueCursor;
-        }
-        expect(pages).toBeGreaterThan(1);
-      }
-      const after = await snapshot();
-      before.forEach((document, index) => {
-        expect(document).not.toBeNull();
-        expect(after[index]).toEqual(
-          document?.kind === undefined
-            ? { ...document, kind: "coding" }
-            : document,
-        );
-      });
-    }
     for (const table of ["runs", "evals", "modelScores"] as const) {
       let cursor: string | null = null;
       let scanned = 0;
@@ -315,16 +269,16 @@ describe("shared document kind compatibility", () => {
     }
   });
 
-  it("normalizes historical coding records and rejects the opposite kind", async () => {
+  it("narrows strict coding records and rejects the opposite kind", async () => {
     const { t, ids } = await fixture();
     await t.run(async (ctx) => {
-      const legacy = await ctx.db.get("runs", ids.legacyRun);
+      const coding = await ctx.db.get("runs", ids.legacyRun);
       const decision = await ctx.db.get("runs", ids.decisionRun);
-      if (!legacy || !decision) throw new Error("Missing fixtures");
-      expect(requireCodingRun(legacy).kind).toBe("coding");
+      if (!coding || !decision) throw new Error("Missing fixtures");
+      expect(requireCodingRun(coding).kind).toBe("coding");
       expect(requireDecisionRun(decision)).toEqual(decision);
       expect(() => requireCodingRun(decision)).toThrow("coding run");
-      expect(() => requireDecisionRun(legacy)).toThrow("decision run");
+      expect(() => requireDecisionRun(coding)).toThrow("decision run");
     });
   });
 

@@ -1,8 +1,8 @@
 /**
- * Decision reporting stays off for the compatibility deployment. The strict
- * post-migration activation patch changes this literal to true.
+ * Enabled only by the separately deployed strict stage, after the complete
+ * document-kind audit confirms that the tag migration has finished.
  */
-export const DECISION_INGESTION_ENABLED = false;
+export const DECISION_INGESTION_ENABLED = true;
 
 export const MAX_DECISION_RECORD_BATCH = 25;
 export const MAX_DECISION_REPETITIONS = 10;

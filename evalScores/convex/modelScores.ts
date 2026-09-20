@@ -47,15 +47,8 @@ export const backfillAllModelScores = internalMutation({
   handler: async (ctx) => {
     const runs = await ctx.db
       .query("runs")
-      .filter((q) =>
-        q.and(
-          q.or(
-            q.eq(q.field("kind"), "coding"),
-            q.eq(q.field("kind"), undefined),
-          ),
-          q.eq(q.field("status.kind"), "completed"),
-        ),
-      )
+      .withIndex("by_kind", (q) => q.eq("kind", "coding"))
+      .filter((q) => q.eq(q.field("status.kind"), "completed"))
       .collect()
       .then((rows) => rows.map(requireCodingRun));
     const benchmarks = await ctx.db.query("benchmarkVersions").collect();
@@ -110,11 +103,11 @@ export const getLatestRunTime = query({
     // model appear to have never run.
     const rows = await ctx.db
       .query("modelScores")
-      .withIndex("by_modelId_experiment", (q) =>
-        q.eq("modelId", args.modelId).eq("experiment", args.experiment),
-      )
-      .filter((q) =>
-        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
+      .withIndex("by_kind_modelId_experiment", (q) =>
+        q
+          .eq("kind", "coding")
+          .eq("modelId", args.modelId)
+          .eq("experiment", args.experiment),
       )
       .collect()
       .then((scoreRows) => scoreRows.map(requireCodingModelScore));
@@ -144,9 +137,8 @@ export const getSchedulingStats = query({
   handler: async (ctx, args) => {
     const latestRuns = await ctx.db
       .query("runs")
-      .withIndex("by_modelId", (q) => q.eq("modelId", args.modelId))
-      .filter((q) =>
-        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
+      .withIndex("by_kind_modelId", (q) =>
+        q.eq("kind", "coding").eq("modelId", args.modelId),
       )
       .order("desc")
       .take(50)
@@ -157,11 +149,11 @@ export const getSchedulingStats = query({
 
     const rows = await ctx.db
       .query("modelScores")
-      .withIndex("by_modelId_experiment", (q) =>
-        q.eq("modelId", args.modelId).eq("experiment", args.experiment),
-      )
-      .filter((q) =>
-        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
+      .withIndex("by_kind_modelId_experiment", (q) =>
+        q
+          .eq("kind", "coding")
+          .eq("modelId", args.modelId)
+          .eq("experiment", args.experiment),
       )
       .collect()
       .then((scoreRows) => scoreRows.map(requireCodingModelScore));
@@ -193,21 +185,14 @@ export const recomputeModelScores = internalMutation({
     // status and the minted suite size exclude incomplete and filtered runs.
     const candidateRuns = ctx.db
       .query("runs")
-      .withIndex("by_modelId_experiment_benchmark", (q) =>
+      .withIndex("by_kind_modelId_experiment_benchmark", (q) =>
         q
+          .eq("kind", "coding")
           .eq("modelId", args.modelId)
           .eq("experiment", args.experiment)
           .eq("benchmarkVersion", args.benchmarkVersion),
       )
-      .filter((q) =>
-        q.and(
-          q.or(
-            q.eq(q.field("kind"), "coding"),
-            q.eq(q.field("kind"), undefined),
-          ),
-          q.eq(q.field("status.kind"), "completed"),
-        ),
-      )
+      .filter((q) => q.and(q.eq(q.field("status.kind"), "completed")))
       .order("desc");
 
     // Score each run, stopping once we have enough
@@ -227,12 +212,8 @@ export const recomputeModelScores = internalMutation({
       if (!hasCompleteBenchmarkPlan(run, benchmark.evalCount)) continue;
       const evals = await ctx.db
         .query("evals")
-        .withIndex("by_runId", (q) => q.eq("runId", run._id))
-        .filter((q) =>
-          q.or(
-            q.eq(q.field("kind"), "coding"),
-            q.eq(q.field("kind"), undefined),
-          ),
+        .withIndex("by_kind_runId", (q) =>
+          q.eq("kind", "coding").eq("runId", run._id),
         )
         .collect()
         .then((evals) => evals.map(requireCodingEval));
@@ -251,14 +232,12 @@ export const recomputeModelScores = internalMutation({
     // If no scored runs remain (e.g. after deletion), remove the row
     const existing = await ctx.db
       .query("modelScores")
-      .withIndex("by_modelId_experiment_benchmark", (q) =>
+      .withIndex("by_kind_modelId_experiment_benchmark", (q) =>
         q
+          .eq("kind", "coding")
           .eq("modelId", args.modelId)
           .eq("experiment", args.experiment)
           .eq("benchmarkVersion", args.benchmarkVersion),
-      )
-      .filter((q) =>
-        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
       )
       .unique();
 
@@ -352,9 +331,7 @@ export const rebuildAllModelScores = internalMutation({
   handler: async (ctx) => {
     const rows = await ctx.db
       .query("modelScores")
-      .filter((q) =>
-        q.or(q.eq(q.field("kind"), "coding"), q.eq(q.field("kind"), undefined)),
-      )
+      .withIndex("by_kind", (q) => q.eq("kind", "coding"))
       .collect();
     for (const row of rows) await ctx.db.delete("modelScores", row._id);
     await ctx.scheduler.runAfter(
