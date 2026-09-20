@@ -76,4 +76,6 @@ jobs:
         working-directory: evalScores
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
-        run: bunx convex deploy
+        # The strict shared-table schema replaces the legacy coding-only indexes
+        # after their kind-prefixed equivalents have already been backfilled.
+        run: bunx convex deploy --allow-deleting-large-indexes
