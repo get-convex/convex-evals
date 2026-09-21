@@ -896,7 +896,13 @@ function parseExecutionMode(value: string | undefined): ExecutionMode {
 }
 
 function validateWebResearchRun(experiment: string | undefined): void {
-  if (isWebResearchExperiment(experiment)) requireWebResearchApiKey();
+  if (isWebResearchExperiment(experiment)) {
+    requireWebResearchApiKey();
+    if (process.env.CLIENT_WEB_TOOLS !== "1")
+      throw new Error(
+        "Web eval runs require CLIENT_WEB_TOOLS=1 to enforce benchmark source filtering",
+      );
+  }
   validateClientWebRun(experiment);
 }
 

@@ -134,8 +134,11 @@ interface RunOptions {
   experiment?: Experiment;
 }
 
-function buildEnvVars(options: RunOptions): Record<string, string> {
-  const env: Record<string, string> = { ...process.env } as Record<string, string>;
+export function buildEnvVars(
+  options: RunOptions,
+  inherited: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  const env = { ...inherited };
 
   if (options.models.length > 0) {
     env.MODELS = options.models.join(",");
@@ -145,8 +148,16 @@ function buildEnvVars(options: RunOptions): Record<string, string> {
     env.TEST_FILTER = options.filter;
   }
 
-  if (options.experiment) {
-    env.EVALS_EXPERIMENT = options.experiment;
+  // The selected condition wins over flags inherited from a previous shell run.
+  if (options.experiment) env.EVALS_EXPERIMENT = options.experiment;
+  else delete env.EVALS_EXPERIMENT;
+
+  if (options.experiment === "no_guidelines_with_web") {
+    env.CLIENT_WEB_TOOLS = "1";
+    // This launcher runs locally, never through the production Actions gate.
+    env.DISABLE_CONVEX_REPORTING = "1";
+  } else {
+    delete env.CLIENT_WEB_TOOLS;
   }
 
   if (options.outputTempdir) {
@@ -173,6 +184,10 @@ async function runEvals(options: RunOptions): Promise<void> {
   console.log(`  Models: ${options.models.join(", ") || "(default)"}`);
   console.log(`  Filter: ${options.filter || "(all)"}`);
   console.log(`  Experiment: ${options.experiment || "(none)"}`);
+  if (options.experiment === "no_guidelines_with_web")
+    console.log(
+      "  Web tools: filtered Exa search and fetch; local reporting disabled",
+    );
   console.log("");
 
   const child = spawn("bun", ["run", "runner/index.ts"], {
@@ -520,4 +535,4 @@ program
     console.log("");
   });
 
-program.parse();
+if (import.meta.main) program.parse();

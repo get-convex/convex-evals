@@ -3,6 +3,11 @@ import type { JSONValue } from "ai";
 import { closeSync, fsyncSync, mkdirSync, openSync, writeSync } from "node:fs";
 import { dirname } from "node:path";
 import { decode, encode } from "gpt-tokenizer/encoding/cl100k_base";
+import {
+  benchmarkSourceReason,
+  webSourceUrlReason,
+  WEB_SOURCE_POLICY,
+} from "./webSourcePolicy";
 
 export function jsonRecord(value: unknown): Record<string, JSONValue> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -191,13 +196,11 @@ export class ClientWebTools {
       );
     }
     if (tool === "web_fetch") {
-      try {
-        const url = new URL(args.url as string);
-        if (!/^https?:$/.test(url.protocol) || url.username || url.password)
-          return reject("Expected a public HTTP(S) URL without credentials");
-      } catch {
-        return reject("Invalid URL");
-      }
+      const reason = webSourceUrlReason(args.url as string);
+      if (reason) return reject(reason);
+    } else {
+      const reason = benchmarkSourceReason(args.query as string);
+      if (reason) return reject(reason);
     }
     const total = this.attempts.web_search + this.attempts.web_fetch;
     if (total >= 6 || this.attempts[tool] >= 5)
@@ -260,6 +263,7 @@ export class ClientWebTools {
     }
     let valid = false;
     let result: unknown;
+    let processingError: string | undefined;
     try {
       data = jsonRecord(await readBoundedJson(response));
       const results = Array.isArray(data.results)
@@ -278,9 +282,29 @@ export class ClientWebTools {
         ) &&
         (tool === "web_search" ||
           results.some((r) => typeof r.text === "string" && r.text.length > 0));
+      // Filter before truncation and before constructing model-visible output.
+      // A safe-looking URL can return a benchmark mirror or redirect content.
+      // Keep the raw response in the journal, never in the tool message.
+      const allowed = valid
+        ? results.filter((r) => {
+            const reason =
+              webSourceUrlReason(typeof r.url === "string" ? r.url : "") ??
+              benchmarkSourceReason(JSON.stringify(r));
+            if (!reason) return true;
+            this.record({
+              kind: "source_blocked",
+              invocation,
+              tool,
+              policy: WEB_SOURCE_POLICY,
+              url: r.url,
+              reason,
+            });
+            return false;
+          })
+        : [];
       result = valid
         ? {
-            results: results
+            results: allowed
               .slice(0, tool === "web_search" ? 5 : 1)
               .map((r) => ({
                 url: r.url,
@@ -311,13 +335,14 @@ export class ClientWebTools {
         : {
             error: "Search service returned an error",
             status: response.status,
-            statuses: data?.statuses,
           };
     } catch (error) {
       valid = false;
+      // JSON parse errors can quote the unfiltered response body. Keep that
+      // diagnostic in the audit journal rather than giving it to the model.
+      processingError = String(error);
       result = {
         error: "Search service returned an unusable response",
-        detail: String(error),
       };
     }
     this.record({
@@ -329,6 +354,7 @@ export class ClientWebTools {
       providerRequestId: data?.requestId,
       costDollars: data?.costDollars,
       rawResponse: data,
+      processingError,
       result,
     });
     return JSON.stringify(result);

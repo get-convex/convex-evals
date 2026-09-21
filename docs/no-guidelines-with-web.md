@@ -4,6 +4,9 @@
 model can produce better Convex code by seeking public information when it has
 neither the Convex guidelines nor the Convex plugin.
 
+See [benchmark source filtering](web-source-filtering.md) for the enforced policy
+and its limitations. All eval runs now require `CLIENT_WEB_TOOLS=1`.
+
 ## Current rollout
 
 The replacement implementation uses client-owned function calls to Exa so the
