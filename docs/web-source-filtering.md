@@ -35,7 +35,11 @@ model cannot encounter any reference answer.
 
 ## Local reruns
 
-Use the existing development credentials, with reporting disabled:
+The `bun run evals` menu and `bun run evals run --experiment no_guidelines_with_web`
+automatically select the filtered client tools and disable local reporting. Both
+`OPENROUTER_API_KEY` and `EXA_API_KEY` must be configured.
+
+For a direct runner invocation, use the existing development credentials with reporting disabled:
 
 ```sh
 CLIENT_WEB_TOOLS=1 DISABLE_CONVEX_REPORTING=1 \
