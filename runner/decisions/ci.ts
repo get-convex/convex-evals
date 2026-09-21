@@ -15,12 +15,15 @@ export const DECISION_CI_MODELS = {
   luna: { provider: "openrouter", model: "openai/gpt-5.6-luna" },
   sol: { provider: "openrouter", model: "openai/gpt-5.6-sol" },
   astra: { provider: "openrouter", model: "openai/gpt-6-astra" },
+  grok47: { provider: "openrouter", model: "x-ai/grok-4.7" },
 } satisfies Record<string, { provider: DecisionProvider; model: string }>;
 
 async function main(): Promise<void> {
   const key = process.env.DECISION_MODEL;
   if (!key || !(key in DECISION_CI_MODELS))
-    throw new Error("DECISION_MODEL must be jev, luna, sol, or astra");
+    throw new Error(
+      `DECISION_MODEL must be one of: ${Object.keys(DECISION_CI_MODELS).join(", ")}`,
+    );
   const root = process.cwd();
   const sourceCommit = execFileSync("git", ["rev-parse", "HEAD"], {
     cwd: root,
