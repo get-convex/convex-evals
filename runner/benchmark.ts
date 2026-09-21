@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { existsSync, readFileSync, readdirSync, type Dirent } from "fs";
 import { join, relative, resolve, sep } from "path";
+import { legacyRuntimeContributions } from "./benchmarkLegacyRuntime.js";
 import { SYSTEM_PROMPT } from "./models/index.js";
 
 /**
@@ -8,8 +9,9 @@ import { SYSTEM_PROMPT } from "./models/index.js";
  * means. Eval directories, guidelines, and the system prompt are hashed
  * automatically below.
  */
-// One shared suite now includes coding and multiple-choice knowledge evals.
-export const BENCHMARK_PROTOCOL_VERSION = "4";
+export const BENCHMARK_PROTOCOL_VERSION = "3";
+// Frozen for validating already-published September 20 archives.
+export const LEGACY_SHARED_BENCHMARK_PROTOCOL_VERSION = "4";
 
 export const BENCHMARK_DECISION_SOURCE_FILES = [
   "protocol.ts",
@@ -63,13 +65,35 @@ function hashDirectory(
   projectRoot: string,
   directory: string,
 ): void {
-  const entries = readdirSync(directory, { withFileTypes: true }).sort((a, b) =>
-    a.name.localeCompare(b.name),
+  const relativeDirectory = normalizedPath(relative(projectRoot, directory));
+  const frozen = [...legacyRuntimeContributions.keys()].filter(
+    (path) => path.slice(0, path.lastIndexOf("/")) === relativeDirectory,
   );
+  const entries = readdirSync(directory, { withFileTypes: true });
+  // Include historical constants even when a local cleanup removed the files.
+  const names = [
+    ...new Set([
+      ...entries.map((entry) => entry.name),
+      ...frozen.map((path) => path.slice(path.lastIndexOf("/") + 1)),
+    ]),
+  ].sort((a, b) => a.localeCompare(b));
+  const byName = new Map(entries.map((entry) => [entry.name, entry]));
 
-  for (const entry of entries) {
+  for (const name of names) {
+    const frozenPath = `${relativeDirectory}/${name}`;
+    const historical = legacyRuntimeContributions.get(frozenPath);
+    if (historical !== undefined) {
+      hasher.update(frozenPath).update("\0").update(historical).update("\0");
+      continue;
+    }
+    const entry = byName.get(name)!;
     if (entry.isDirectory() && EXCLUDED_DIRECTORIES.has(entry.name)) continue;
-    if (entry.isFile() && isBenchmarkRuntimeArtifact(entry.name)) continue;
+    if (
+      entry.isFile() &&
+      (isBenchmarkRuntimeArtifact(entry.name) ||
+        entry.name === "questions.json")
+    )
+      continue;
 
     const fullPath = join(directory, entry.name);
     if (entry.isDirectory()) {
@@ -114,34 +138,6 @@ export function computeBenchmarkDefinition(
   hasher.update("guidelines\0");
   hasher.update(readFileSync(guidelinesPath));
   hasher.update("\0");
-
-  // Decision questions live alongside TASK.txt and are hashed below. Include
-  // request/scoring semantics in this same shared identity, never a second
-  // decision-only benchmark. Missing files are allowed for historical fixtures.
-  for (const file of BENCHMARK_DECISION_SOURCE_FILES) {
-    const sourcePath = join(absoluteRoot, "runner", "decisions", file);
-    if (existsSync(sourcePath)) {
-      hasher.update(`decision-source\0${file}\0`);
-      hasher.update(readFileSync(sourcePath));
-      hasher.update("\0");
-    }
-  }
-
-  for (const file of BENCHMARK_DECISION_BACKEND_FILES) {
-    const sourcePath = join(absoluteRoot, "evalScores", "convex", file);
-    if (existsSync(sourcePath)) {
-      hasher.update(`decision-backend\0${file}\0`);
-      hasher.update(readFileSync(sourcePath));
-      hasher.update("\0");
-    }
-  }
-
-  const decisionManifest = join(absoluteRoot, "decision-bank.json");
-  if (existsSync(decisionManifest)) {
-    hasher.update("decision-coverage\0");
-    hasher.update(readFileSync(decisionManifest));
-    hasher.update("\0");
-  }
 
   for (const evalPath of sortedEvalPaths) {
     const absoluteEvalPath = resolve(absoluteRoot, evalPath);

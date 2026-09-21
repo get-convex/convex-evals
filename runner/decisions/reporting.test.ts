@@ -315,7 +315,7 @@ it("rejects a hosted TypeSafe route before creating a remote run or calling a pr
   expect(providerCalls).toBe(0);
 });
 
-it("reproduces the complete shared source hash, including binary lockfiles, and rejects tampering", () => {
+it("reproduces the decision identity, archives binary lockfiles, and rejects tampering", () => {
   const snapshot = createDecisionSourceSnapshot(root, commit);
   expect(snapshot.banks).toHaveLength(90);
   expect(snapshot.files.some((file) => file.encoding === "base64")).toBe(true);

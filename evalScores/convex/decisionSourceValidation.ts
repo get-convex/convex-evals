@@ -10,7 +10,7 @@ import { decisionBankManifestSchema } from "../../runner/decisions/coverage.js";
 import { DECISION_PROTOCOL } from "../../runner/decisions/protocol.js";
 import { SYSTEM_PROMPT } from "../../runner/models/index.js";
 import {
-  BENCHMARK_PROTOCOL_VERSION,
+  LEGACY_SHARED_BENCHMARK_PROTOCOL_VERSION,
   isBenchmarkRuntimeArtifact,
 } from "../../runner/benchmark.js";
 import {
@@ -20,8 +20,7 @@ import {
 import { sameJson } from "./decisionIdentity.js";
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
-const snapshotShape = z.strictObject({
-  artifactVersion: z.literal(1),
+const snapshotCommon = {
   kind: z.literal("decision-source"),
   benchmark: z.strictObject({
     version: digest,
@@ -47,7 +46,11 @@ const snapshotShape = z.strictObject({
     )
     .min(1)
     .max(10000),
-});
+};
+const snapshotShape = z.discriminatedUnion("artifactVersion", [
+  z.strictObject({ ...snapshotCommon, artifactVersion: z.literal(1) }),
+  z.strictObject({ ...snapshotCommon, artifactVersion: z.literal(2), identityFormat: z.literal("decision_v1") }),
+]);
 
 /** Hash checks alone do not bind convenient parsed projections to archived
  * source. Validate both, then grade using the reconstructed trusted projection. */
@@ -57,7 +60,7 @@ export function validateDecisionSnapshot(
   const parsed = snapshotShape.parse(input);
   if (
     !sameJson(parsed.protocol, DECISION_PROTOCOL) ||
-    parsed.sharedProtocol.version !== BENCHMARK_PROTOCOL_VERSION ||
+    parsed.sharedProtocol.version !== LEGACY_SHARED_BENCHMARK_PROTOCOL_VERSION ||
     parsed.sharedProtocol.systemPrompt !== SYSTEM_PROMPT
   ) {
     throw new Error("Unsupported decision source protocol");

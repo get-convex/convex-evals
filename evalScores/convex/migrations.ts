@@ -1,3 +1,4 @@
+import { listBenchmarksByKind } from "./benchmarkKinds.js";
 import { Migrations } from "@convex-dev/migrations";
 import { components, internal } from "./_generated/api.js";
 import { internalQuery } from "./_generated/server";
@@ -127,7 +128,7 @@ export const auditBenchmarkVersionBackfill = internalQuery({
       counts.set(id, (counts.get(id) ?? 0) + 1);
     }
 
-    const versions = await ctx.db.query("benchmarkVersions").collect();
+    const versions = await listBenchmarksByKind(ctx, "coding");
     return {
       totalRuns: runs.length,
       unresolved,

@@ -24,7 +24,7 @@ describe("targeted coding leaderboard reads", () => {
     const t = convexTest({
       schema,
       modules,
-      transactionLimits: { databaseQueries: 3, documentsRead: 10 },
+      transactionLimits: { databaseQueries: 4, documentsRead: 10 },
     });
     await t.run(async (ctx) => {
       const benchmarkVersion = await ctx.db.insert("benchmarkVersions", {

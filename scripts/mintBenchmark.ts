@@ -5,6 +5,10 @@ import { makeFunctionReference } from "convex/server";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { api } from "../evalScores/convex/_generated/api.js";
+import {
+  computeBenchmarkDefinition,
+  discoverBenchmarkEvalPaths,
+} from "../runner/benchmark.js";
 import { ALL_MODELS } from "../runner/models/index.js";
 import {
   createDecisionSourceSnapshot,
@@ -13,6 +17,9 @@ import {
 import { decisionReportingTarget } from "../runner/decisions/reporting.js";
 
 async function main(): Promise<void> {
+  const kind = process.env.BENCHMARK_KIND;
+  if (kind !== "coding" && kind !== "decision")
+    throw new Error("BENCHMARK_KIND must explicitly be coding or decision");
   const sourceCommit = execFileSync("git", ["rev-parse", "HEAD"], {
     encoding: "utf8",
   }).trim();
@@ -30,9 +37,21 @@ async function main(): Promise<void> {
     !target.origin.workflow.includes("/mint_benchmark.yml@")
   )
     throw new Error("Use the manual benchmark mint workflow");
+  const client = new ConvexHttpClient(target.url);
+  const coding = computeBenchmarkDefinition(discoverBenchmarkEvalPaths());
+  if (kind === "coding") {
+    await client.mutation(api.admin.mintBenchmark, {
+      token: target.token,
+      ...coding,
+      curatedModels: ALL_MODELS,
+    });
+    console.log(
+      `Minted coding benchmark ${coding.version} (${coding.evalCount} evals)`,
+    );
+    return;
+  }
   const snapshot = createDecisionSourceSnapshot(process.cwd(), sourceCommit);
   const definition = snapshot.benchmark;
-  const client = new ConvexHttpClient(target.url);
   const bytes = JSON.stringify(snapshot) + "\n";
   const digest = sha256(bytes);
   mkdirSync("output-benchmark-mint", { recursive: true, mode: 0o700 });
@@ -55,6 +74,8 @@ async function main(): Promise<void> {
     {
       token: target.token,
       version: definition.version,
+      identityFormat: "decision_v1",
+      codingBenchmarkVersionHash: coding.version,
       evalCount: definition.evalCount,
       curatedModels: ALL_MODELS,
       decision: {
@@ -74,7 +95,7 @@ async function main(): Promise<void> {
   );
 
   console.log(
-    `Minted shared benchmark ${definition.version.slice(0, 12)} (${definition.evalCount} coding evals, ${snapshot.banks.length} decision sources, ${snapshot.banks.reduce((sum, bank) => sum + bank.questions.length, 0)} questions)`,
+    `Minted decision benchmark ${definition.version.slice(0, 12)} (${definition.evalCount} coding evals, ${snapshot.banks.length} decision sources, ${snapshot.banks.reduce((sum, bank) => sum + bank.questions.length, 0)} questions)`,
   );
 }
 

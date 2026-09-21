@@ -7,10 +7,7 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { parse } from "dotenv";
-import {
-  computeBenchmarkDefinition,
-  discoverBenchmarkEvalPaths,
-} from "../benchmark.js";
+import { computeDecisionBenchmarkDefinition } from "./source.js";
 import {
   DECISION_PROTOCOL,
   type ContextCondition,
@@ -135,10 +132,7 @@ export function buildRunPlan(options: DecisionRunOptions) {
     selected,
     planned,
     guidelines,
-    benchmark: computeBenchmarkDefinition(
-      discoverBenchmarkEvalPaths(root),
-      root,
-    ),
+    benchmark: computeDecisionBenchmarkDefinition(root),
     decisionDefinition: coverage.definition,
     fullSuite: isCompleteDecisionSelection(coverage.definition, selected),
   };

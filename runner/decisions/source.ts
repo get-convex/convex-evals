@@ -4,8 +4,7 @@ import { join } from "node:path";
 import {
   BENCHMARK_DECISION_SOURCE_FILES,
   BENCHMARK_DECISION_BACKEND_FILES,
-  BENCHMARK_PROTOCOL_VERSION,
-  computeBenchmarkDefinition,
+  LEGACY_SHARED_BENCHMARK_PROTOCOL_VERSION,
   discoverBenchmarkEvalPaths,
   isBenchmarkRuntimeArtifact,
   type BenchmarkDefinition,
@@ -22,8 +21,7 @@ export interface SourceFile {
   sha256: string;
 }
 
-export interface DecisionSourceSnapshot {
-  artifactVersion: 1;
+interface DecisionSourceSnapshotBase {
   kind: "decision-source";
   benchmark: BenchmarkDefinition;
   sourceCommit: string;
@@ -33,6 +31,71 @@ export interface DecisionSourceSnapshot {
   banks: LoadedBank[];
   guidelines: string;
   files: SourceFile[];
+}
+
+export type DecisionSourceSnapshot = DecisionSourceSnapshotBase &
+  (
+    | { artifactVersion: 1; identityFormat?: never }
+    | { artifactVersion: 2; identityFormat: "decision_v1" }
+  );
+
+/** Namespaced semantic inputs only. Implementation/evidence stays archived,
+ * but a storage or reporting refactor cannot invalidate published scores. */
+export function decisionBenchmarkIdentity(input: {
+  protocol: unknown;
+  coverage: unknown;
+  banks: LoadedBank[];
+  guidelines: string;
+}): string {
+  const canonical = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(canonical);
+    if (value && typeof value === "object")
+      return Object.fromEntries(
+        Object.entries(value)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([key, child]) => [key, canonical(child)]),
+      );
+    return value;
+  };
+  return sha256(
+    "decision_v1\0" +
+      JSON.stringify(
+        canonical({
+          protocol: input.protocol,
+          coverage: input.coverage,
+          banks: [...input.banks].sort((a, b) =>
+            a.sourceEval.localeCompare(b.sourceEval),
+          ),
+          guidelines: input.guidelines,
+        }),
+      ),
+  );
+}
+
+export function computeDecisionBenchmarkDefinition(
+  root: string,
+): BenchmarkDefinition {
+  const inventory = loadQuestionBanks(root);
+  const coverage = readDecisionDefinition(root, inventory);
+  const errors = [...inventory.errors, ...coverage.errors];
+  if (errors.length)
+    throw new Error(`Invalid decision bank: ${errors.join("; ")}`);
+  // Local authoring fixtures may not yet have an accepted coverage manifest.
+  const coveragePath = join(root, "decision-bank.json");
+  return {
+    version: decisionBenchmarkIdentity({
+      protocol: DECISION_PROTOCOL,
+      coverage: existsSync(coveragePath)
+        ? JSON.parse(readFileSync(coveragePath, "utf8"))
+        : null,
+      banks: inventory.banks,
+      guidelines: readFileSync(
+        join(root, "runner/models/guidelines.md"),
+        "utf8",
+      ),
+    }),
+    evalCount: inventory.sourceEvalCount,
+  };
 }
 
 export function sha256(content: string | Uint8Array): string {
@@ -85,8 +148,8 @@ export function assertSafeSourcePath(path: string): void {
     throw new Error(`Unrecognized benchmark source path: ${path}`);
 }
 
-/** Publish the exact source needed to inspect requests and recompute the one
- * shared suite hash. Environment files and runtime output are never traversed. */
+/** Archive source and verification evidence independently from the semantic
+ * decision identity. Environment files and runtime output are never traversed. */
 export function createDecisionSourceSnapshot(
   root: string,
   sourceCommit: string,
@@ -144,12 +207,13 @@ export function createDecisionSourceSnapshot(
   ])
     add(file);
   const snapshot: DecisionSourceSnapshot = {
-    artifactVersion: 1,
+    artifactVersion: 2,
+    identityFormat: "decision_v1",
     kind: "decision-source",
-    benchmark: computeBenchmarkDefinition(evalPaths, root),
+    benchmark: computeDecisionBenchmarkDefinition(root),
     sourceCommit,
     sharedProtocol: {
-      version: BENCHMARK_PROTOCOL_VERSION,
+      version: LEGACY_SHARED_BENCHMARK_PROTOCOL_VERSION,
       systemPrompt: SYSTEM_PROMPT,
     },
     protocol: DECISION_PROTOCOL,
@@ -162,7 +226,7 @@ export function createDecisionSourceSnapshot(
   };
   if (recomputeSnapshotBenchmark(snapshot) !== snapshot.benchmark.version)
     throw new Error(
-      "Source snapshot does not reproduce the shared benchmark hash",
+      "Source snapshot does not reproduce the decision benchmark hash",
     );
   return snapshot;
 }
@@ -199,7 +263,18 @@ export function recomputeSnapshotBenchmark(
     if (text === undefined) throw new Error(`Missing source: ${path}`);
     return text;
   };
-  if (snapshot.sharedProtocol.version !== BENCHMARK_PROTOCOL_VERSION)
+  if (snapshot.artifactVersion === 2) {
+    if (snapshot.identityFormat !== "decision_v1")
+      throw new Error("Unsupported decision identity format");
+    required("runner/models/guidelines.md");
+    required("decision-bank.json");
+    for (const bank of snapshot.banks)
+      required(`evals/${bank.sourceEval}/questions.json`);
+    return decisionBenchmarkIdentity(snapshot);
+  }
+  if (
+    snapshot.sharedProtocol.version !== LEGACY_SHARED_BENCHMARK_PROTOCOL_VERSION
+  )
     throw new Error("Unsupported shared benchmark protocol");
   const hasher = createHash("sha256");
   hasher.update(`protocol\0${snapshot.sharedProtocol.version}\0`);

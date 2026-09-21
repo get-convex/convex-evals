@@ -1,3 +1,7 @@
+import {
+  findBenchmarkByKind,
+  requireCodingBenchmark,
+} from "./benchmarkKinds.js";
 import { internal } from "./_generated/api";
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
@@ -17,13 +21,15 @@ import {
 async function getOrCreateUnmintedBenchmark(
   ctx: Pick<MutationCtx, "db">,
 ): Promise<Doc<"benchmarkVersions">> {
-  const existing = await ctx.db
-    .query("benchmarkVersions")
-    .withIndex("by_version", (q) => q.eq("version", UNMINTED_BENCHMARK_VERSION))
-    .unique();
+  const existing = await findBenchmarkByKind(
+    ctx,
+    "coding",
+    UNMINTED_BENCHMARK_VERSION,
+  );
   if (existing) return existing;
 
   const id = await ctx.db.insert("benchmarkVersions", {
+    kind: "coding",
     version: UNMINTED_BENCHMARK_VERSION,
     effectiveAt: 0,
     evalCount: 0,
@@ -44,11 +50,12 @@ export async function resolveBenchmarkForRun(
   versionHash: string | undefined,
 ): Promise<Id<"benchmarkVersions">> {
   if (versionHash !== undefined) {
-    const existing = await ctx.db
-      .query("benchmarkVersions")
-      .withIndex("by_version", (q) => q.eq("version", versionHash))
-      .unique();
+    const existing = await findBenchmarkByKind(ctx, "coding", versionHash);
     if (existing && existing.provenance !== "unminted") return existing._id;
+    // An explicitly supplied hash of the other kind is a caller mistake, not
+    // an unpublished coding suite. Never silently downgrade it to unminted.
+    if (await findBenchmarkByKind(ctx, "decision", versionHash))
+      throw new Error("Expected coding benchmark, received decision version");
   }
 
   return (await getOrCreateUnmintedBenchmark(ctx))._id;
@@ -63,15 +70,13 @@ export const seedHistorical = internalMutation({
     let existing = 0;
 
     for (const benchmark of HISTORICAL_BENCHMARKS) {
-      const found = await ctx.db
-        .query("benchmarkVersions")
-        .withIndex("by_version", (q) => q.eq("version", benchmark.version))
-        .unique();
+      const found = await findBenchmarkByKind(ctx, "coding", benchmark.version);
       if (found) {
         existing += 1;
         continue;
       }
       await ctx.db.insert("benchmarkVersions", {
+        kind: "coding",
         version: benchmark.version,
         effectiveAt: benchmark.effectiveAt,
         evalCount: benchmark.evalCount,
@@ -108,57 +113,118 @@ export const mint = internalMutation({
     evalCount: v.number(),
     curatedModels: v.array(v.string()),
     decision: v.optional(decisionDefinition),
+    identityFormat: v.optional(
+      v.union(v.literal("legacy_shared_v4"), v.literal("decision_v1")),
+    ),
+    codingBenchmarkVersionHash: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("benchmarkVersions")
-      .withIndex("by_version", (q) => q.eq("version", args.version))
-      .unique();
+    const existing = args.decision
+      ? await findBenchmarkByKind(ctx, "decision", args.version)
+      : await findBenchmarkByKind(ctx, "coding", args.version);
 
-    if (existing) {
-      if (
-        existing.decision !== undefined &&
-        (existing.evalCount !== args.evalCount ||
-          !sameJson(existing.curatedModels, args.curatedModels))
-      ) {
-        throw new Error(
-          `Benchmark ${args.version} has immutable shared metadata`,
-        );
+    if (args.decision) {
+      if (existing) {
+        if (!("decision" in existing))
+          throw new Error("Expected decision benchmark");
+        // The public action already verifies the archive and semantic hash.
+        // A v1 decision identity intentionally ignores reporting-only commits;
+        // keep the original published archive when replaying that same identity.
+        const semanticReplay = existing.identityFormat === "decision_v1";
+        const comparable = (definition: NonNullable<typeof args.decision>) =>
+          semanticReplay
+            ? {
+                protocolVersion: definition.protocolVersion,
+                sources: definition.sources,
+              }
+            : {
+                ...definition,
+                sourceEvidence: definition.sourceEvidence.sha256,
+              };
+        if (!sameJson(comparable(existing.decision), comparable(args.decision)))
+          throw new Error(
+            "Benchmark already has a different immutable decision definition",
+          );
+        // A replay cannot change the association or identity algorithm.
+        if (
+          args.identityFormat &&
+          "identityFormat" in existing &&
+          existing.identityFormat !== args.identityFormat
+        )
+          throw new Error("Decision identity format is immutable");
+        if (
+          args.codingBenchmarkVersionHash &&
+          "codingBenchmarkVersion" in existing &&
+          existing.codingBenchmarkVersion
+        ) {
+          const linked = await ctx.db.get(existing.codingBenchmarkVersion);
+          if (
+            !linked ||
+            requireCodingBenchmark(linked).version !==
+              args.codingBenchmarkVersionHash
+          )
+            throw new Error("Decision coding association is immutable");
+        }
+        return null;
       }
-      if (
-        args.decision !== undefined &&
-        existing.decision !== undefined &&
-        (existing.decision.protocolVersion !== args.decision.protocolVersion ||
-          existing.decision.sourceCommit !== args.decision.sourceCommit ||
-          existing.decision.sourceEvidence.sha256 !== args.decision.sourceEvidence.sha256 ||
-          !sameJson(existing.decision.sources, args.decision.sources))
-      ) {
-        throw new Error(
-          `Benchmark ${args.version} already has a different immutable decision definition`,
+      if (args.codingBenchmarkVersionHash) {
+        const coding = await findBenchmarkByKind(
+          ctx,
+          "coding",
+          args.codingBenchmarkVersionHash,
         );
+        if (
+          !coding ||
+          coding.provenance !== "minted" ||
+          coding.evalCount !== args.evalCount
+        )
+          throw new Error(
+            "Decision benchmark requires matching minted coding coverage",
+          );
+        await ctx.db.insert("benchmarkVersions", {
+          kind: "decision",
+          version: args.version,
+          effectiveAt: Date.now(),
+          provenance: "minted",
+          identityFormat: args.identityFormat ?? "legacy_shared_v4",
+          codingBenchmarkVersion: coding._id,
+          decision: args.decision,
+        });
+      } else {
+        // Compatibility for pre-migration clients; new decision_v1 mints must link coding.
+        if (args.identityFormat === "decision_v1")
+          throw new Error("Coding benchmark link required");
+        await ctx.db.insert("benchmarkVersions", {
+          version: args.version,
+          effectiveAt: Date.now(),
+          provenance: "minted",
+          evalCount: args.evalCount,
+          curatedModels: args.curatedModels,
+          decision: args.decision,
+        });
       }
-      await ctx.db.patch("benchmarkVersions", existing._id, {
+    } else if (existing) {
+      if (existing.kind !== "coding")
+        throw new Error("Expected coding benchmark");
+      const coding = existing;
+      if (coding.provenance === "minted" && coding.evalCount !== args.evalCount)
+        throw new Error("Minted coding benchmark eval count is immutable");
+      await ctx.db.patch(coding._id, {
+        kind: "coding",
         evalCount: args.evalCount,
         curatedModels: args.curatedModels,
         provenance: "minted",
-        // Coding-only replay calls cannot erase a previously attached decision
-        // definition. Exact decision replays preserve the first evidence ref.
-        ...(existing.decision === undefined && args.decision !== undefined
-          ? { decision: args.decision }
-          : {}),
-        ...(existing.provenance === "minted"
-          ? {}
-          : { effectiveAt: Date.now() }),
+        ...(coding.provenance === "minted" ? {} : { effectiveAt: Date.now() }),
       });
     } else {
       await ctx.db.insert("benchmarkVersions", {
+        kind: "coding",
         version: args.version,
         effectiveAt: Date.now(),
+        provenance: "minted",
         evalCount: args.evalCount,
         curatedModels: args.curatedModels,
-        provenance: "minted",
-        ...(args.decision !== undefined ? { decision: args.decision } : {}),
       });
     }
 
@@ -198,10 +264,7 @@ export async function consolidateCompletedBenchmarkRuns(
 ): Promise<ConsolidationResult> {
   const [source, target] = await Promise.all(
     [args.sourceVersion, args.targetVersion].map((version) =>
-      ctx.db
-        .query("benchmarkVersions")
-        .withIndex("by_version", (q) => q.eq("version", version))
-        .unique(),
+      findBenchmarkByKind(ctx, "coding", version),
     ),
   );
   if (!source || source.provenance !== "reconstructed") {
@@ -292,18 +355,16 @@ export async function backfillCompletedRunsToBenchmark(
   ctx: MutationCtx,
   args: { version: string; runIds: Id<"runs">[] },
 ): Promise<BackfillResult> {
-  const target = await ctx.db
-    .query("benchmarkVersions")
-    .withIndex("by_version", (q) => q.eq("version", args.version))
-    .unique();
+  const target = await findBenchmarkByKind(ctx, "coding", args.version);
   if (!target || target.provenance === "unminted") {
     throw new Error(`Benchmark ${args.version} has not been minted`);
   }
 
-  const unminted = await ctx.db
-    .query("benchmarkVersions")
-    .withIndex("by_version", (q) => q.eq("version", UNMINTED_BENCHMARK_VERSION))
-    .unique();
+  const unminted = await findBenchmarkByKind(
+    ctx,
+    "coding",
+    UNMINTED_BENCHMARK_VERSION,
+  );
   if (!unminted) throw new Error("Missing unminted benchmark sentinel");
 
   const uniqueRunIds = new Set(args.runIds.map(String));
@@ -535,10 +596,14 @@ export const publishSeptemberWebRuns = internalMutation({
     );
     // Check actual results as well as the plan before publishing this allowlist.
     for (const id of runIds) {
-      const evals = (await ctx.db
-        .query("evals")
-        .withIndex("by_kind_runId", (q) => q.eq("kind", "coding").eq("runId", id))
-        .take(112)).map(requireCodingEval);
+      const evals = (
+        await ctx.db
+          .query("evals")
+          .withIndex("by_kind_runId", (q) =>
+            q.eq("kind", "coding").eq("runId", id),
+          )
+          .take(112)
+      ).map(requireCodingEval);
       if (
         evals.length !== 111 ||
         evals.some(

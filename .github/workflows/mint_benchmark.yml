@@ -2,6 +2,14 @@ name: Mint Benchmark Version
 
 on:
   workflow_dispatch:
+    inputs:
+      kind:
+        description: Benchmark kind to publish (does not run models)
+        required: true
+        type: choice
+        options:
+          - coding
+          - decision
 
 permissions:
   contents: read
@@ -29,11 +37,12 @@ jobs:
 
       - name: Mint current benchmark version
         env:
+          BENCHMARK_KIND: ${{ inputs.kind }}
           CONVEX_EVAL_URL: ${{ secrets.CONVEX_EVAL_URL }}
           CONVEX_AUTH_TOKEN: ${{ secrets.CONVEX_AUTH_TOKEN }}
         run: bun run benchmark:mint
 
-      - name: Preserve shared source snapshot
+      - name: Preserve decision source snapshot
         if: always()
         uses: actions/upload-artifact@v4
         with:

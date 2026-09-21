@@ -1,3 +1,4 @@
+import { requireCodingBenchmark, listBenchmarksByKind } from "./benchmarkKinds.js";
 import { computeWebUsage } from "./webUsage";
 /**
  * Materialised leaderboard scores per (model, experiment, benchmark) group.
@@ -51,7 +52,7 @@ export const backfillAllModelScores = internalMutation({
       .filter((q) => q.eq(q.field("status.kind"), "completed"))
       .collect()
       .then((rows) => rows.map(requireCodingRun));
-    const benchmarks = await ctx.db.query("benchmarkVersions").collect();
+    const benchmarks = await listBenchmarksByKind(ctx, "coding");
     const benchmarkById = new Map(
       benchmarks.map((benchmark) => [benchmark._id, benchmark]),
     );
@@ -178,8 +179,9 @@ export const recomputeModelScores = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const benchmark = await ctx.db.get(args.benchmarkVersion);
-    if (!benchmark) return null;
+    const storedBenchmark = await ctx.db.get(args.benchmarkVersion);
+    if (!storedBenchmark) return null;
+    const benchmark = requireCodingBenchmark(storedBenchmark);
 
     // The composite index narrows this to one model/experiment/version, then
     // status and the minted suite size exclude incomplete and filtered runs.

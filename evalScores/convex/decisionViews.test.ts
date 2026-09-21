@@ -16,12 +16,12 @@ const profile = {
 
 describe("decision leaderboard read paths", () => {
   it("uses the model cohort prefix and keeps page joins constant with large unrelated history", async () => {
-    // listDecisionRuns needs one benchmark lookup, one paginated index read and
+    // Compatibility needs two indexed benchmark lookups, one paginated read and
     // one deduplicated model metadata lookup, independent of the page length.
     const t = convexTest({
       schema,
       modules,
-      transactionLimits: { databaseQueries: 3, documentsRead: 200 },
+      transactionLimits: { databaseQueries: 4, documentsRead: 200 },
     });
     await t.run(async (ctx) => {
       const source = await ctx.storage.store(new Blob(["source"]));
@@ -145,6 +145,7 @@ describe("decision leaderboard read paths", () => {
       });
       for (let index = 0; index < 1_001; index += 1) {
         await ctx.db.insert("benchmarkVersions", {
+          kind: "coding",
           version: `unminted-${index}`,
           effectiveAt: index + 2,
           evalCount: 1,
@@ -164,12 +165,12 @@ describe("decision leaderboard read paths", () => {
   });
 
   it("deduplicates model metadata while preserving each materialized profile", async () => {
-    // One benchmark query + one score page + ten latest-run reads + one model
+    // Two compatibility benchmark queries + one score page + ten latest-run reads + one model
     // lookup. Looking up the same model once per profile would exceed this.
     const t = convexTest({
       schema,
       modules,
-      transactionLimits: { databaseQueries: 13, documentsRead: 30 },
+      transactionLimits: { databaseQueries: 14, documentsRead: 30 },
     });
     await t.run(async (ctx) => {
       const source = await ctx.storage.store(new Blob(["source"]));

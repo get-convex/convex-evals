@@ -196,7 +196,8 @@ describe("coding leaderboard read bounds", () => {
         version: "performance-fixture",
         isCurrent: true,
       });
-      expect(tracked.queries.benchmarkVersions).toBe(1);
+      // Tagged and legacy partitions are read once each during compatibility.
+      expect(tracked.queries.benchmarkVersions).toBe(2);
       expect(tracked.queries.models ?? 0).toBe(0);
     });
   });
