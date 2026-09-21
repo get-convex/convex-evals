@@ -4,6 +4,12 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { experimentLiteral, languageModelUsage } from "./schema.js";
 import { internal } from "./_generated/api.js";
+import {
+  findBenchmarkByKind,
+  listBenchmarksByKind,
+  latestBenchmarkByKind,
+  type CodingBenchmark,
+} from "./benchmarkKinds.js";
 import { resolveBenchmarkForRun } from "./benchmarkVersions";
 import {
   LEADERBOARD_HISTORY_SIZE,
@@ -204,13 +210,8 @@ function combineModelScoreRows(rows: CodingModelScore[]): LeaderboardScoreRow {
 
 async function getCurrentBenchmark(
   ctx: Pick<QueryCtx, "db">,
-): Promise<Doc<"benchmarkVersions"> | null> {
-  return await ctx.db
-    .query("benchmarkVersions")
-    .withIndex("by_effectiveAt")
-    .order("desc")
-    .filter((q) => q.neq(q.field("provenance"), "unminted"))
-    .first();
+): Promise<CodingBenchmark | null> {
+  return await latestBenchmarkByKind(ctx, "coding");
 }
 
 export const createRun = internalMutation({
@@ -727,7 +728,7 @@ export const leaderboardScores = query({
 
     if (args.benchmarkVersion === ALL_BENCHMARK_VERSIONS) {
       const publicBenchmarks = (
-        await ctx.db.query("benchmarkVersions").collect()
+        await listBenchmarksByKind(ctx, "coding")
       ).filter((benchmark) => benchmark.provenance !== "unminted");
       const publicIds = new Set(
         publicBenchmarks.map((benchmark) => benchmark._id),
@@ -773,12 +774,7 @@ export const leaderboardScores = query({
       }
     } else {
       const benchmark = args.benchmarkVersion
-        ? await ctx.db
-            .query("benchmarkVersions")
-            .withIndex("by_version", (q) =>
-              q.eq("version", args.benchmarkVersion!),
-            )
-            .unique()
+        ? await findBenchmarkByKind(ctx, "coding", args.benchmarkVersion)
         : await getCurrentBenchmark(ctx);
       if (!benchmark) return [];
 
@@ -823,11 +819,7 @@ export const leaderboardScores = query({
       const isCurrentSelection = currentBenchmark?._id === benchmark._id;
       if (args.includeRecentPreviousBenchmarks && isCurrentSelection) {
         const publicBenchmarks = (
-          await ctx.db
-            .query("benchmarkVersions")
-            .withIndex("by_effectiveAt")
-            .order("desc")
-            .take(1_000)
+          await listBenchmarksByKind(ctx, "coding")
         ).filter((candidate) => candidate.provenance !== "unminted");
         const publicBenchmarkById = new Map(
           publicBenchmarks.map((candidate) => [candidate._id, candidate]),
@@ -961,11 +953,7 @@ export const leaderboardVersions = query({
     experiment: v.optional(experimentLiteral),
   },
   handler: async (ctx, args) => {
-    const benchmarks = await ctx.db
-      .query("benchmarkVersions")
-      .withIndex("by_effectiveAt")
-      .order("desc")
-      .collect();
+    const benchmarks = await listBenchmarksByKind(ctx, "coding");
     const scoreRows = await ctx.db
       .query("modelScores")
       .withIndex("by_kind_experiment", (q) =>
@@ -1123,10 +1111,10 @@ export const leaderboardModelHistory = query({
         ? Math.min(args.limit, 100)
         : LEADERBOARD_HISTORY_SIZE;
     let candidateRuns: AsyncIterable<Doc<"runs">>;
-    let benchmarkById: Map<Id<"benchmarkVersions">, Doc<"benchmarkVersions">>;
+    let benchmarkById: Map<Id<"benchmarkVersions">, CodingBenchmark>;
     if (args.benchmarkVersion === ALL_BENCHMARK_VERSIONS) {
       const publicBenchmarks = (
-        await ctx.db.query("benchmarkVersions").collect()
+        await listBenchmarksByKind(ctx, "coding")
       ).filter((benchmark) => benchmark.provenance !== "unminted");
       benchmarkById = new Map(
         publicBenchmarks.map((benchmark) => [benchmark._id, benchmark]),
@@ -1146,12 +1134,7 @@ export const leaderboardModelHistory = query({
         .order("desc");
     } else {
       const benchmark = args.benchmarkVersion
-        ? await ctx.db
-            .query("benchmarkVersions")
-            .withIndex("by_version", (q) =>
-              q.eq("version", args.benchmarkVersion!),
-            )
-            .unique()
+        ? await findBenchmarkByKind(ctx, "coding", args.benchmarkVersion)
         : await getCurrentBenchmark(ctx);
       if (!benchmark) return [];
       benchmarkById = new Map([[benchmark._id, benchmark]]);

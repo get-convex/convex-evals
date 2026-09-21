@@ -1,3 +1,4 @@
+import { requireDecisionBenchmark } from "./benchmarkKinds.js";
 import { convexTest } from "convex-test";
 import { describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api.js";
@@ -64,16 +65,16 @@ describe("decision shared-table lifecycle", () => {
           .withIndex("by_version", (q) => q.eq("version", "shared-v1"))
           .unique(),
       );
-      expect(preserved?.decision?.sourceEvidence.storageId).toBe(
-        evidence.source,
-      );
-      await expect(
-        t.mutation(internal.benchmarkVersions.mint, {
-          version: "shared-v1",
-          evalCount: 112,
-          curatedModels: ["changed"],
-        }),
-      ).rejects.toThrow("immutable shared metadata");
+      expect(
+        preserved &&
+          requireDecisionBenchmark(preserved).decision.sourceEvidence.storageId,
+      ).toBe(evidence.source);
+      // The same hash string is independently scoped by kind.
+      await t.mutation(internal.benchmarkVersions.mint, {
+        version: "shared-v1",
+        evalCount: 112,
+        curatedModels: ["changed"],
+      });
       const args = {
         runKey: "development:test-run",
         benchmarkHash: "shared-v1",
@@ -205,7 +206,7 @@ describe("decision shared-table lifecycle", () => {
     }
   });
 
-  it("does not fall back to an older decision version when the shared current version is coding-only", async () => {
+  it("keeps the current decision version when a newer coding version is minted", async () => {
     const t = convexTest(schema, modules);
     const source = await t.run((ctx) =>
       ctx.storage.store(new Blob(["source"])),
@@ -242,8 +243,16 @@ describe("decision shared-table lifecycle", () => {
       condition: "no_guidelines",
       paginationOpts: { cursor: null, numItems: 10 },
     });
-    expect(current.availability).toBe("not_available");
-    expect(current.benchmark?.version).toBe("newer-coding-only");
-    expect(current.benchmark?.decisionAvailable).toBe(false);
+    expect(current.availability).toBe("ready");
+    expect(current.benchmark?.version).toBe("older");
+    expect(current.benchmark?.decisionAvailable).toBe(true);
+    const wrongKind = await t.query(api.decisionViews.decisionLeaderboard, {
+      benchmarkVersion: "newer-coding-only",
+      condition: "no_guidelines",
+      paginationOpts: { cursor: null, numItems: 10 },
+    });
+    expect(wrongKind.availability).toBe("not_available");
+    expect(wrongKind.benchmark).toBeNull();
+    expect(wrongKind.results.page).toEqual([]);
   });
 });

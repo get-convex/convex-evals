@@ -296,6 +296,33 @@ export const decisionModelScore = v.object({
   latestRunTime: v.number(),
 });
 
+export const codingBenchmark = v.object({
+  kind: v.literal("coding"),
+  version: v.string(),
+  effectiveAt: v.number(),
+  evalCount: v.number(),
+  curatedModels: v.array(v.string()),
+  provenance: benchmarkProvenance,
+});
+export const decisionBenchmark = v.object({
+  kind: v.literal("decision"),
+  version: v.string(),
+  effectiveAt: v.number(),
+  provenance: v.literal("minted"),
+  identityFormat: v.union(v.literal("legacy_shared_v4"), v.literal("decision_v1")),
+  codingBenchmarkVersion: v.id("benchmarkVersions"),
+  decision: decisionDefinition,
+});
+// Remove this branch only after the exhaustive benchmark-kind audit passes.
+export const legacyBenchmark = v.object({
+  version: v.string(),
+  effectiveAt: v.number(),
+  evalCount: v.number(),
+  curatedModels: v.array(v.string()),
+  provenance: benchmarkProvenance,
+  decision: v.optional(decisionDefinition),
+});
+
 export default defineSchema({
   models: defineTable({
     slug: v.string(),
@@ -339,17 +366,11 @@ export default defineSchema({
     .index("by_kind_benchmark_condition", ["kind", "benchmarkVersion", "condition"])
     .index("by_kind_cohort", ["kind", "benchmarkVersion", "condition", "model", "profileHash"]),
 
-  benchmarkVersions: defineTable({
-    version: v.string(),
-    effectiveAt: v.number(),
-    evalCount: v.number(),
-    curatedModels: v.array(v.string()),
-    provenance: benchmarkProvenance,
-    // Optional on historical releases; shares the existing version identity.
-    decision: v.optional(decisionDefinition),
-  })
+  benchmarkVersions: defineTable(v.union(legacyBenchmark, codingBenchmark, decisionBenchmark))
     .index("by_version", ["version"])
-    .index("by_effectiveAt", ["effectiveAt"]),
+    .index("by_effectiveAt", ["effectiveAt"])
+    .index("by_kind_version", ["kind", "version"])
+    .index("by_kind_effectiveAt", ["kind", "effectiveAt"]),
 
   evals: defineTable(v.union(codingEval, decisionResult))
     .index("by_kind", ["kind"])

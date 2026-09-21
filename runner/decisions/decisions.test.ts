@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { computeBenchmarkDefinition } from "../benchmark.js";
+import { computeDecisionBenchmarkDefinition } from "./source.js";
 import {
   buildProviderRequest,
   callProvider,
@@ -218,10 +219,7 @@ describe("question contracts and provenance", () => {
     writeFileSync(manifestFile, JSON.stringify(manifest));
     expect(buildRunPlan(options).fullSuite).toBe(true);
     expect(buildRunPlan(options).decisionDefinition?.questionCount).toBe(1);
-    const before = computeBenchmarkDefinition(
-      ["evals/" + bank.sourceEval, "evals/" + omitted],
-      root,
-    ).version;
+    const before = computeDecisionBenchmarkDefinition(root).version;
     writeFileSync(
       manifestFile,
       JSON.stringify({
@@ -231,12 +229,7 @@ describe("question contracts and provenance", () => {
         ],
       }),
     );
-    expect(
-      computeBenchmarkDefinition(
-        ["evals/" + bank.sourceEval, "evals/" + omitted],
-        root,
-      ).version,
-    ).not.toBe(before);
+    expect(computeDecisionBenchmarkDefinition(root).version).not.toBe(before);
     writeFileSync(
       join(evalDirectory, "TASK.txt"),
       "Different coding knowledge",
@@ -333,13 +326,14 @@ describe("question contracts and provenance", () => {
       "invalid or missing source reference",
     );
   });
-  it("uses one shared hash for questions and protocol while keeping source provenance independent", () => {
+  it("keeps coding identity independent of decision questions and implementation", () => {
     const { root, evalDirectory, options } = fixture();
     const before = computeBenchmarkDefinition(
       [`evals/${bank.sourceEval}`],
       root,
     );
-    expect(buildRunPlan(options).benchmark).toEqual(before);
+    const decisionBefore = buildRunPlan(options).benchmark;
+    expect(decisionBefore.version).not.toBe(before.version);
     const sourceBefore = sourceFingerprint(evalDirectory);
     writeFileSync(
       join(evalDirectory, "questions.json"),
@@ -349,7 +343,10 @@ describe("question contracts and provenance", () => {
       [`evals/${bank.sourceEval}`],
       root,
     );
-    expect(changedQuestion.version).not.toBe(before.version);
+    expect(changedQuestion.version).toBe(before.version);
+    expect(buildRunPlan(options).benchmark.version).not.toBe(
+      decisionBefore.version,
+    );
     expect(sourceFingerprint(evalDirectory)).toBe(sourceBefore);
     mkdirSync(join(root, "runner/decisions"), { recursive: true });
     writeFileSync(
@@ -358,7 +355,7 @@ describe("question contracts and provenance", () => {
     );
     expect(
       computeBenchmarkDefinition([`evals/${bank.sourceEval}`], root).version,
-    ).not.toBe(changedQuestion.version);
+    ).toBe(changedQuestion.version);
     writeFileSync(join(evalDirectory, "TASK.txt"), "Changed source task");
     expect(sourceFingerprint(evalDirectory)).not.toBe(sourceBefore);
   });
@@ -608,8 +605,8 @@ describe("scoring and local execution", () => {
     const revised = parseDecisionManifest(
       readFileSync(join(replay.directory, "manifest.json"), "utf8"),
     );
-    expect(revised.benchmark.version).not.toBe(
-      revised.provenance?.sourceBenchmark.version,
+    expect(revised.benchmark.version).toBe(
+      revised.provenance!.sourceBenchmark.version,
     );
     for (const [name, content] of Object.entries(before))
       expect(readFileSync(join(run.directory, name), "utf8")).toBe(content);

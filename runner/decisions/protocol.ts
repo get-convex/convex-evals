@@ -1,5 +1,6 @@
-/** Shared benchmark inputs. Changes to decision semantics change the same
- * benchmark identity used by coding evals; there is no decision-only version. */
+/** Explicit decision request and scoring semantics, independent of coding.
+ * Bump version for changes to presentation, answer parsing, or grading.
+ * Implementation/reporting bytes are archived but do not define this identity. */
 export const DECISION_PROTOCOL = {
   version: 1,
   format: "multiple_choice",

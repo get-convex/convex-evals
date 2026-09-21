@@ -12,7 +12,7 @@ vi.mock("./decisionConfig.js", async (importOriginal) => {
   };
 });
 
-import { api } from "./_generated/api.js";
+import { api, internal } from "./_generated/api.js";
 import type { Id } from "./_generated/dataModel.js";
 import schema from "./schema.js";
 import { modules } from "./test.setup.js";
@@ -116,8 +116,12 @@ describe("decision ingestion actions", () => {
         decision,
       }),
     ).rejects.toThrow("Invalid authentication token");
+    await t.mutation(internal.benchmarkVersions.mint, {
+      version: "coding-test", evalCount: snapshot.benchmark.evalCount, curatedModels: [],
+    });
     await t.action(api.decisionAdmin.mintBenchmark, {
       token,
+      codingBenchmarkVersionHash: "coding-test",
       version: snapshot.benchmark.version,
       evalCount: snapshot.benchmark.evalCount,
       curatedModels: [],

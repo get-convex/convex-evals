@@ -4,7 +4,14 @@ import {
 } from "convex/server";
 import { v } from "convex/values";
 import { query, type QueryCtx } from "./_generated/server.js";
-import type { Doc } from "./_generated/dataModel.js";
+import {
+  findBenchmarkByKind,
+  listBenchmarksByKind,
+  latestBenchmarkByKind,
+  requireCodingBenchmark,
+  requireDecisionBenchmark,
+  type DecisionBenchmark,
+} from "./benchmarkKinds.js";
 import { decisionCondition, decisionProfile } from "./schema.js";
 import {
   requireDecisionRun,
@@ -137,12 +144,29 @@ type SharedVersionView = {
   decisionAvailable: boolean;
 };
 
-function sharedVersion(benchmark: Doc<"benchmarkVersions">): SharedVersionView {
+async function sharedVersion(
+  ctx: Pick<QueryCtx, "db">,
+  benchmark: DecisionBenchmark,
+): Promise<SharedVersionView> {
+  // Coverage belongs to the source coding suite. Resolve it once for metadata,
+  // never once per leaderboard row or question.
+  let codingEvalCount = benchmark.evalCount;
+  if (benchmark.codingBenchmarkVersion) {
+    const source = await ctx.db.get(
+      "benchmarkVersions",
+      benchmark.codingBenchmarkVersion,
+    );
+    if (!source)
+      throw new Error("Decision benchmark has a missing coding source");
+    codingEvalCount = requireCodingBenchmark(source).evalCount;
+  }
+  if (codingEvalCount === undefined)
+    throw new Error("Decision benchmark has no coding source coverage");
   const decision = benchmark.decision;
   return {
     version: benchmark.version,
     effectiveAt: benchmark.effectiveAt,
-    codingEvalCount: benchmark.evalCount,
+    codingEvalCount,
     decisionSourceCount: decision?.sources.length ?? 0,
     decisionQuestionCount:
       decision?.sources.reduce(
@@ -249,22 +273,12 @@ export const decisionLeaderboard = query({
   }),
   handler: async (ctx, args) => {
     const benchmark = args.benchmarkVersion
-      ? await ctx.db
-          .query("benchmarkVersions")
-          .withIndex("by_version", (q) =>
-            q.eq("version", args.benchmarkVersion!),
-          )
-          .unique()
-      : await ctx.db
-          .query("benchmarkVersions")
-          .withIndex("by_effectiveAt")
-          .order("desc")
-          .filter((q) => q.neq(q.field("provenance"), "unminted"))
-          .first();
-    if (!benchmark?.decision || benchmark.provenance !== "minted") {
+      ? await findBenchmarkByKind(ctx, "decision", args.benchmarkVersion)
+      : await latestBenchmarkByKind(ctx, "decision");
+    if (!benchmark) {
       return {
         availability: "not_available" as const,
-        benchmark: benchmark ? sharedVersion(benchmark) : null,
+        benchmark: null,
         results: { page: [], isDone: true, continueCursor: "" },
       };
     }
@@ -320,7 +334,7 @@ export const decisionLeaderboard = query({
           score.plannedQuestions -
           score.invalidResponses -
           score.providerErrors,
-        decisionSourceCount: benchmark.decision!.sources.length,
+        decisionSourceCount: benchmark.decision.sources.length,
         decisionQuestionCount: questionCount,
         averageRunDurationMs: score.averageRunDurationMs,
         medianQuestionDurationMs: score.medianQuestionDurationMs,
@@ -334,7 +348,7 @@ export const decisionLeaderboard = query({
     });
     return {
       availability: "ready" as const,
-      benchmark: sharedVersion(benchmark),
+      benchmark: await sharedVersion(ctx, benchmark),
       results: { ...page, page: results },
     };
   },
@@ -350,12 +364,12 @@ export const listDecisionRuns = query({
   },
   returns: paginationResultValidator(publicRunValidator),
   handler: async (ctx, args) => {
-    const benchmark = await ctx.db
-      .query("benchmarkVersions")
-      .withIndex("by_version", (q) => q.eq("version", args.benchmarkVersion))
-      .unique();
-    if (!benchmark?.decision)
-      return { page: [], isDone: true, continueCursor: "" };
+    const benchmark = await findBenchmarkByKind(
+      ctx,
+      "decision",
+      args.benchmarkVersion,
+    );
+    if (!benchmark) return { page: [], isDone: true, continueCursor: "" };
     const requestedModel = args.model;
     const requestedProfile = args.profileHash;
     const paginationOpts = boundedPagination(args.paginationOpts);
@@ -432,15 +446,18 @@ export const getDecisionRun = query({
     const stored = await ctx.db.get("runs", args.runId);
     if (!stored) return null;
     const run = requireDecisionRun(stored);
-    const benchmark = await ctx.db.get(
+    const storedBenchmark = await ctx.db.get(
       "benchmarkVersions",
       run.benchmarkVersion,
     );
-    if (!benchmark?.decision) return null;
+    const benchmark = storedBenchmark
+      ? requireDecisionBenchmark(storedBenchmark)
+      : null;
+    if (!benchmark) return null;
     const names = await formattedNames(ctx, [run.model]);
     return {
       ...decisionRunView(run, benchmark.version, names.get(run.model)!),
-      benchmark: sharedVersion(benchmark),
+      benchmark: await sharedVersion(ctx, benchmark),
       plannedQuestions: run.plannedQuestions,
       sourceEvidenceSha256: benchmark.decision.sourceEvidence.sha256,
       sourceEvidenceUrl: await ctx.storage.getUrl(
@@ -461,12 +478,14 @@ export const decisionResults = query({
     const stored = await ctx.db.get("runs", args.runId);
     if (!stored) return { page: [], isDone: true, continueCursor: "" };
     const run = requireDecisionRun(stored);
-    const benchmark = await ctx.db.get(
+    const storedBenchmark = await ctx.db.get(
       "benchmarkVersions",
       run.benchmarkVersion,
     );
-    if (!benchmark?.decision)
-      return { page: [], isDone: true, continueCursor: "" };
+    const benchmark = storedBenchmark
+      ? requireDecisionBenchmark(storedBenchmark)
+      : null;
+    if (!benchmark) return { page: [], isDone: true, continueCursor: "" };
     const answers = new Map<string, string>(
       benchmark.decision.sources.flatMap((source) =>
         source.questions.map(
@@ -512,5 +531,41 @@ export const decisionResults = query({
         }),
       ),
     };
+  },
+});
+
+/** Decision selectors must never source their versions from the coding leaderboard. */
+export const decisionLeaderboardVersions = query({
+  args: {},
+  returns: v.array(
+    v.object({ ...sharedVersionValidator.fields, isCurrent: v.boolean() }),
+  ),
+  handler: async (ctx) => {
+    const benchmarks = await listBenchmarksByKind(ctx, "decision");
+    // Several decision releases can refer to the same coding suite. Cache this
+    // small metadata join per request rather than fetching it for every version.
+    const coverage = new Map<string, number>();
+    const versions = [];
+    for (const [index, benchmark] of benchmarks.entries()) {
+      const link = benchmark.codingBenchmarkVersion;
+      if (link && !coverage.has(link)) {
+        const coding = await ctx.db.get("benchmarkVersions", link);
+        if (!coding)
+          throw new Error("Decision benchmark has a missing coding source");
+        coverage.set(link, requireCodingBenchmark(coding).evalCount);
+      }
+      const view = await sharedVersion(
+        ctx,
+        link
+          ? {
+              ...benchmark,
+              codingBenchmarkVersion: undefined,
+              evalCount: coverage.get(link)!,
+            }
+          : benchmark,
+      );
+      versions.push({ ...view, isCurrent: index === 0 });
+    }
+    return versions;
   },
 });

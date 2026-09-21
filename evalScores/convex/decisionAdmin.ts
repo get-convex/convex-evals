@@ -1,5 +1,7 @@
 "use node";
 
+import type { Infer } from "convex/values";
+
 import { createHash } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 import { v } from "convex/values";
@@ -205,12 +207,12 @@ async function readEvidence(
 type DecisionSourceExpectation = {
   version: string;
   evalCount: number;
-  decision: NonNullable<Doc<"benchmarkVersions">["decision"]>;
+  decision: Infer<typeof decisionDefinition>;
 };
 
 function compactDecisionDefinition(
   snapshot: DecisionSourceSnapshot,
-): NonNullable<Doc<"benchmarkVersions">["decision"]>["sources"] {
+): Infer<typeof decisionDefinition>["sources"] {
   return snapshot.banks.map((bank) => ({
     evalPath: bank.sourceEval,
     questions: bank.questions.map((question) => ({
@@ -226,7 +228,7 @@ function assertDecisionSourceMatches(
   expected: DecisionSourceExpectation,
 ): void {
   if (
-    snapshot.artifactVersion !== 1 ||
+    (snapshot.artifactVersion !== 1 && snapshot.artifactVersion !== 2) ||
     snapshot.kind !== "decision-source" ||
     snapshot.sourceCommit !== expected.decision.sourceCommit ||
     snapshot.protocol.version !== expected.decision.protocolVersion ||
@@ -564,7 +566,7 @@ export const record = action({
     const snapshot = await verifiedDecisionSource(ctx, {
       version: context.benchmark.version,
       evalCount: context.benchmark.evalCount,
-      decision: context.benchmark.decision!,
+      decision: context.benchmark.decision,
     });
     const config = providerConfig(context.run);
     const derived = await mapWithConcurrency(
@@ -788,7 +790,7 @@ export const finish = action({
     const snapshot = await verifiedDecisionSource(ctx, {
       version: context.benchmark.version,
       evalCount: context.benchmark.evalCount,
-      decision: context.benchmark.decision!,
+      decision: context.benchmark.decision,
     });
     if (!Array.isArray(manifest.planned))
       throw new Error("Hosted manifest plan is missing");
@@ -1049,17 +1051,23 @@ export const mintBenchmark = action({
     evalCount: v.number(),
     curatedModels: v.array(v.string()),
     decision: decisionDefinition,
+    identityFormat: v.optional(v.union(v.literal("legacy_shared_v4"), v.literal("decision_v1"))),
+    codingBenchmarkVersionHash: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args): Promise<null> => {
     assertDecisionIngestionEnabled();
     await authenticate(ctx, args.token);
-    await verifiedDecisionSource(ctx, {
+    const snapshot = await verifiedDecisionSource(ctx, {
       version: args.version,
       evalCount: args.evalCount,
       decision: args.decision,
     });
+    const identityFormat = snapshot.artifactVersion === 1 ? "legacy_shared_v4" : "decision_v1";
+    if (args.identityFormat && args.identityFormat !== identityFormat) throw new Error("Decision identity format mismatch");
     await ctx.runMutation(internal.benchmarkVersions.mint, {
+      identityFormat,
+      ...(args.codingBenchmarkVersionHash ? { codingBenchmarkVersionHash: args.codingBenchmarkVersionHash } : {}),
       version: args.version,
       evalCount: args.evalCount,
       curatedModels: args.curatedModels,

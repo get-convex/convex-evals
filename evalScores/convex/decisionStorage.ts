@@ -1,3 +1,6 @@
+import { findBenchmarkByKind, requireDecisionBenchmark, decisionCodingEvalCount } from "./benchmarkKinds.js";
+import type { Infer } from "convex/values";
+import { decisionDefinition } from "./schema.js";
 import { v } from "convex/values";
 import { internal } from "./_generated/api.js";
 import type { Doc, Id } from "./_generated/dataModel.js";
@@ -100,7 +103,7 @@ function validateProfile(profile: {
 }
 
 function acceptedQuestionKeys(
-  decision: NonNullable<Doc<"benchmarkVersions">["decision"]>,
+  decision: Infer<typeof decisionDefinition>,
 ): string[] {
   return decision.sources
     .flatMap((source) =>
@@ -112,10 +115,8 @@ function acceptedQuestionKeys(
 export const getBenchmarkContext = internalQuery({
   args: { benchmarkHash: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
-      .query("benchmarkVersions")
-      .withIndex("by_version", (q) => q.eq("version", args.benchmarkHash))
-      .unique();
+    const benchmark = await findBenchmarkByKind(ctx, "decision", args.benchmarkHash);
+    return benchmark ? { ...benchmark, evalCount: await decisionCodingEvalCount(ctx, benchmark) } : null;
   },
 });
 
@@ -134,12 +135,10 @@ export const getDecisionSourceContext = internalQuery({
     const stored = await ctx.db.get("runs", args.runId);
     if (!stored) throw new Error("Decision run does not exist");
     const run = requireDecisionRun(stored);
-    const benchmark = await ctx.db.get(
-      "benchmarkVersions",
-      run.benchmarkVersion,
-    );
-    if (!benchmark?.decision)
-      throw new Error("Decision definition is unavailable");
+    const storedBenchmark = await ctx.db.get("benchmarkVersions", run.benchmarkVersion);
+    if (!storedBenchmark) throw new Error("Decision definition is unavailable");
+    const normalized = requireDecisionBenchmark(storedBenchmark);
+    const benchmark = { ...normalized, evalCount: await decisionCodingEvalCount(ctx, normalized) };
     return { run, benchmark };
   },
 });
@@ -150,12 +149,10 @@ export const getDecisionFinalizationContext = internalQuery({
     const stored = await ctx.db.get("runs", args.runId);
     if (!stored) throw new Error("Decision run does not exist");
     const run = requireDecisionRun(stored);
-    const benchmark = await ctx.db.get(
-      "benchmarkVersions",
-      run.benchmarkVersion,
-    );
-    if (!benchmark?.decision)
-      throw new Error("Decision definition is unavailable");
+    const storedBenchmark = await ctx.db.get("benchmarkVersions", run.benchmarkVersion);
+    if (!storedBenchmark) throw new Error("Decision definition is unavailable");
+    const normalized = requireDecisionBenchmark(storedBenchmark);
+    const benchmark = { ...normalized, evalCount: await decisionCodingEvalCount(ctx, normalized) };
     const results = await ctx.db
       .query("evals")
       .withIndex("by_kind_runId", (q) =>
@@ -182,10 +179,7 @@ export const createDecisionRun = internalMutation({
     if (!args.model.trim()) throw new Error("Decision model is required");
     if (!args.runKey || !args.profileHash)
       throw new Error("Invalid decision identity");
-    const benchmark = await ctx.db
-      .query("benchmarkVersions")
-      .withIndex("by_version", (q) => q.eq("version", args.benchmarkHash))
-      .unique();
+    const benchmark = await findBenchmarkByKind(ctx, "decision", args.benchmarkHash);
     if (
       !benchmark ||
       benchmark.provenance !== "minted" ||
@@ -435,6 +429,9 @@ export const recomputeDecisionScore = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const benchmark = await ctx.db.get(args.benchmarkVersion);
+    if (!benchmark) throw new Error("Missing decision benchmark");
+    requireDecisionBenchmark(benchmark);
     const runs = (
       await ctx.db
         .query("runs")
