@@ -15,6 +15,7 @@ async function fixture() {
   const t = convexTest(schema, modules);
   const ids = await t.run(async (ctx) => {
     const benchmarkVersion = await ctx.db.insert("benchmarkVersions", {
+      kind: "coding",
       version: "migration-fixture",
       effectiveAt: 1,
       evalCount: 1,

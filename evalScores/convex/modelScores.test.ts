@@ -571,6 +571,7 @@ describe("recomputeModelScores", () => {
 
     await t.run(async (ctx) => {
       await ctx.db.insert("benchmarkVersions", {
+        kind: "coding",
         version: "reconstructed-suite",
         effectiveAt: 1,
         evalCount: 1,

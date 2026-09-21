@@ -8,10 +8,11 @@ import {
   type FunctionReturnType,
 } from "convex/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import schema from "./schema";
+import { compatibilitySchema as schema } from "./benchmarkFixtures.testHelpers";
+import type { MigrationBenchmarkDocument } from "./benchmarkKindMigration";
 import { modules } from "./test.setup";
 
-type Benchmark = Doc<"benchmarkVersions">;
+type Benchmark = MigrationBenchmarkDocument;
 const dryRun = makeFunctionReference<
   "query",
   { paginationOpts: PaginationOptions },

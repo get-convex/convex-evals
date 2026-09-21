@@ -1,5 +1,6 @@
 import { paginationOptsValidator } from "convex/server";
-import { v } from "convex/values";
+import { v, type Infer } from "convex/values";
+import { legacyBenchmark } from "./schema";
 import {
   internalMutation,
   internalQuery,
@@ -11,7 +12,13 @@ export const LEGACY_DECISION_VERSION =
   "91852c9a25a98f75dcac6f6219d93e8c49f6caa5b2b6e12012ecb58ccffae522";
 export const LEGACY_CODING_VERSION =
   "41d65c9b4f5bcdb97bc5c6ead5aa054e335b2eab6abc897b352b97b98b016fb3";
-type Benchmark = Doc<"benchmarkVersions">;
+// Historical manifests stay readable after tightening the live schema.
+export type LegacyBenchmarkDocument = Infer<typeof legacyBenchmark> &
+  Pick<Doc<"benchmarkVersions">, "_id" | "_creationTime">;
+export type MigrationBenchmarkDocument =
+  | Doc<"benchmarkVersions">
+  | LegacyBenchmarkDocument;
+type Benchmark = MigrationBenchmarkDocument;
 type Reader = Pick<QueryCtx, "db">;
 
 function canonical(value: unknown): string {
@@ -42,7 +49,7 @@ export function intendedKind(doc: Benchmark): "coding" | "decision" {
 async function proposedDocument(
   ctx: Reader,
   doc: Benchmark,
-): Promise<Benchmark> {
+): Promise<Doc<"benchmarkVersions">> {
   const kind = intendedKind(doc);
   // An indexed existence check runs inside the write transaction, so even a
   // reference inserted after the dry run prevents an unsafe reclassification.
@@ -88,7 +95,7 @@ async function proposedDocument(
 export function migrationDocument(
   doc: Benchmark,
   coding: Benchmark | null,
-): Benchmark {
+): Doc<"benchmarkVersions"> {
   const kind = intendedKind(doc);
   if ("kind" in doc) return doc;
   if (kind === "coding") return { ...doc, kind: "coding" };

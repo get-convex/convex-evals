@@ -313,7 +313,7 @@ export const decisionBenchmark = v.object({
   codingBenchmarkVersion: v.id("benchmarkVersions"),
   decision: decisionDefinition,
 });
-// Remove this branch only after the exhaustive benchmark-kind audit passes.
+// Historical manifest validator only. The live table rejects this shape.
 export const legacyBenchmark = v.object({
   version: v.string(),
   effectiveAt: v.number(),
@@ -366,7 +366,7 @@ export default defineSchema({
     .index("by_kind_benchmark_condition", ["kind", "benchmarkVersion", "condition"])
     .index("by_kind_cohort", ["kind", "benchmarkVersion", "condition", "model", "profileHash"]),
 
-  benchmarkVersions: defineTable(v.union(legacyBenchmark, codingBenchmark, decisionBenchmark))
+  benchmarkVersions: defineTable(v.union(codingBenchmark, decisionBenchmark))
     .index("by_version", ["version"])
     .index("by_effectiveAt", ["effectiveAt"])
     .index("by_kind_version", ["kind", "version"])

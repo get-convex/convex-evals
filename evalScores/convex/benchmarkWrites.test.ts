@@ -135,3 +135,50 @@ describe("benchmark write kind and identity guards", () => {
     ).rejects.toThrow("different immutable decision definition");
   });
 });
+
+describe("strict benchmark schema", () => {
+  it("rejects untagged rows and decision records without a source link", async () => {
+    const { t, definition } = await fixture();
+    await expect(
+      t.run((ctx) =>
+        ctx.db.insert("benchmarkVersions", {
+          version: "untagged",
+          effectiveAt: 1,
+          evalCount: 1,
+          curatedModels: [],
+          provenance: "minted",
+        } as never),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      t.run((ctx) =>
+        ctx.db.insert("benchmarkVersions", {
+          kind: "decision",
+          version: "unlinked",
+          effectiveAt: 1,
+          provenance: "minted",
+          identityFormat: "legacy_shared_v4",
+          decision: definition,
+        } as never),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("rejects new decision mints without a coding source for either identity format", async () => {
+    const { t, definition } = await fixture();
+    for (const identityFormat of ["decision_v1", "legacy_shared_v4"] as const) {
+      await expect(
+        t.mutation(internal.benchmarkVersions.mint, {
+          version: `unlinked-${identityFormat}`,
+          evalCount: 112,
+          curatedModels: [],
+          decision: definition,
+          identityFormat,
+        }),
+      ).rejects.toThrow("Coding benchmark link required");
+    }
+    expect(
+      await t.run((ctx) => ctx.db.query("benchmarkVersions").collect()),
+    ).toHaveLength(2);
+  });
+});

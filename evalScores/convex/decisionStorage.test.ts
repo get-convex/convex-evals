@@ -42,15 +42,22 @@ describe("decision shared-table lifecycle", () => {
         ],
       };
       await t.mutation(internal.benchmarkVersions.mint, {
+        version: "source-coding",
+        evalCount: 112,
+        curatedModels: [],
+      });
+      await t.mutation(internal.benchmarkVersions.mint, {
         version: "shared-v1",
         evalCount: 112,
         curatedModels: [],
+        codingBenchmarkVersionHash: "source-coding",
         decision: decisionDefinition,
       });
       await t.mutation(internal.benchmarkVersions.mint, {
         version: "shared-v1",
         evalCount: 112,
         curatedModels: [],
+        codingBenchmarkVersionHash: "source-coding",
         decision: {
           ...decisionDefinition,
           sourceEvidence: {
@@ -212,7 +219,13 @@ describe("decision shared-table lifecycle", () => {
       ctx.storage.store(new Blob(["source"])),
     );
     await t.mutation(internal.benchmarkVersions.mint, {
+      version: "source-coding",
+      evalCount: 112,
+      curatedModels: [],
+    });
+    await t.mutation(internal.benchmarkVersions.mint, {
       version: "older",
+      codingBenchmarkVersionHash: "source-coding",
       evalCount: 112,
       curatedModels: [],
       decision: {

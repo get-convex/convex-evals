@@ -24,10 +24,11 @@ describe("targeted coding leaderboard reads", () => {
     const t = convexTest({
       schema,
       modules,
-      transactionLimits: { databaseQueries: 4, documentsRead: 10 },
+      transactionLimits: { databaseQueries: 3, documentsRead: 10 },
     });
     await t.run(async (ctx) => {
       const benchmarkVersion = await ctx.db.insert("benchmarkVersions", {
+        kind: "coding",
         version: "target-benchmark",
         effectiveAt: 1,
         evalCount: 1,
@@ -89,6 +90,7 @@ describe("targeted coding leaderboard reads", () => {
     const t = convexTest(schema, modules);
     await t.run(async (ctx) => {
       const oldBenchmark = await ctx.db.insert("benchmarkVersions", {
+        kind: "coding",
         version: "old-benchmark",
         effectiveAt: Date.now() - 1_000,
         evalCount: 1,
@@ -96,6 +98,7 @@ describe("targeted coding leaderboard reads", () => {
         provenance: "minted",
       });
       const currentBenchmark = await ctx.db.insert("benchmarkVersions", {
+        kind: "coding",
         version: "current-benchmark",
         effectiveAt: Date.now(),
         evalCount: 2,

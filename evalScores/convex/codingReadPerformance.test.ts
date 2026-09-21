@@ -93,6 +93,7 @@ async function historyFixture() {
   const t = convexTest(schema, modules);
   const ids = await t.run(async (ctx) => {
     const benchmarkVersion = await ctx.db.insert("benchmarkVersions", {
+      kind: "coding",
       version: "performance-fixture",
       effectiveAt: 1,
       evalCount: 1,
@@ -196,8 +197,8 @@ describe("coding leaderboard read bounds", () => {
         version: "performance-fixture",
         isCurrent: true,
       });
-      // Tagged and legacy partitions are read once each during compatibility.
-      expect(tracked.queries.benchmarkVersions).toBe(2);
+      // Strict readers need only the selected kind partition.
+      expect(tracked.queries.benchmarkVersions).toBe(1);
       expect(tracked.queries.models ?? 0).toBe(0);
     });
   });
