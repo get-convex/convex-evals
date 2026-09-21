@@ -1,3 +1,4 @@
+import { insertDecisionBenchmark } from "./benchmarkFixtures.testHelpers";
 import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
 import { api } from "./_generated/api.js";
@@ -16,16 +17,16 @@ const profile = {
 
 describe("decision leaderboard read paths", () => {
   it("uses the model cohort prefix and keeps page joins constant with large unrelated history", async () => {
-    // Compatibility needs two indexed benchmark lookups, one paginated read and
+    // One indexed benchmark lookup, one paginated read and
     // one deduplicated model metadata lookup, independent of the page length.
     const t = convexTest({
       schema,
       modules,
-      transactionLimits: { databaseQueries: 4, documentsRead: 200 },
+      transactionLimits: { databaseQueries: 3, documentsRead: 200 },
     });
     await t.run(async (ctx) => {
       const source = await ctx.storage.store(new Blob(["source"]));
-      const benchmarkVersion = await ctx.db.insert("benchmarkVersions", {
+      const benchmarkVersion = await insertDecisionBenchmark(ctx, {
         version: "decision-view-v1",
         effectiveAt: 1,
         evalCount: 1,
@@ -119,7 +120,7 @@ describe("decision leaderboard read paths", () => {
     const t = convexTest(schema, modules);
     await t.run(async (ctx) => {
       const source = await ctx.storage.store(new Blob(["source"]));
-      await ctx.db.insert("benchmarkVersions", {
+      await insertDecisionBenchmark(ctx, {
         version: "latest-public",
         effectiveAt: 1,
         evalCount: 1,
@@ -165,7 +166,7 @@ describe("decision leaderboard read paths", () => {
   });
 
   it("deduplicates model metadata while preserving each materialized profile", async () => {
-    // Two compatibility benchmark queries + one score page + ten latest-run reads + one model
+    // One benchmark query + one linked coding suite + one score page + ten latest-run reads + one model
     // lookup. Looking up the same model once per profile would exceed this.
     const t = convexTest({
       schema,
@@ -174,7 +175,7 @@ describe("decision leaderboard read paths", () => {
     });
     await t.run(async (ctx) => {
       const source = await ctx.storage.store(new Blob(["source"]));
-      const benchmarkVersion = await ctx.db.insert("benchmarkVersions", {
+      const benchmarkVersion = await insertDecisionBenchmark(ctx, {
         version: "decision-scores-v1",
         effectiveAt: 1,
         evalCount: 1,

@@ -10,6 +10,7 @@ import {
   latestBenchmarkByKind,
   requireCodingBenchmark,
   requireDecisionBenchmark,
+  decisionCodingEvalCount,
   type DecisionBenchmark,
 } from "./benchmarkKinds.js";
 import { decisionCondition, decisionProfile } from "./schema.js";
@@ -144,24 +145,10 @@ type SharedVersionView = {
   decisionAvailable: boolean;
 };
 
-async function sharedVersion(
-  ctx: Pick<QueryCtx, "db">,
+function sharedVersion(
   benchmark: DecisionBenchmark,
-): Promise<SharedVersionView> {
-  // Coverage belongs to the source coding suite. Resolve it once for metadata,
-  // never once per leaderboard row or question.
-  let codingEvalCount = benchmark.evalCount;
-  if (benchmark.codingBenchmarkVersion) {
-    const source = await ctx.db.get(
-      "benchmarkVersions",
-      benchmark.codingBenchmarkVersion,
-    );
-    if (!source)
-      throw new Error("Decision benchmark has a missing coding source");
-    codingEvalCount = requireCodingBenchmark(source).evalCount;
-  }
-  if (codingEvalCount === undefined)
-    throw new Error("Decision benchmark has no coding source coverage");
+  codingEvalCount: number,
+): SharedVersionView {
   const decision = benchmark.decision;
   return {
     version: benchmark.version,
@@ -348,7 +335,10 @@ export const decisionLeaderboard = query({
     });
     return {
       availability: "ready" as const,
-      benchmark: await sharedVersion(ctx, benchmark),
+      benchmark: sharedVersion(
+        benchmark,
+        await decisionCodingEvalCount(ctx, benchmark),
+      ),
       results: { ...page, page: results },
     };
   },
@@ -457,7 +447,10 @@ export const getDecisionRun = query({
     const names = await formattedNames(ctx, [run.model]);
     return {
       ...decisionRunView(run, benchmark.version, names.get(run.model)!),
-      benchmark: await sharedVersion(ctx, benchmark),
+      benchmark: sharedVersion(
+        benchmark,
+        await decisionCodingEvalCount(ctx, benchmark),
+      ),
       plannedQuestions: run.plannedQuestions,
       sourceEvidenceSha256: benchmark.decision.sourceEvidence.sha256,
       sourceEvidenceUrl: await ctx.storage.getUrl(
@@ -554,16 +547,7 @@ export const decisionLeaderboardVersions = query({
           throw new Error("Decision benchmark has a missing coding source");
         coverage.set(link, requireCodingBenchmark(coding).evalCount);
       }
-      const view = await sharedVersion(
-        ctx,
-        link
-          ? {
-              ...benchmark,
-              codingBenchmarkVersion: undefined,
-              evalCount: coverage.get(link)!,
-            }
-          : benchmark,
-      );
+      const view = sharedVersion(benchmark, coverage.get(link)!);
       versions.push({ ...view, isCurrent: index === 0 });
     }
     return versions;

@@ -1,16 +1,17 @@
 import { convexTest, type TestConvex } from "convex-test";
 import { describe, expect, it } from "vitest";
 import { makeFunctionReference, type PaginationOptions } from "convex/server";
-import type { Doc, Id } from "./_generated/dataModel";
-import schema from "./schema";
+import type { Id } from "./_generated/dataModel";
+import { compatibilitySchema as schema } from "./benchmarkFixtures.testHelpers";
+import type { MigrationBenchmarkDocument } from "./benchmarkKindMigration";
 import { modules } from "./test.setup";
 import {
   LEGACY_CODING_VERSION,
   LEGACY_DECISION_VERSION,
 } from "./benchmarkKindMigration";
 type ManifestEntry = {
-  before: Doc<"benchmarkVersions">;
-  after: Doc<"benchmarkVersions"> | null;
+  before: MigrationBenchmarkDocument;
+  after: MigrationBenchmarkDocument | null;
   error: string | null;
 };
 const dryRun = makeFunctionReference<
@@ -22,8 +23,8 @@ const applyOne = makeFunctionReference<
   "mutation",
   {
     id: Id<"benchmarkVersions">;
-    before: Doc<"benchmarkVersions">;
-    after: Doc<"benchmarkVersions"> | null;
+    before: MigrationBenchmarkDocument;
+    after: MigrationBenchmarkDocument | null;
   },
   { changed: boolean }
 >("benchmarkKindMigration:applyOne");

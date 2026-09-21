@@ -86,12 +86,11 @@ export const seedHistorical = internalMutation({
       created += 1;
     }
 
-    const unminted = await ctx.db
-      .query("benchmarkVersions")
-      .withIndex("by_version", (q) =>
-        q.eq("version", UNMINTED_BENCHMARK_VERSION),
-      )
-      .unique();
+    const unminted = await findBenchmarkByKind(
+      ctx,
+      "coding",
+      UNMINTED_BENCHMARK_VERSION,
+    );
     if (unminted) {
       existing += 1;
     } else {
@@ -192,17 +191,7 @@ export const mint = internalMutation({
           decision: args.decision,
         });
       } else {
-        // Compatibility for pre-migration clients; new decision_v1 mints must link coding.
-        if (args.identityFormat === "decision_v1")
-          throw new Error("Coding benchmark link required");
-        await ctx.db.insert("benchmarkVersions", {
-          version: args.version,
-          effectiveAt: Date.now(),
-          provenance: "minted",
-          evalCount: args.evalCount,
-          curatedModels: args.curatedModels,
-          decision: args.decision,
-        });
+        throw new Error("Coding benchmark link required");
       }
     } else if (existing) {
       if (existing.kind !== "coding")
