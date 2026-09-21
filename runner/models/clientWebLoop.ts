@@ -1,3 +1,4 @@
+import { WEB_SOURCE_POLICY } from "./webSourcePolicy";
 import {
   ClientWebTools,
   jsonRecord,
@@ -41,6 +42,7 @@ export async function runClientWebLoop(options: {
   options.journal({
     kind: "pilot_started",
     profile: "client-exa-pilot-v1",
+    sourcePolicy: WEB_SOURCE_POLICY,
     model: options.model,
     prompt: options.prompt,
     purpose: options.purpose ?? "smoke",

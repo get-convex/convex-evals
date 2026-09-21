@@ -1,4 +1,5 @@
 import type { LanguageModelUsage } from "ai";
+import { WEB_SOURCE_POLICY } from "./webSourcePolicy";
 import { InfrastructureError } from "../convexBackend";
 import { runClientWebLoop } from "./clientWebLoop";
 import {
@@ -116,6 +117,7 @@ export async function generateWithClientWeb(options: {
         },
         clientWeb: {
           profile: "client-exa-v1",
+          sourcePolicy: WEB_SOURCE_POLICY,
           ...result.summary,
           tracePath: options.tracePath,
           modelCost,

@@ -9,12 +9,12 @@
 
 ## Web experiment direction
 
-`no_guidelines_with_web` is the sole web experiment, using OpenRouter search
-and page-fetch tools with both engines pinned to Exa in our harness. See `docs/no-guidelines-with-web.md` for its
-limits, tracing, and local run command. It uses the existing
-`OPENROUTER_API_KEY`; no separate search key is needed. Use
-`DISABLE_CONVEX_REPORTING=1` until the target deployment supports the new schema
-literal; local reporting is permitted only to the development deployment.
+`no_guidelines_with_web` is the sole web experiment, using client-owned Exa
+search and page-fetch tools. Set `CLIENT_WEB_TOOLS=1`; eval runs cannot use the
+historical unfiltered server-tool path. Both `OPENROUTER_API_KEY` and `EXA_API_KEY`
+are required. See `docs/web-source-filtering.md` for benchmark-source protections
+and limits, and `docs/client-web-rollout.md` for release gates. Use
+`DISABLE_CONVEX_REPORTING=1` for local validation.
 The earlier provider-search and native coding-harness experiments are retired;
 do not resume them from old handoffs. Historical experiment literals in the
 backend are storage compatibility only.
