@@ -371,14 +371,25 @@ describe("recomputeModelScores", () => {
     expect(results[0].averageRunCostUsdErrorBar).toBeNull();
   });
 
-  it("aggregates cost correctly across runs", async () => {
+  it("aggregates final generation costs across runs, including retries and grading failures", async () => {
     const t = convexTest(schema, modules);
 
     await createCompletedRun(t, {
       model: "model-a",
       evals: [
-        { category: "cat1", name: "eval1", passed: true, costUsd: 0.5 },
-        { category: "cat1", name: "eval2", passed: true, costUsd: 0.5 },
+        {
+          category: "cat1",
+          name: "eval1",
+          passed: true,
+          usageRaw: {
+            cost: 0.5,
+            providerAttempts: [
+              { outcome: "empty_response" },
+              { outcome: "success" },
+            ],
+          },
+        },
+        { category: "cat1", name: "eval2", passed: false, costUsd: 0.5 },
       ],
     });
     await createCompletedRun(t, {

@@ -40,7 +40,7 @@ describe("web usage coverage", () => {
         }),
         evalWith({ ...raw, providerUsageExcludesFailedAttempts: true }),
       ];
-      expect(computeRunCostUsd(evals as CodingEval[])).toBeNull();
+      expect(computeRunCostUsd(evals as CodingEval[])).toBeCloseTo(0.5 + raw.cost);
       expect(webUsageAverages(computeWebUsage(evals))).toMatchObject({
         averageWebSearchesPerEval: null,
         averageWebFetchesPerEval: null,
@@ -64,7 +64,7 @@ describe("web usage coverage", () => {
     expect(computeRunCostUsd(evals as CodingEval[])).toBeNull();
   });
 
-  it("keeps retry cost unknown for provider attempts outside web runs", () => {
+  it("counts the final generation cost after a non-web retry", () => {
     const evals = [
       evalWith({
         cost: 0.25,
@@ -74,7 +74,7 @@ describe("web usage coverage", () => {
         ],
       }),
     ];
-    expect(computeRunCostUsd(evals as CodingEval[])).toBeNull();
+    expect(computeRunCostUsd(evals as CodingEval[])).toBe(0.25);
   });
 
   it("includes explicit and inferred zero-use evals in the denominator", () => {

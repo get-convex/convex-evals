@@ -583,6 +583,7 @@ describe("leaderboardModelHistory", () => {
           name: "retried-eval",
           passed: true,
           rawUsage: {
+            cost: 0.25,
             providerAttempts: [
               { outcome: "empty_response" },
               { outcome: "success" },
@@ -608,6 +609,7 @@ describe("leaderboardModelHistory", () => {
     expect(partialEntry.outputTokens).toBeNull();
     expect(partialEntry.reasoningTokens).toBeNull();
     expect(retryEntry.inputTokens).toBeNull();
+    expect(retryEntry.runCostUsd).toBe(0.25);
     expect(retryEntry.outputTokens).toBeNull();
     expect(retryEntry.reasoningTokens).toBeNull();
   });
