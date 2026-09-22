@@ -78,12 +78,12 @@ export function computeRunCostUsd(evals: CodingEval[]): number | null {
     ({ status }) => status.kind === "passed" || status.kind === "failed",
   );
   if (terminalEvals.length === 0) return null;
-  // A complete run bill requires every terminal eval. A successful retry can
-  // also omit earlier failed provider attempts, so reject either gap instead
-  // of presenting a known subset as the full cost.
+  // Cost follows the final generation used to score each eval. Discarded
+  // provider attempts do not contribute, including when a retry succeeded.
+  // Include generated answers that fail grading, but require a cost for every
+  // terminal eval so missing generation usage cannot silently become zero.
   if (
     terminalEvals.some((evalDoc) => {
-      if (hasIncompleteProviderUsage(evalDoc)) return true;
       const status = evalDoc.status;
       if (status.kind !== "passed" && status.kind !== "failed") return true;
       const raw = status.usage?.raw;
