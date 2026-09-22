@@ -312,24 +312,36 @@ describe("recomputeModelScores", () => {
     expect(results[0].totalScore).toBe(0.5);
   });
 
-  it("counts exhausted infrastructure failures in scoring", async () => {
+  it("counts exhausted infrastructure failures in scoring without hiding answer costs", async () => {
     const t = convexTest(schema, modules);
 
     await createCompletedRun(t, {
       model: "model-a",
       evals: [
-        { category: "cat1", name: "eval1", passed: true },
+        { category: "cat1", name: "eval1", passed: true, costUsd: 0.25 },
         {
           category: "cat1",
           name: "eval2",
           infrastructureFailure: true,
           passed: false,
+          usageRaw: {
+            providerAttempts: [
+              { outcome: "empty_response" },
+              { outcome: "empty_response" },
+              { outcome: "empty_response" },
+            ],
+          },
         },
       ],
     });
 
     const results = await t.query(api.runs.leaderboardScores, {});
     expect(results[0].totalScore).toBe(0.5);
+    expect(results[0].averageRunCostUsd).toBe(0.25);
+    const [history] = await t.query(api.runs.leaderboardModelHistory, {
+      model: "model-a",
+    });
+    expect(history.runCostUsd).toBe(0.25);
   });
 
   it("excludes failed provider requests from average generation time", async () => {
