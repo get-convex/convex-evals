@@ -14,7 +14,7 @@ import {
 
 describe("provider observability", () => {
   it.each([false, true])(
-    "keeps retry cost unknown from provider attempts (web=%s)",
+    "retains the successful retry cost with provider attempt diagnostics (web=%s)",
     (webResearch) => {
       const usage = attachProviderObservabilityUsage({
         usage: undefined,
@@ -37,7 +37,7 @@ describe("provider observability", () => {
           status: { kind: "passed", durationMs: 1, usage: observed },
         } as CodingEval,
       ]);
-      expect(cost).toBeNull();
+      expect(cost).toBe(50);
       if (webResearch) {
         expect(observed.raw?.providerUsageExcludesFailedAttempts).toBe(true);
       } else {
