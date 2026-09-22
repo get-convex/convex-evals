@@ -22,6 +22,7 @@ import {
   isFullyCompletedRun,
   hasCompleteBenchmarkPlan,
   computeRunCostUsd,
+  hasUnansweredGeneration,
   computeRunDurationMs,
   computeRunScores,
 } from "./scoringUtils.js";
@@ -305,6 +306,9 @@ export const recomputeModelScores = internalMutation({
       averageRunDurationMsErrorBar,
       averageRunCostUsd,
       averageRunCostUsdErrorBar,
+      runCostIsEstimated: scoredRuns.some(
+        (sr) => sr.costUsd !== null && sr.evals.some(hasUnansweredGeneration),
+      ),
       scores,
       scoreErrorBars,
       runCount: scoredRuns.length,

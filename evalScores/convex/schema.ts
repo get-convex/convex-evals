@@ -254,6 +254,7 @@ export const codingModelScore = v.object({
   averageRunDurationMs: v.number(),
   averageRunDurationMsErrorBar: v.number(),
   averageRunCostUsd: v.union(v.number(), v.null()),
+  runCostIsEstimated: v.optional(v.boolean()),
   averageRunCostUsdErrorBar: v.union(v.number(), v.null()),
   webUsage: v.optional(
     v.object({

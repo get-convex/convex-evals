@@ -262,6 +262,7 @@ describe("leaderboardScores", () => {
 
     // Mean of [1.0, 3.0] = 2.0
     expect(entry!.averageRunCostUsd).toBeCloseTo(2.0);
+    expect(entry!.runCostIsEstimated).toBe(false);
     // Population stddev of [1.0, 3.0] = 1.0
     expect(entry!.averageRunCostUsdErrorBar).toBeCloseTo(1.0);
   });

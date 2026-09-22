@@ -14,6 +14,7 @@ import { resolveBenchmarkForRun } from "./benchmarkVersions";
 import {
   LEADERBOARD_HISTORY_SIZE,
   computeRunCostUsd,
+  hasUnansweredGeneration,
   computeRunDurationMs,
   hasIncompleteProviderUsage,
   isFullyCompletedRun,
@@ -56,6 +57,7 @@ type LeaderboardScoreRow = Pick<
   | "totalScoreErrorBar"
   | "averageRunDurationMs"
   | "averageRunDurationMsErrorBar"
+  | "runCostIsEstimated"
   | "averageRunCostUsd"
   | "averageRunCostUsdErrorBar"
   | "scores"
@@ -79,6 +81,7 @@ const leaderboardScoreValidator = v.object({
   totalScoreErrorBar: v.number(),
   averageRunDurationMs: v.number(),
   averageRunDurationMsErrorBar: v.number(),
+  runCostIsEstimated: v.boolean(),
   averageRunCostUsd: v.union(v.number(), v.null()),
   averageRunCostUsdErrorBar: v.union(v.number(), v.null()),
   averageWebSearchesPerEval: v.union(v.number(), v.null()),
@@ -198,6 +201,7 @@ function combineModelScoreRows(rows: CodingModelScore[]): LeaderboardScoreRow {
     totalScoreErrorBar: totalScore.stdDev,
     averageRunDurationMs: duration?.mean ?? 0,
     averageRunDurationMsErrorBar: duration?.stdDev ?? 0,
+    runCostIsEstimated: rows.some((row) => row.averageRunCostUsd !== null && row.runCostIsEstimated === true),
     averageRunCostUsd: cost?.mean ?? null,
     averageRunCostUsdErrorBar: cost?.stdDev ?? null,
     scores,
@@ -936,6 +940,7 @@ export const leaderboardScores = query({
       averageRunDurationMs: r.averageRunDurationMs,
       averageRunDurationMsErrorBar: r.averageRunDurationMsErrorBar,
       ...webUsageAverages(r.webUsage),
+      runCostIsEstimated: r.runCostIsEstimated ?? false,
       averageRunCostUsd: r.averageRunCostUsd,
       averageRunCostUsdErrorBar: r.averageRunCostUsdErrorBar,
       scores: r.scores,
@@ -1067,6 +1072,7 @@ export const leaderboardModelHistory = query({
       runId: v.id("runs"),
       totalScore: v.number(),
       scores: v.record(v.string(), v.number()),
+      runCostIsEstimated: v.boolean(),
       runCostUsd: v.union(v.number(), v.null()),
       averageGenerationTimeMs: v.union(v.number(), v.null()),
       averageWebSearchesPerEval: v.union(v.number(), v.null()),
@@ -1157,6 +1163,7 @@ export const leaderboardModelHistory = query({
       runId: Id<"runs">;
       totalScore: number;
       scores: Record<string, number>;
+      runCostIsEstimated: boolean;
       runCostUsd: number | null;
       averageGenerationTimeMs: number | null;
       averageWebSearchesPerEval: number | null;
@@ -1242,12 +1249,15 @@ export const leaderboardModelHistory = query({
       const failedEvals = terminalEvals.filter(
         (evalDoc) => evalDoc.status.kind === "failed",
       );
+      const runCostUsd = computeRunCostUsd(evals);
       results.push({
         _creationTime: run._creationTime,
         runId: run._id,
         totalScore,
         scores,
-        runCostUsd: computeRunCostUsd(evals),
+        runCostIsEstimated:
+          runCostUsd !== null && evals.some(hasUnansweredGeneration),
+        runCostUsd,
         averageGenerationTimeMs: computeRunDurationMs(evals),
         averageWebSearchesPerEval: webUsage.averageWebSearchesPerEval,
         averageWebSearchesEstimated: webUsage.averageWebSearchesEstimated,

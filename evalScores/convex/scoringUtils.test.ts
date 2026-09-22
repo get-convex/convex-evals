@@ -14,7 +14,7 @@ function evalWith(
 
 describe("run cost for unanswered evals", () => {
   it.each(["empty_response", "rate_limit", "transient_error", "error"])(
-    "excludes discarded %s attempts even if they have recorded charges",
+    "estimates unanswered %s evals instead of using discarded charges",
     (outcome) => {
       const unanswered = evalWith("failed", {
         cost: 10,
@@ -22,10 +22,27 @@ describe("run cost for unanswered evals", () => {
       });
       expect(
         computeRunCostUsd([evalWith("passed", { cost: 0.25 }), unanswered]),
-      ).toBe(0.25);
+      ).toBe(0.5);
       expect(computeRunCostUsd([unanswered])).toBeNull();
     },
   );
+
+  it("uses the same-run mean including answers that fail grading", () => {
+    const unanswered = evalWith("failed", {
+      providerAttempts: [{ outcome: "empty_response" }],
+    });
+    expect(
+      computeRunCostUsd([
+        evalWith("passed", { cost: 1 }),
+        evalWith("failed", {
+          cost: 3,
+          providerAttempts: [{ outcome: "success" }],
+        }),
+        unanswered,
+        unanswered,
+      ]),
+    ).toBe(8);
+  });
 
   it("includes a successful generation that fails grading after a retry", () => {
     const graded = evalWith("failed", {
