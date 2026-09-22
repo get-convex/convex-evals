@@ -76,9 +76,11 @@ export function hasIncompleteProviderUsage(evalDoc: CodingEval): boolean {
 export function computeRunCostUsd(evals: CodingEval[]): number | null {
   const answeredEvals = evals.filter(({ status }) => {
     if (status.kind !== "passed" && status.kind !== "failed") return false;
-    const raw = status.usage?.raw;
+    const raw: unknown = status.usage?.raw;
     const attempts =
-      raw && typeof raw === "object" ? raw.providerAttempts : null;
+      raw && typeof raw === "object" && "providerAttempts" in raw
+        ? raw.providerAttempts
+        : null;
     // A failed eval with only failed provider attempts has no final answer to
     // price. It still counts as a failed eval in the score.
     const noAnswer =
@@ -86,7 +88,7 @@ export function computeRunCostUsd(evals: CodingEval[]): number | null {
       Array.isArray(attempts) &&
       attempts.length > 0 &&
       attempts.every(
-        (attempt) =>
+        (attempt: unknown) =>
           attempt !== null &&
           typeof attempt === "object" &&
           "outcome" in attempt &&
