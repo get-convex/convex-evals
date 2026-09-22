@@ -73,17 +73,46 @@ export function hasIncompleteProviderUsage(evalDoc: CodingEval): boolean {
   );
 }
 
+export function hasUnansweredGeneration({ status }: CodingEval): boolean {
+  if (status.kind !== "passed" && status.kind !== "failed") return false;
+  const raw: unknown = status.usage?.raw;
+  const attempts =
+    raw && typeof raw === "object" && "providerAttempts" in raw
+      ? raw.providerAttempts
+      : null;
+  // A failed eval with only failed provider attempts has no final answer to
+  // price. It still counts as a failed eval in the score.
+  return (
+    status.kind === "failed" &&
+    Array.isArray(attempts) &&
+    attempts.length > 0 &&
+    attempts.every(
+      (attempt: unknown) =>
+        attempt !== null &&
+        typeof attempt === "object" &&
+        "outcome" in attempt &&
+        typeof attempt.outcome === "string" &&
+        ["empty_response", "rate_limit", "transient_error", "error"].includes(
+          attempt.outcome,
+        ),
+    )
+  );
+}
+
 export function computeRunCostUsd(evals: CodingEval[]): number | null {
   const terminalEvals = evals.filter(
     ({ status }) => status.kind === "passed" || status.kind === "failed",
   );
-  if (terminalEvals.length === 0) return null;
+  const answeredEvals = terminalEvals.filter(
+    (evalDoc) => !hasUnansweredGeneration(evalDoc),
+  );
+  if (answeredEvals.length === 0) return null;
   // Cost follows the final generation used to score each eval. Discarded
   // provider attempts do not contribute, including when a retry succeeded.
   // Include generated answers that fail grading, but require a cost for every
-  // terminal eval so missing generation usage cannot silently become zero.
+  // received answer so missing generation usage cannot silently become zero.
   if (
-    terminalEvals.some((evalDoc) => {
+    answeredEvals.some((evalDoc) => {
       const status = evalDoc.status;
       if (status.kind !== "passed" && status.kind !== "failed") return true;
       const raw = status.usage?.raw;
@@ -96,10 +125,14 @@ export function computeRunCostUsd(evals: CodingEval[]): number | null {
   ) {
     return null;
   }
-  return terminalEvals.reduce(
+  const answerCostUsd = answeredEvals.reduce(
     (sum, evalDoc) => sum + getEvalCostUsd(evalDoc),
     0,
   );
+  // Estimate unanswered evals from this run's mean answer cost. This measures
+  // the cost to obtain a full set of answers, not the provider invoice.
+  const unansweredCount = terminalEvals.length - answeredEvals.length;
+  return answerCostUsd + (answerCostUsd / answeredEvals.length) * unansweredCount;
 }
 
 export function computeRunDurationMs(evals: CodingEval[]): number | null {
