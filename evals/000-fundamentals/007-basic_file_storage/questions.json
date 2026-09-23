@@ -1,7 +1,7 @@
 {
   "version": 1,
   "sourceEval": "000-fundamentals/007-basic_file_storage",
-  "coverageNotes": "Tests applying the supplied ctx.db.system.get() reader to the storage table and ID, plus choosing the download-URL ID. Does not test recalling the metadata-reader API, upload flow or missing-file errors. Tests separate storage/application row lifecycles; does not test upload UI or concurrent deletion.",
+  "coverageNotes": "Tests applying the supplied ctx.db.system.get() reader to storage metadata and selecting the storage ID for getUrl. The lifecycle item predicts that deleting an application row and deleting a stored object are independent operations after supplied mutations. Neither item tests the full upload flow, missing-file handling, authorization, concurrency, or writing a complete deletion implementation.",
   "questions": [
     {
       "id": "q1",
@@ -41,31 +41,31 @@
     {
       "id": "q-delete-both",
       "concept": "Independent file and application-row lifecycles",
-      "context": "Using Convex 1.44.0 inside a mutation, file is a loaded Doc<\"files\"> with an existing storageId. The files schema has only storageId: v.id(\"_storage\").",
-      "question": "Which code deletes both this stored object and its files row?",
+      "context": "Using Convex 1.44.0, two different uploaded files, A and B, are initially downloadable. Each has its own `files` row with `storageId: v.id(\"_storage\")`; each saved download URL came from `ctx.storage.getUrl`. Immediately after setup, call `removeRow` with A's `fileId`, then, after it completes, call `removeObject` with B's `fileId`. Make the fresh GET in the question immediately after those calls. No other code changes either file.\n\n```ts\nimport { v } from \"convex/values\";\nimport { mutation } from \"./_generated/server\";\n\nexport const removeRow = mutation({\n  args: { fileId: v.id(\"files\") },\n  handler: async (ctx, { fileId }) => {\n    await ctx.db.delete(\"files\", fileId);\n  },\n});\n\nexport const removeObject = mutation({\n  args: { fileId: v.id(\"files\") },\n  handler: async (ctx, { fileId }) => {\n    const file = await ctx.db.get(\"files\", fileId);\n    if (!file) throw new Error(\"File not found\");\n    await ctx.storage.delete(file.storageId);\n  },\n});\n```",
+      "question": "After both calls, does a fresh GET to A's saved URL still download A's bytes, and does B's application row still exist?",
       "options": [
         {
           "id": "a",
-          "text": "```ts\nawait ctx.storage.delete(file.storageId);\n```",
-          "rationale": "Deleting the stored object leaves the application row."
+          "text": "A's download fails; B's row still exists.",
+          "rationale": "Predicts that deleting an application row also deletes its stored object. The row-only run leaves the object and a fresh GET returns the original bytes."
         },
         {
           "id": "b",
-          "text": "```ts\nawait ctx.db.delete(\"files\", file._id);\n```",
-          "rationale": "Deleting the application row leaves the stored object."
+          "text": "A's download works; B's row still exists.",
+          "rationale": "Storage objects and application rows have independent lifecycles. The row-only operation preserves the object A, and the object-only operation preserves the row B."
         },
         {
           "id": "c",
-          "text": "```ts\nawait ctx.storage.delete(file.storageId);\nawait ctx.db.delete(\"files\", file._id);\n```",
-          "rationale": "The object and application row have separate APIs and IDs, so both are explicitly removed."
+          "text": "A's download works; B's row is gone.",
+          "rationale": "Predicts that deleting a stored object also deletes the application row referencing it. The object-only run leaves that row and its original storageId."
         },
         {
           "id": "d",
-          "text": "```ts\nawait ctx.storage.delete(file.storageId);\nawait ctx.db.delete(\"files\", file.storageId);\n```",
-          "rationale": "The second call uses a storage ID where a files-row ID is required; the transaction fails."
+          "text": "A's download fails; B's row is gone.",
+          "rationale": "Predicts automatic deletion in both directions. Neither cleanup happens in the shared program."
         }
       ],
-      "correctOptionId": "c",
+      "correctOptionId": "b",
       "sourceReferences": [
         "TASK.txt",
         "answer/convex/index.ts",

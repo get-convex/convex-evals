@@ -1,7 +1,7 @@
 {
   "version": 1,
   "sourceEval": "007-components/011-choose_workpool_throttle",
-  "coverageNotes": "Focused local decision coverage. Full implementation, scale, authorization and provider quality remain outside this bank; see author records.",
+  "coverageNotes": "Focused local decision coverage. Full implementation, scale, authorization and provider quality remain outside this bank; see author records. This local revision incorporates the exact-input presentation pilot q-shared-cap; other questions are preserved.",
   "questions": [
     {
       "id": "q1",
@@ -31,6 +31,40 @@
         }
       ],
       "correctOptionId": "d",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
+        "grader.test.ts"
+      ]
+    },
+    {
+      "id": "q-shared-cap",
+      "concept": "Sharing a concurrency limit",
+      "context": "Convex 1.41.0 and @convex-dev/workpool 0.4.8. Image jobs and export jobs each make one awaited request to the same service. The service permits at most five requests at once across both workloads. No other code calls it. The app currently uses two separately mounted pools:\n\n```ts\n// convex/convex.config.ts\nimport { defineApp } from \"convex/server\";\nimport workpool from \"@convex-dev/workpool/convex.config\";\nconst app = defineApp();\napp.use(workpool, { name: \"images\" });\napp.use(workpool, { name: \"exports\" });\nexport default app;\n```\n\n```ts\n// convex/images.ts\nimport { Workpool } from \"@convex-dev/workpool\";\nimport { components } from \"./_generated/api\";\nexport const imagePool = new Workpool(components.images, { maxParallelism: 5 });\n```\n\n```ts\n// convex/exports.ts\nimport { Workpool } from \"@convex-dev/workpool\";\nimport { components } from \"./_generated/api\";\nexport const exportPool = new Workpool(components.exports, { maxParallelism: 5 });\n```",
+      "question": "Which change caps total concurrent requests at five while letting either workload use all five slots when the other is idle?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Move both pool clients into one TypeScript module; keep the separate mounts and limits of five.",
+          "rationale": "Module location does not merge the state of separately mounted component instances. The representative single-module implementation still exceeds five combined requests."
+        },
+        {
+          "id": "b",
+          "text": "Enqueue both workloads through one mounted pool with a limit of five.",
+          "rationale": "Both workloads then use the same five execution slots. Either workload can use all five while the other is idle."
+        },
+        {
+          "id": "c",
+          "text": "Keep the separate mounts; lower each pool limit to two.",
+          "rationale": "The combined cap is at most four, but one workload cannot use five slots while the other is idle."
+        },
+        {
+          "id": "d",
+          "text": "Keep the separate mounts and limits of five; enqueue each workload in batches of five.",
+          "rationale": "Each pool can execute its batch independently. Batching within each workload does not enforce a shared limit between pools."
+        }
+      ],
+      "correctOptionId": "b",
       "sourceReferences": [
         "TASK.txt",
         "answer/convex/index.ts",

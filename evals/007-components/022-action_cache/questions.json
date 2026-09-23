@@ -1,7 +1,7 @@
 {
   "version": 1,
   "sourceEval": "007-components/022-action_cache",
-  "coverageNotes": "Applies source-supplied ActionCache documentation to argument placement, identity and TTL reuse. Does not test mounting, independent implementation, stampede prevention or external services.",
+  "coverageNotes": "Applies source-supplied ActionCache documentation to argument placement, identity and TTL reuse. Does not test mounting, independent implementation, stampede prevention or external services. This local revision incorporates the exact-input presentation pilot q-permission-change; other questions are preserved.",
   "questions": [
     {
       "id": "q1",
@@ -70,6 +70,40 @@
         "TASK.txt",
         "answer/convex/index.ts",
         "answer/convex/convex.config.ts",
+        "grader.test.ts"
+      ]
+    },
+    {
+      "id": "q-permission-change",
+      "concept": "A permission change after caching",
+      "context": "Convex 1.41.0 and @convex-dev/action-cache 0.3.1. ActionCache is mounted as `components.actionCache`. `documentArgs` requires a document ID and user ID. `readRole` is an internal query that reads that user’s current role from the database and throws if they cannot access the document; both editors and viewers have access. The imports and `Answer` type used below are in scope.\n\n```ts\nexport const generateAnswer = internalAction({\n  args: documentArgs,\n  handler: async (ctx, args): Promise<Answer> => {\n    const role = await ctx.runQuery(internal.index.readRole, args);\n    return { role, generationId: crypto.randomUUID() };\n  },\n});\nconst cache = new ActionCache(components.actionCache, {\n  action: internal.index.generateAnswer, ttl: 3_600_000,\n});\nexport const getAnswer = action({\n  args: documentArgs,\n  handler: async (ctx, args): Promise<Answer> => {\n    await ctx.runQuery(internal.index.readRole, args);\n    return await cache.fetch(ctx, args);\n  },\n});\n```\n\nAn editor calls `getAnswer`. Their role then changes to viewer, and they call `getAnswer` again immediately with the same document ID and user ID. Both calls finish within one second; nothing clears the cache, and no other call occurs.",
+      "question": "What happens on the second request?",
+      "options": [
+        {
+          "id": "a",
+          "text": "It runs the generator again and returns a viewer answer.",
+          "rationale": "The permission-row change does not alter the cache arguments or expire the stored result. ActionCache does not rerun the generator because one of its reads would now differ."
+        },
+        {
+          "id": "b",
+          "text": "It rejects the request because the cached answer was generated for an editor.",
+          "rationale": "The outer access check still permits this viewer. ActionCache does not attach and enforce this application role policy on its cached values."
+        },
+        {
+          "id": "c",
+          "text": "It returns the cached editor answer without running the generator.",
+          "rationale": "The unchanged arguments select the unexpired entry. The generator’s role check is skipped on this hit, so its previous editor result is reused."
+        },
+        {
+          "id": "d",
+          "text": "It returns the cached editor answer and runs the generator in the background.",
+          "rationale": "A cache hit returns before the pinned client calls the generator, and there is no background refresh path. The runtime test observed the same editor value and UUID; it did not directly count generator invocations."
+        }
+      ],
+      "correctOptionId": "c",
+      "sourceReferences": [
+        "TASK.txt",
+        "answer/convex/index.ts",
         "grader.test.ts"
       ]
     }

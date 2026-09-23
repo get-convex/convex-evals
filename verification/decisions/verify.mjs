@@ -4,6 +4,10 @@ import assert from "node:assert/strict";
 import { manifest, repository, readArchive, sha256 } from "./archive.mjs";
 
 const artifacts = await readArchive();
+if (manifest.promotionCoverageSha256) {
+  const coverage = await fs.readFile(path.join(repository, "decision-bank.json"));
+  assert.equal(sha256(coverage), manifest.promotionCoverageSha256, "Reviewed coverage manifest changed");
+}
 const discovered = [];
 for (const category of await fs.readdir(path.join(repository, "evals"), { withFileTypes: true })) {
   if (!category.isDirectory()) continue;
@@ -35,4 +39,7 @@ for (const [relative, expected] of Object.entries(manifest.questionFiles)) {
 }
 assert.equal(questions, manifest.questionCount);
 assert.equal(manifest.questions.length, questions);
+for (const origin of manifest.reviewContext ?? []) {
+  assert.ok(artifacts.has(origin), `Missing review context: ${origin}`);
+}
 console.log(JSON.stringify({ status: "passed", questions, questionFiles: Object.keys(manifest.questionFiles).length, artifacts: artifacts.size, runtimeReplayed: false }, null, 2));

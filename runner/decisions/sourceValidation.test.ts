@@ -34,7 +34,7 @@ describe("hosted decision source binding", () => {
   it("validates the complete checked-in source snapshot without extracting code", () => {
     const validated = validateDecisionSnapshot(snapshot);
     expect(validated.banks).toHaveLength(90);
-    expect(validated.banks.flatMap((bank) => bank.questions)).toHaveLength(106);
+    expect(validated.banks.flatMap((bank) => bank.questions)).toHaveLength(108);
   });
 
   it("rejects a changed parsed answer key even when the archived bytes still hash correctly", () => {
