@@ -1,6 +1,6 @@
 # Writing Convex decision questions
 
-This is the approved question-design standard applied to the September 2026 revision. It replaces the earlier local batch instructions. The release candidate contains 106 questions representing 90 of the 112 original coding evals. Its coverage ledger records the remaining gaps; decision scores do not establish equivalent coding ability.
+This is the approved question-design standard applied to the September 2026 revision. It replaces the earlier local batch instructions. The reviewed bank contains 108 questions representing 90 of the 112 original coding evals. Its coverage ledger records the remaining gaps; decision scores do not establish equivalent coding ability.
 
 The goal is to assess specific Convex knowledge through clear, fair multiple-choice questions. A good question exposes whether the model understands the relevant API or behavior, without making reading comprehension, arbitrary application rules or presentation clues do the work.
 

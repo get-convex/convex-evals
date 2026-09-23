@@ -410,7 +410,7 @@ it("compacts and compresses full-bank journals within hosted evidence bounds", (
     createHash("sha256").update(canonicalJson(attempts[0].request)).digest("hex"),
   );
 
-  // Exercise the actual maximum plan: 106 questions, ten repetitions, and
+  // Exercise the actual maximum plan: 108 questions, ten repetitions, and
   // four attempts per slot. Each successful response is roughly 8,192 tokens,
   // while preceding retries carry independent failure evidence.
   const maxPlanned = [];
@@ -484,9 +484,9 @@ it("compacts and compresses full-bank journals within hosted evidence bounds", (
     attempts: maxAttempts,
     attemptStarts: maxStarts,
   });
-  expect(maxPlanned).toHaveLength(1060);
-  expect(maxAttempts).toHaveLength(4240);
-  expect(maxStarts).toHaveLength(4240);
+  expect(maxPlanned).toHaveLength(1080);
+  expect(maxAttempts).toHaveLength(4320);
+  expect(maxStarts).toHaveLength(4320);
   expect(
     Buffer.byteLength(
       (

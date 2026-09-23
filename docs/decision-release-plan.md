@@ -1,5 +1,10 @@
 # Decision benchmark release plan
 
+This document records the original September 19 rollout. Its shared benchmark
+version design was superseded by the [benchmark kind rollout](benchmark-kinds-rollout.md).
+For the reviewed 108-question update, use the [September 23 promotion notes](decision-bank-2026-09-23.md).
+The counts and gates below describe the original rollout, not a new migration requirement.
+
 This release adds multiple-choice Convex knowledge evaluations to the same
 benchmark version as coding tasks. Existing `runs`, `evals` and `modelScores`
 tables use the approved top-level `kind` union. There is no separate decision

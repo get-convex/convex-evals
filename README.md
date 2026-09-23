@@ -24,11 +24,11 @@ We use these evals to tune our [Convex Guidelines](https://docs.convex.dev/ai/),
 ## Decision models
 
 The multiple-choice format measures specific Convex knowledge with four plausible
-options per question. It shares the coding benchmark's version, with a separate
-score and leaderboard. A correct choice does not establish that a model can write
+options per question. It has its own benchmark version, linked to the coding
+benchmark, with a separate score and leaderboard. A correct choice does not establish that a model can write
 or debug a working Convex application.
 
-The accepted bank contains 106 questions covering 90 of the 112 coding evals.
+The accepted bank contains 108 questions covering 90 of the 112 coding evals.
 [decision-bank.json](decision-bank.json) records the included questions and the
 22 intentional omissions. Questions are averaged within each source eval, then
 source evals receive equal weight. Invalid responses and provider failures count
@@ -47,9 +47,9 @@ bun run decisions run --provider openrouter --model typesafe/jev-1.13 --limit-ev
 
 The local commands write reports and raw evidence to `output-decisions/` without
 reporting to Convex. For a full bank, use `--limit-evals 10000 --repetitions 3
---max-requests 636` and choose an explicit `--max-known-cost-usd` budget. Hosted
+--max-requests 648` and choose an explicit `--max-known-cost-usd` budget. Hosted
 runs use the manual **Decision Model Evaluations** workflow on `main`, after the
-shared benchmark has been minted. Minting does not initiate model calls.
+decision benchmark has been minted. Minting does not initiate model calls.
 
 Hosted question/source evidence remains JSON. Final run evidence is a `.json.gz`
 file whose digest covers the compressed bytes; repeated journal requests are
@@ -62,16 +62,19 @@ Jev uses OpenRouter's `/api/alpha/decisions` endpoint with native typed question
 the language models use `/api/v1/chat/completions`. The hosted Jev configuration
 pins `typesafe/jev-1.13`, records the returned model ID, probabilities, confidence,
 and provider-reported cost, and sends no chat reasoning or output-token settings.
-All four hosted models use the existing OpenRouter credential. Direct TypeSafe
+All hosted models use the existing OpenRouter credential. Direct TypeSafe
 trials remain supported with `--provider typesafe --model jev-latest` and
 `TYPESAFE_API_KEY`, with their provider identity kept separate in the results.
 
 Read the [question authoring standard](docs/decision-question-authoring.md) and
 [verification guide](docs/decision-verification.md) before changing a question.
-All 106 questions have archived executable evidence and hash checks. Five have
-supported clean-checkout replay commands; the other 101 still require portability
+All 108 questions have archived executable evidence and hash checks. Five have
+supported clean-checkout replay commands; the other 103 still require portability
 work. The release asset `decision-verification.tgz` contains the same evidence,
 question files, dependency locks and replay scripts.
+
+The [September 23 bank update](docs/decision-bank-2026-09-23.md) describes the four
+reviewed changes, local repeated-run results, and decision-only promotion steps.
 
 The shared protocol excludes old local backend database/log files from source
 hashing, alongside dependency/generated directories. Those files are runtime

@@ -1,21 +1,21 @@
 {
   "version": 1,
-  "status": "sanitized historical evidence with separately scoped replay adapters",
-  "benchmarkCandidate": "c92fcf0aa59d28cf8cb04d511ed589ce4dce58de896a59cf410c33d07bb440fb",
+  "status": "sanitized historical and reviewed full-bank evidence with separately scoped replay adapters",
+  "benchmarkCandidate": "754a560edb3e2ea3147e284b9aae56a7a900129700aa6f8ad9e629b54af92c46",
   "sourceFreezeSha256": "b6fdafc58000f24c05552e18860a5dbd9f8d28765fff5692b3de56c2de22f865",
   "acceptedLedgerSha256": "212d7e57c2fcb77dd179d1b5e6bbdd2d37b4c617a0f322d67435d251f01f3d4b",
   "approvedStandardSha256": "770ff953df9b4a2380a79bd7eead826fb92502601973c40a7b113a89e6ba53e5",
   "originalSourceEvalCount": 112,
   "representedSourceEvalCount": 90,
-  "questionCount": 106,
+  "questionCount": 108,
   "bundle": {
     "path": "evidence.jsonl.gz",
     "compression": "gzip",
-    "sha256": "a98b55d740643ba06ba7b125efd3f84b459ce32c5e3cc724eb107a846cc8fb9b",
-    "uncompressedSha256": "753d70f2d8a9d62eb911fad731aac79af3772f5a307a5a70e25fd6ff1e7dbd2b",
-    "artifacts": 2626,
-    "bytes": 1478118,
-    "uncompressedBytes": 14045390
+    "sha256": "6473995f8c4f2b348389550b11feb39306e6bf79d592859f3433ebe1af439f92",
+    "uncompressedSha256": "b9e7573290579eba330a99d9ba2a3f753ee96541148d69e0ec7db1a7a18fbbb4",
+    "artifacts": 2688,
+    "bytes": 1559314,
+    "uncompressedBytes": 14513630
   },
   "questionFiles": {
     "evals/000-fundamentals/000-empty_functions/questions.json": "1ec902a6a25b06e435ab970e9a71e76536b74f41fafe0f23144ae1cb64034482",
@@ -24,7 +24,7 @@
     "evals/000-fundamentals/004-scheduler/questions.json": "59a99fe022a5cbb1ece2f1e55461e53fbe2dd18f24092d96d62b8f22010ed523",
     "evals/000-fundamentals/005-function_calling/questions.json": "8be9f6d1b85d50c108245b74fca2f19eba34c3bc674bb34e20ae4be2cf2db10a",
     "evals/000-fundamentals/006-database_crud/questions.json": "19e7d3295aa1327d801fc577b7c87cf2fff0f4c57e2522e7053aeb535e4f0ff8",
-    "evals/000-fundamentals/007-basic_file_storage/questions.json": "f47702b76bbf442d930b2e4dafa43eb737aa9c6e4207e1238e8cc1665ae96fc4",
+    "evals/000-fundamentals/007-basic_file_storage/questions.json": "f814da5a32047d269c41370a90cd119ca97792c2ceaeea5d10d524eaa6de7473",
     "evals/000-fundamentals/008-helper_fns/questions.json": "a16d202499b4fa792b1c94f29eb1b04c862b963dd95c057f53034b2f9b424ee8",
     "evals/000-fundamentals/010-staged_index/questions.json": "37ef6b92be7f87b7e463cd49c98b07a5fb03d24c3f5b2f72558c5bce66b5d6e0",
     "evals/001-data_modeling/000-simple_datatypes/questions.json": "9298856963068d51cf1bac2a9329153fa9c3bccc51e6cbd09db4bfc43946a0fd",
@@ -88,7 +88,7 @@
     "evals/006-clients/000-use_query/questions.json": "61888faf7b3374e166089210d3acdd1856188d7ebb55af3697a3e7e930f60552",
     "evals/006-clients/001-use_mutation/questions.json": "b4ddd7ea64cf5a8e4cfdcbce7895932069d7f6e06c057f6acae7b43d3d5fe398",
     "evals/006-clients/002-use_paginated_query/questions.json": "1c63d82249e2c0a35555967cdff396f520123380ce7acb4190adee88f9be2d95",
-    "evals/007-components/000-aggregate_leaderboard/questions.json": "a62bdf2d09d46557e3d1e7a1e366d466a6448330d7392a72c329af6ef92de855",
+    "evals/007-components/000-aggregate_leaderboard/questions.json": "dcf423d85b484953a3a6e42e2cbde41e703b31f703db3516bee1f43d2a69c38b",
     "evals/007-components/001-transactional_rate_limit/questions.json": "cec75d16da3ad74b1bbdc03f64fcdd6214d4099fe527e22d3c57e5e53fed87bd",
     "evals/007-components/002-component_subtransaction_boundary/questions.json": "1dc534a5692ee7406d67c749ea39a54d99e0028b9d3792a3343962000f8f61a5",
     "evals/007-components/003-function_handle_callback/questions.json": "9ec39e8d5c1cf92579bb2a9e981c9d4708ff977e8f9e4ac9061f30cafc342e71",
@@ -99,7 +99,7 @@
     "evals/007-components/008-choose_rate_limiter_cooldown/questions.json": "d67bc3f788b2ad0fc8b98798215b5fec20cd330b028022fa0b041eeeb490db34",
     "evals/007-components/009-choose_rate_limiter_burst/questions.json": "70bca7094abf20ac58388afdc4865cb58936bed902ee8cb07b32f3088b4ca29c",
     "evals/007-components/010-workpool_completion_tracking/questions.json": "b885f3ad3884ea020c72c4e5f1ef5503287510be1e826999b4f4b3e41a317edb",
-    "evals/007-components/011-choose_workpool_throttle/questions.json": "2ca9ac3f4b598526fadcd690ae554376b75e53c2c66d7c22f38fc5a06d941d67",
+    "evals/007-components/011-choose_workpool_throttle/questions.json": "c9e64c555d5e6f4286330944297a7a58e2250e26ff12da12e13e2f7695b093db",
     "evals/007-components/012-choose_workpool_serialize/questions.json": "66f1b09f2c3c509afbb09f5169b3fe933bc221fc5b21c1d1ffcdd937cb3968d4",
     "evals/007-components/014-agent_thread_persistence/questions.json": "9417c049c768283c4be7edaff0fd62b5604c3fdc7ca9b255d841ea778ccead1f",
     "evals/007-components/015-choose_agent_threads/questions.json": "84e031f0b7272c7523d9ce87909d625e3e1587f17a80e290e1ab8d74f40ad57d",
@@ -107,7 +107,7 @@
     "evals/007-components/017-choose_agent_multi/questions.json": "cd12de18255feffb9771b60a7a177af903ae8e37bda78c5530624829258fc48b",
     "evals/007-components/018-presence_room_tracking/questions.json": "3be75aa950607e9377870aad213e6ba40f124387ae8144b1cc521da608db9edc",
     "evals/007-components/019-choose_presence_online/questions.json": "b053de4abb90768f91490a7fd2bc67784f58cea8499249c22808f8958603b1ed",
-    "evals/007-components/022-action_cache/questions.json": "e772a8cb187777e9cabe2992c3888132eade8d020d34e125b58823ab2a92e50b"
+    "evals/007-components/022-action_cache/questions.json": "96c5af740d62b0f1fe533cb4e7bb42fe04090f6d8f78f065d7e26b883cc2c86f"
   },
   "questions": [
     {
@@ -272,25 +272,34 @@
     {
       "sourceEval": "000-fundamentals/007-basic_file_storage",
       "questionId": "q-delete-both",
-      "batch": "foundations-01",
-      "questionSha256": "48d03e217edbb82761b2fae3d743afb0ca668ae0600f6f10fe2eef5d5f9f3448",
+      "batch": "full-bank-2026-09-23",
+      "questionSha256": "031aa9fa9e6697b974de2fd45f9ac5d36b0941446c90fd27c9e01f908f74d407",
       "optionSha256": {
-        "a": "a616df4a8e4dd0012cdc887ec83acaf1bcf8dd188318eb4d7d49c4fa5e3c5b1b",
-        "b": "ce918c5ec4574779c5b3431870587d12e70861ef3b48747928ab94adc9bbc88e",
-        "c": "e452d1a3aaf5ad1eb6cc5c095080d476a6094239a987c82cd7486c3115d06093",
-        "d": "c9945bd0c6e1085f248ad2d5a9b3444451f74b625ea14e26d4bedd95de44c3e2"
+        "a": "9bd8848a2074dc1011c798435e6a1a3d479647f9269ca11de8716a184d32dbac",
+        "b": "234552742dfd3a68a866d0cc7dd99f99c95a787ac38aab9742aa2aecf721d087",
+        "c": "b74b5c9a6dfbafc382f71a318dd844b5047405b6004be361e930dca8fc24adf5",
+        "d": "3613109e4343f922e5fcd3d162c6d14ace9480b2d8c9ff75116ef232c2253e3d"
       },
-      "correctOptionId": "c",
-      "knowledgeTarget": "Delete the stored object and linking application row as separate resources.",
-      "coverageLimit": "Tests separate storage/application row lifecycles; does not test upload UI or concurrent deletion.",
-      "evidence": [
-        "outputs/bank-revision/foundations-01/execution/2026-09-18T01-28-54-481Z-3d74dc79/007-basic_file_storage-q-delete-both.summary.json",
-        "outputs/bank-revision/foundations-01/execution/2026-09-18T01-28-54-481Z-3d74dc79/expectations.before-execution.json",
-        "outputs/bank-revision/foundations-01/execution/2026-09-18T01-28-54-481Z-3d74dc79/verification-script.snapshot.mjs",
-        "outputs/bank-revision/foundations-01/execution/2026-09-18T01-28-54-481Z-3d74dc79/007-basic_file_storage-q-delete-both-runtime.json"
+      "correctOptionId": "b",
+      "knowledgeTarget": "Predict the independent lifecycles of a stored object and its application row after the supplied row-only and object-only mutations.",
+      "coverageLimit": [
+        "Tests behavior recognition with both mutations supplied; does not test choosing or writing the deletion APIs, complete upload flow, hosted CDN caching, concurrency, or rollback."
       ],
-      "authorRecord": "outputs/bank-revision/foundations-01/author-records.json",
-      "review": "outputs/bank-revision/reviews/foundations-01/review.json"
+      "evidence": [
+        "outputs/full-bank-2026-09-23/shards/foundations/model-input/000-fundamentals/007-basic_file_storage/q-delete-both.json",
+        "outputs/full-bank-2026-09-23/shards/foundations/verification/storage/evidence.json",
+        "outputs/full-bank-2026-09-23/shards/foundations/verification/storage/run.mjs",
+        "outputs/full-bank-2026-09-23/shards/foundations/verification/storage/author-notes.md",
+        "outputs/full-bank-2026-09-23/shards/foundations/verification/storage/fixture/package.json",
+        "outputs/full-bank-2026-09-23/shards/foundations/verification/storage/fixture/convex/controls.ts",
+        "outputs/full-bank-2026-09-23/shards/foundations/verification/storage/fixture/convex/index.ts",
+        "outputs/full-bank-2026-09-23/shards/foundations/verification/storage/fixture/convex/scenario.ts",
+        "outputs/full-bank-2026-09-23/shards/foundations/verification/storage/fixture/convex/schema.ts",
+        "outputs/full-bank-2026-09-23/shards/foundations/verification/storage/fixture/convex/tsconfig.json",
+        "outputs/presentation-pilot/storage/review-resolution.md"
+      ],
+      "authorRecord": "outputs/promotion-2026-09-23/author/storage.json",
+      "review": "outputs/promotion-2026-09-23/review/storage.json"
     },
     {
       "sourceEval": "000-fundamentals/007-basic_file_storage",
@@ -2756,31 +2765,31 @@
     {
       "sourceEval": "007-components/000-aggregate_leaderboard",
       "questionId": "q1",
-      "batch": "actions_components-02",
-      "questionSha256": "b91824b0136a11d35547dc9346ea19489537d63472b68abab6c3bfa815e5186f",
+      "batch": "full-bank-2026-09-23",
+      "questionSha256": "30cebd19bf6782eec623f91dcaf270f35b701768036a0ea07de9ba0071c7c201",
       "optionSha256": {
-        "a": "6058bdb1b3fca094037fea86464b27b05373fb578719a6c5ada8d09892dd1b7b",
-        "b": "fa8c40fec42247b35311485ae1844ee917507d6224977466afabfd735232b6ea",
-        "c": "b97f50b6ac823147c275685837ed5a55430eafbc6bb9e97d1de2f1e7555a41a3",
-        "d": "079bef7642601f0796d0e0358e86b351b2c575ba71e72d7b3b1ed60dcaac050c"
+        "a": "350e8a1dca41f02718e0142c4c9c4cc19d66df46c7f455fe7267d197cf55e647",
+        "b": "f5ff4269617e786001bb702f5a3ab6e4e23a60fb3df5834a68fd275720d9afab",
+        "c": "512be89fe99667b45803d7100287fb294daefbfc432f7d2d206e63ffbf4f34fe",
+        "d": "df0821f41e20e0048aae822fb6c6556af2accbe31e287f696294188e7076ec46"
       },
-      "correctOptionId": "c",
-      "knowledgeTarget": "Synchronizing a TableAggregate replacement",
-      "coverageLimit": "Applies supplied API documentation. Does not assess mounting, independent upsert implementation or large-table performance.",
+      "correctOptionId": "b",
+      "knowledgeTarget": "TableAggregate maintenance after a table update",
+      "coverageLimit": "One plain mutation and one rank read; no large-table performance or independent full upsert implementation.",
       "evidence": [
-        "outputs/bank-revision/actions_components-02/saved-evidence-checks.json",
-        "outputs/bank-revision/actions_components-02/call-protocol.json",
-        "outputs/bank-revision/actions_components-02/execution/2026-09-18T02-28-49-140Z-5c4a0f2d/000-q1-a.json",
-        "outputs/bank-revision/actions_components-02/execution/2026-09-18T02-28-49-140Z-5c4a0f2d/expectations-before-run.json",
-        "outputs/bank-revision/actions_components-02/execution/2026-09-18T02-28-49-140Z-5c4a0f2d/000-q1-b.json",
-        "outputs/bank-revision/actions_components-02/execution/2026-09-18T02-28-49-140Z-5c4a0f2d/000-q1-c.json",
-        "outputs/bank-revision/actions_components-02/execution/2026-09-18T02-28-49-140Z-5c4a0f2d/000-q1-d.json",
-        "outputs/bank-revision/actions_components-02/execution/2026-09-18T02-28-49-140Z-5c4a0f2d/000-q1-repair-a.json",
-        "outputs/bank-revision/actions_components-02/execution/2026-09-18T02-28-49-140Z-5c4a0f2d/000-q1-repair-b.json",
-        "outputs/bank-revision/actions_components-02/execution/2026-09-18T02-28-49-140Z-5c4a0f2d/000-q1-repair-d.json"
+        "outputs/full-bank-2026-09-23/shards/actions_components/model-inputs/007-components/000-aggregate_leaderboard/q1.json",
+        "outputs/presentation-pilot/aggregate/model-input.json",
+        "outputs/presentation-pilot/aggregate/evidence.json",
+        "outputs/presentation-pilot/aggregate/questions.json",
+        "outputs/presentation-pilot/aggregate/displayed.ts",
+        "outputs/presentation-pilot/aggregate/run.mjs",
+        "outputs/presentation-pilot/aggregate/author-notes.md",
+        "outputs/presentation-pilot/aggregate/fixture/controls.ts",
+        "outputs/presentation-pilot/aggregate/fixture/prelude.ts",
+        "outputs/presentation-pilot/aggregate/fixture/convex/index.ts"
       ],
-      "authorRecord": "outputs/bank-revision/actions_components-02/author-records.json",
-      "review": "outputs/bank-revision/reviews/actions_components-02/review.json"
+      "authorRecord": "outputs/promotion-2026-09-23/author/aggregate.json",
+      "review": "outputs/promotion-2026-09-23/review/aggregate.json"
     },
     {
       "sourceEval": "007-components/000-aggregate_leaderboard",
@@ -3156,6 +3165,36 @@
     },
     {
       "sourceEval": "007-components/011-choose_workpool_throttle",
+      "questionId": "q-shared-cap",
+      "batch": "full-bank-2026-09-23",
+      "questionSha256": "3bd118ccd9b0718a0db6a86aa02497a5e7efd20f3e2f7a23cc2d027fcbf83a21",
+      "optionSha256": {
+        "a": "c2d1ce26c2f767135c878079796506c49e2c407b4bd016704de0727b492e8602",
+        "b": "bb0390ece4c753fcff36e2f449e2ef9c70e8ead8e25f470c3befcfe0f3b2e5e5",
+        "c": "29d65cb461fa2abc1eb5498f89faa2b222fdd35e05e23554d050ebadb5637da2",
+        "d": "4a1ffbfcfbe91e88cb5d4ef1186d7440afc1c9a12ef93828d508fcba94b055e8"
+      },
+      "correctOptionId": "b",
+      "knowledgeTarget": "Sharing a concurrency limit",
+      "coverageLimit": "Mounted-pool concurrency and single-workload capacity; not a universal load or every scheduler interleaving.",
+      "evidence": [
+        "outputs/full-bank-2026-09-23/shards/actions_components/model-inputs/007-components/011-choose_workpool_throttle/q-shared-cap.json",
+        "outputs/presentation-pilot/workpool/model-input.json",
+        "outputs/presentation-pilot/workpool/evidence.json",
+        "outputs/presentation-pilot/workpool/verification.json",
+        "outputs/presentation-pilot/workpool/questions.json",
+        "outputs/presentation-pilot/workpool/fixture.ts",
+        "outputs/presentation-pilot/workpool/displayed-config.ts",
+        "outputs/presentation-pilot/workpool/displayed-images.ts",
+        "outputs/presentation-pilot/workpool/displayed-exports.ts",
+        "outputs/presentation-pilot/workpool/run.mjs",
+        "outputs/presentation-pilot/workpool/author-notes.md"
+      ],
+      "authorRecord": "outputs/promotion-2026-09-23/author/workpool.json",
+      "review": "outputs/promotion-2026-09-23/review/workpool.json"
+    },
+    {
+      "sourceEval": "007-components/011-choose_workpool_throttle",
       "questionId": "q1",
       "batch": "actions_components-03",
       "questionSha256": "c0d10a21cc6793697f7b5fa6b998775c4b2b743b525858f290a656b0f50d0148",
@@ -3393,6 +3432,36 @@
     },
     {
       "sourceEval": "007-components/022-action_cache",
+      "questionId": "q-permission-change",
+      "batch": "full-bank-2026-09-23",
+      "questionSha256": "91bf62fb6e7f4401263221372fcd2af6dbfc7c219bdbb21a3bbe3e95acd51056",
+      "optionSha256": {
+        "a": "995ea13f9eeb9a8530e0f03bcaefbc07f63fed763e7acf63ba2c011203594cc4",
+        "b": "f6e508b64bbc51d1104fffb18e08ed22e2d69af6913a9231aaafed48f9048e5a",
+        "c": "992944c17cda12384acde0c7a3c32b84d3c3026869be90a88e29f1269acf7b94",
+        "d": "b9c42bb7e3c5df10357a6254f99bfcdd64c322432d6d84b17265864e53cca112"
+      },
+      "correctOptionId": "c",
+      "knowledgeTarget": "A permission change after caching",
+      "coverageLimit": "Sequential editor-to-viewer change for the same simulated user and key; no universal authorization-race proof.",
+      "evidence": [
+        "outputs/full-bank-2026-09-23/shards/actions_components/model-inputs/007-components/022-action_cache/q-permission-change.json",
+        "outputs/presentation-pilot/cache/model-input.json",
+        "outputs/presentation-pilot/cache/evidence.json",
+        "outputs/presentation-pilot/cache/verification.json",
+        "outputs/presentation-pilot/cache/questions.json",
+        "outputs/presentation-pilot/cache/fixture.ts",
+        "outputs/presentation-pilot/cache/displayed-excerpt.ts",
+        "outputs/presentation-pilot/cache/run.mjs",
+        "outputs/presentation-pilot/cache/author-notes.md",
+        "outputs/presentation-pilot/cache/author-errata.json",
+        "outputs/presentation-pilot/cache/author-errata.md"
+      ],
+      "authorRecord": "outputs/promotion-2026-09-23/author/cache.json",
+      "review": "outputs/promotion-2026-09-23/review/cache.json"
+    },
+    {
+      "sourceEval": "007-components/022-action_cache",
       "questionId": "q1",
       "batch": "actions_components-04",
       "questionSha256": "687f6a50a43747c4d3035adf3a3da14eb1f1cb2e5b38a17970d37a4b8a6ff4aa",
@@ -3456,6 +3525,24 @@
     "The integrity verifier checks packaged bytes and the final bank, not the truth of recorded observations.",
     "Only replay adapters explicitly documented in docs/decision-verification.md rerun behavior.",
     "Historical scripts remain archival source and are not directly executable as a complete portable suite.",
-    "Preserved batch evidence may include retired questions or earlier wording when needed to explain evidence reuse. The questions index alone defines the final 106 accepted items."
+    "Preserved batch evidence may include retired questions or earlier wording when needed to explain evidence reuse. The questions index alone defines the final 108 accepted items.",
+    "The four promoted questions use one fresh storage replay and three exact-code approved presentation pilots; this package does not claim a fresh replay of all 108 questions."
+  ],
+  "promotionFreezeSha256": "6a92753f7cf4d84593357eadb1ccbfa53bf14fe3e805897dace33f242396878d",
+  "promotionAcceptanceSha256": "ffb709cad97f04c66479c500822b278e64e5c3c6b652d16825463f4e2569abd0",
+  "promotionOriginalCoverageSha256": "8b4115eb31ac2a2b5dc28cfcbca477993aa08b5c03918c1115c55eed48ccd5f8",
+  "promotionCoverageSha256": "25e70c953650adbcebd86b66162a5c76d03e5ff3595ec19c99165a65334539c0",
+  "reviewContext": [
+    "outputs/promotion-2026-09-23/coverage-summary.json",
+    "outputs/full-bank-2026-09-23/final-checks.json",
+    "outputs/full-bank-2026-09-23/review/acceptance.json",
+    "outputs/full-bank-2026-09-23/review/REVIEW.md",
+    "outputs/full-bank-2026-09-23/review/blind-summary.json",
+    "outputs/full-bank-2026-09-23/review/document-validator-resolution.json",
+    "outputs/full-bank-2026-09-23/review/components-resolution.json",
+    "outputs/full-bank-2026-09-23/review/document-validator-replay.json",
+    "outputs/full-bank-2026-09-23/review/agent-attribution-replay.json",
+    "outputs/promotion-2026-09-23/coverage-metadata-normalization.json",
+    "outputs/promotion-2026-09-23/pilot-reconciliation.json"
   ]
 }

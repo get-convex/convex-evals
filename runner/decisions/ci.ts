@@ -60,7 +60,7 @@ async function main(): Promise<void> {
       limitEvals: 10000,
       repetitions: 3,
       seed: "convex-decision-release-v1",
-      maxRequests: 636,
+      maxRequests: 648,
       maxKnownCostUsd: 5,
       dryRun: false,
     },

@@ -1,6 +1,6 @@
 # Decision question verification
 
-The [authoring standard](decision-question-authoring.md) requires executable evidence before accepting a question. This release preserves the evidence behind the frozen 106-question candidate and provides portable replay for five questions, including the three items Astra missed. Full-bank historical execution is **not** yet a portable replay suite.
+The [authoring standard](decision-question-authoring.md) requires executable evidence before accepting a question. This archive covers the reviewed 108-question candidate. It preserves 2,626 sanitized historical records and all 104 unchanged question entries, adds 62 selected records for four approved changes and the full-bank review, and provides portable replay for five questions, including three items Astra missed in the earlier 106-question run. Full-bank historical execution is **not** yet a portable replay suite.
 
 The [manifest](../verification/decisions/manifest.json) maps every final question to its knowledge target, coverage limit, exact question and option hashes, author record, independent review, and recorded evidence. The candidate represents 90 of the original 112 coding evals. Retirements and coverage gaps remain in the archived coverage ledger.
 
@@ -12,9 +12,9 @@ From a clean checkout with Node.js 24 or newer:
 node verification/decisions/verify.mjs
 ```
 
-This requires no npm install, network access, credentials, provider calls, or backend. It checks the compressed and uncompressed archive hashes, each published artifact hash, all final question-file and option hashes, and every accepted evidence link. It does not rerun historical observations or prove their conclusions.
+This requires no npm install, network access, credentials, provider calls, or backend. It checks the compressed and uncompressed archive hashes, each published artifact hash, the current coverage manifest hash, all final question-file and option hashes, and every accepted evidence link. It does not rerun historical observations or prove their conclusions.
 
-The immutable archive is a gzip-compressed JSONL file containing 2,626 selected records, about 1.5 MB compressed and 14 MB uncompressed. It includes all 1,036 directly referenced accepted evidence files, selected exact fixture sources, expected and observed cases, repair controls, verification programs, author records, and independent reviews. It excludes `node_modules`, backend databases and storage, environment files, generated fixture types, and unrelated inference output. Historical batch records can also mention retired questions or earlier wording; only the manifest's question index defines the final accepted bank.
+The immutable archive is a gzip-compressed JSONL file containing 2,688 selected records, about 1.6 MB compressed and 14.5 MB uncompressed. The original 2,626 JSONL records are preserved without rewriting. The additions contain the four final model inputs, exact pilot or fresh storage fixtures and observations, selected author audits, blind reviews with private bindings, the review resolutions, and a coverage metadata correction record. It excludes `node_modules`, backend databases and storage, environment files, generated fixture types, and unrelated inference output. Historical batch records can also mention retired questions or earlier wording; only the manifest's question index defines the final accepted bank.
 
 Inspect it without unpacking thousands of files:
 
@@ -28,7 +28,17 @@ node verification/decisions/inspect.mjs artifact outputs/failure-pilot/evidence/
 
 # Inspect all original source eval dispositions and coverage gaps.
 node verification/decisions/inspect.mjs artifact outputs/bank-revision/coverage-ledger.json
+
+# See the reviewed 108-question candidate's coverage summary and original ledger hash.
+node verification/decisions/inspect.mjs artifact outputs/promotion-2026-09-23/coverage-summary.json
+
+# See the four omitted-source coverage-limit shape corrections and identity hashes.
+node verification/decisions/inspect.mjs artifact outputs/promotion-2026-09-23/coverage-metadata-normalization.json
 ```
+
+The approved changes are `000-fundamentals/007-basic_file_storage/q-delete-both`, `007-components/000-aggregate_leaderboard/q1`, `007-components/011-choose_workpool_throttle/q-shared-cap`, and `007-components/022-action_cache/q-permission-change`. Inspect each question entry for its author record, blind review, exact model input, and evidence links. Storage uses a fresh disposable backend replay with real uploads and GET requests. Aggregate, Workpool, and ActionCache use their approved exact-code presentation pilots. The cache record includes the author's private-rationale erratum; the visible question and answer key did not change. The review context also retains the fresh schema document validator and Agent attribution replays that resolved two Fable concerns, along with the acceptance and coverage summary. None of these additions is a new full-bank execution.
+
+The reviewed candidate's coverage manifest had four omitted-source `coverageLimits` values nested one array too deep. The promotion flattens those four values, so the decision benchmark identity changes. All 90 question files and the represented-bank coverage entries match the reviewed candidate byte-for-byte. The frozen model inputs and results remain historical evidence under their original hashes; the normalization record binds both coverage hashes and both identities.
 
 Each record carries `originalSha256` for the historical bytes and `sha256` for the published bytes. Local workspace/user paths are normalized and historical local backend credentials are redacted. `sanitization` names these transformations. Internal historical hashes remain historical hashes; a changed sanitized copy is never presented as byte-identical. `@historical-home` and `@historical-repository` are explanatory markers, not dependencies on a particular machine. Original source and option hashes remain available for provenance.
 
@@ -72,7 +82,7 @@ Each backend adapter records the supplied binary's hash and whether it matches t
 
 ## Remaining portability work
 
-The other 101 accepted questions have inspectable recorded evidence, but no supported clean-checkout behavioral replay command in this package. Historical source is preserved for review, not offered as a complete executable dependency graph. Do not run an archived script by assuming its relative paths resolve in this repository.
+The other 103 accepted questions have inspectable recorded evidence, but no supported clean-checkout behavioral replay command in this package. Historical source is preserved for review, not offered as a complete executable dependency graph. Do not run an archived script by assuming its relative paths resolve in this repository.
 
 The remaining adapters need to:
 

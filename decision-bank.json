@@ -58,7 +58,7 @@
         "q-delete-both"
       ],
       "sourceFingerprint": "0073a9d9054ed4256df83c95b73460a9f00fff078cc54831d918187492ce3515",
-      "bankSha256": "f47702b76bbf442d930b2e4dafa43eb737aa9c6e4207e1238e8cc1665ae96fc4"
+      "bankSha256": "f814da5a32047d269c41370a90cd119ca97792c2ceaeea5d10d524eaa6de7473"
     },
     {
       "sourceEval": "000-fundamentals/008-helper_fns",
@@ -578,7 +578,7 @@
         "q2"
       ],
       "sourceFingerprint": "1ee7558f129f210b96cc6f44c97bd13f3b9d5fbd3eb2c5c5730516eb8d79d4ce",
-      "bankSha256": "a62bdf2d09d46557e3d1e7a1e366d466a6448330d7392a72c329af6ef92de855"
+      "bankSha256": "dcf423d85b484953a3a6e42e2cbde41e703b31f703db3516bee1f43d2a69c38b"
     },
     {
       "sourceEval": "007-components/001-transactional_rate_limit",
@@ -666,10 +666,11 @@
     {
       "sourceEval": "007-components/011-choose_workpool_throttle",
       "questionIds": [
-        "q1"
+        "q1",
+        "q-shared-cap"
       ],
       "sourceFingerprint": "d5890d3f90df8426d983653fe3eee263ecb738374a632cca2957076737444405",
-      "bankSha256": "2ca9ac3f4b598526fadcd690ae554376b75e53c2c66d7c22f38fc5a06d941d67"
+      "bankSha256": "c9e64c555d5e6f4286330944297a7a58e2250e26ff12da12e13e2f7695b093db"
     },
     {
       "sourceEval": "007-components/012-choose_workpool_serialize",
@@ -733,325 +734,275 @@
       "sourceEval": "007-components/022-action_cache",
       "questionIds": [
         "q1",
-        "q2"
+        "q2",
+        "q-permission-change"
       ],
       "sourceFingerprint": "2c43f5977206ed7c18ebd57f7322fd1bd32abb2f328487588e2432dae9a68eee",
-      "bankSha256": "e772a8cb187777e9cabe2992c3888132eade8d020d34e125b58823ab2a92e50b"
+      "bankSha256": "96c5af740d62b0f1fe533cb4e7bb42fe04090f6d8f78f065d7e26b883cc2c86f"
     }
   ],
   "omittedSources": [
     {
       "sourceEval": "000-fundamentals/003-crons",
       "coverageLimits": [
-        "Exact labels and log strings are incidental app requirements. Optional string validation is covered elsewhere.",
-        "Monthly UTC cron field notation remains source coding coverage. The considered q-calendar split was omitted because the complete Convex API was supplied and only generic cron-string interpretation varied.",
-        "Redundant candidate omitted: q1. Shared knowledge remains at 002-queries/026-scheduled_flag_materialization/q026-1."
+        "No current decision question for this source; shared interval recognition is narrower than implementing its four schedules."
       ],
       "decisions": [
         {
-          "id": "q1",
-          "reason": "Narrowed the mixed original to the useful Convex interval API target and preserved q1. A generic calendar-expression split was discarded because it added generic cron notation coverage, not a distinct Convex API decision. Final cross-bank selection: The newer scheduled-materialization interval-registration question tests the same native interval API with three plausible API-shape misconceptions. This foundational version spends two distractors on arithmetic duration mistakes. Keep the more focused API question rather than double-counting it. Shared coverage: 002-queries/026-scheduled_flag_materialization/q026-1."
+          "id": "gap",
+          "reason": "The previously accepted interval question was omitted in the independent global selection review because 002-queries/026-scheduled_flag_materialization/q026-1 tests the same native interval API with stronger API-shape alternatives. Monthly cron notation and the four-job implementation remain coding-only coverage."
         }
       ]
     },
     {
       "sourceEval": "000-fundamentals/009-returns_validator",
       "coverageLimits": [
-        "The raw-document system-fields target is covered more directly by 001-data_modeling/016-schema_document_validator. The source mixed-array handler order and error messages remain implementation requirements.",
-        "Redundant candidate omitted: q1. Shared knowledge remains at 001-data_modeling/010-discriminated_union/q1."
+        "The retained discriminated-union item is table-descriptor evidence, not direct return-boundary evidence."
       ],
       "decisions": [
         {
-          "id": "q1",
-          "reason": "Uses exact runtime validator expressions with literal-tag/payload controls; raw Post validator is shared. Final cross-bank selection: Repeats literal-discriminant and correlated-required-payload construction tested by the dedicated data-model union item. Both supply where the expression is used; neither independently tests wiring a return validator. Keep one representative of union construction and record return-boundary wiring as unconverted. Shared coverage: 001-data_modeling/010-discriminated_union/q1."
+          "id": "gap",
+          "reason": "The accepted tagged-union question was omitted in independent global selection because 001-data_modeling/010-discriminated_union/q1 already tests correlated literal tags and payloads. It never measured attaching the validator to a query; return-boundary wiring, raw-document typing and ordered arrays remain unconverted."
         }
       ]
     },
     {
       "sourceEval": "001-data_modeling/009-normalize_json",
       "coverageLimits": [
-        "Full normalization from nested organizational JSON into the organizations, departments and employees tables remains unconverted.",
-        "Optional manager relationship and optional employee fields remain unconverted.",
-        "Required organization/department/employee relationships and the exact single-field index design remain unconverted."
+        "No decision item proves independent normalization or the optional manager relationship."
       ],
       "decisions": [
         {
-          "id": "q1",
-          "reason": "The source TASK already supplies v.id relationships instead of inlined data. The narrowed question drops that condition and repeats the table-specific-ID/string/wrong-table target in foreign_key/q1. Retired after independent review B1."
+          "id": "gap",
+          "reason": "The prior narrowed ID-validator question dropped the source-supplied relationship condition and duplicated 001-data_modeling/002-foreign_key/q1. It was retired after independent review. Full organization/department/employee normalization and index design remain coding-only coverage."
         }
       ]
     },
     {
       "sourceEval": "001-data_modeling/014-heartbeat_isolation",
       "coverageLimits": [
-        "The separate-presence architecture that isolates frequent heartbeat writes from stable profile documents remains unconverted.",
-        "Implementing the complete indexed read/patch-or-insert mutation, including all missing-row and existing-row behavior, remains unconverted.",
-        "The inclusive online-window query and joining active presence records to user profiles remain unconverted."
+        "The shared CRUD item does not establish presence isolation, deduplicated upsert, or inclusive cutoff behavior."
       ],
       "decisions": [
         {
-          "id": "q1",
-          "reason": "The narrowed question supplies separate presence storage, indexed lookup and missing-row insertion, leaving the same-row patch/replace/insert and document-identity target already tested by database_crud/q1. Retired after independent review B2."
+          "id": "gap",
+          "reason": "The prior narrowed update question supplied separate presence storage and indexed lookup, leaving only same-row patch/replace/insert behavior already covered by 000-fundamentals/006-database_crud/q1. It was retired after independent review. Isolation architecture and inclusive-window behavior remain unconverted and would require a distinct verified item."
         }
       ]
     },
     {
       "sourceEval": "002-queries/007-aggregation",
       "coverageLimits": [
-        "Quantity-weighted sums, average division, decimal rounding and numeric formatting are ordinary application logic. Indexed small-range reading is covered elsewhere."
+        "No accepted decision question is assigned to this source. Overlap named above is partial; the original coding task remains."
       ],
       "decisions": [
         {
-          "id": "q007-1",
-          "reason": "Retire because its alternatives test explicit arithmetic and formatting rules, with an obviously wrong string-concatenation distractor. The small indexed read overlaps retained collect/index questions; no new aggregation-component requirement is invented."
+          "id": "gap",
+          "reason": "Arithmetic, rounding, and empty-case aggregation are generic application logic. The indexed read is already represented; keep full implementation in the coding task."
         }
       ]
     },
     {
       "sourceEval": "002-queries/008-group_by",
       "coverageLimits": [
-        "Grouping/sorting/rounding is generic implementation coverage. Do not assign the eval extra weight for re-testing compound equality already present elsewhere."
+        "No accepted decision question is assigned to this source. Overlap named above is partial; the original coding task remains."
       ],
       "decisions": [
         {
-          "id": "q008-1",
-          "reason": "Retire because its alternatives contradict explicit grouping, projection and sorting rules without requiring Convex-specific knowledge. Compound index scope overlaps the retained equality question; independent grouping implementation remains coding-only."
+          "id": "gap",
+          "reason": "The distinct grouping, sorting, and rounding work is generic; compound equality is already represented by 002-queries/003."
         }
       ]
     },
     {
       "sourceEval": "002-queries/020-text_search_join",
       "coverageLimits": [
-        "Unknown Author is an application policy; native search declaration already covered by 009-text_search.",
-        "Redundant candidate omitted: q020-1. Shared knowledge remains at 002-queries/013-async_iterator_filter/q013-1."
+        "No accepted decision question is assigned to this source. Overlap named above is partial; the original coding task remains."
       ],
       "decisions": [
         {
-          "id": "q020-1",
-          "reason": "Reframed as one focused Convex target with parallel alternatives and exact local evidence; unrelated source conditions are held constant. Final cross-bank selection: Repeats the same deleted-reference outcome as the shorter teams/admin item: no automatic cascade, no stored document snapshot, and get returns null. Search syntax is supplied and adds no tested distinction. Shared coverage: 002-queries/013-async_iterator_filter/q013-1."
+          "id": "gap",
+          "reason": "The previous candidate repeated the missing-reference behavior in 002-queries/013; search-index syntax is covered by 002-queries/009. Cross-bank selection retired the duplicate."
         }
       ]
     },
     {
       "sourceEval": "002-queries/021-intersection",
       "coverageLimits": [
-        "Outer result formatting and ordinary active/published business selection; overlap with 003 compound prefix should be accounted for in scoring.",
-        "Shared equality-prefix validity only. Building the active-user traversal, compound query callback and result projection remains unconverted."
+        "No accepted decision question is assigned to this source. Overlap named above is partial; the original coding task remains."
       ],
       "decisions": [
         {
-          "id": "q021-1",
-          "reason": "Its distinctive Convex requirement is the authorId/published compound-index prefix, already covered by the focused compound-prefix item. Outer active-user selection and projection are supplied application logic. Retain the source as supporting overlap, without another index-prefix decision."
+          "id": "gap",
+          "reason": "The distinctive index-prefix decision overlaps 002-queries/003. The remaining outer selection and result formatting are application implementation."
         }
       ]
     },
     {
       "sourceEval": "002-queries/025-ordering_tiebreak",
       "coverageLimits": [
-        "Schema authoring, input validation for n and full leaderboard implementation.",
-        "Shared implicit creation-time suffix and descending order within equal index values. The complete points-descending top-N query is not independently tested by that item."
+        "No accepted decision question is assigned to this source. Overlap named above is partial; the original coding task remains."
       ],
       "decisions": [
         {
-          "id": "q025-1",
-          "reason": "Implicit creation-time suffix and reversal of the complete descending index order are already covered by the focused index-order item. The source AST grader also rejects equivalent split-variable chains, so its lexical shape is not a new knowledge target."
+          "id": "gap",
+          "reason": "The implicit _creationTime suffix is already tested by 002-queries/005. The source grader also has a lexical chain requirement that should not become a decision oracle."
         }
       ]
     },
     {
       "sourceEval": "003-mutations/002-patch",
       "coverageLimits": [
-        "Independent production of a mutation, argument validation and error wording remain implementation skills. Missing-row behavior has an execution control but no separate decision score."
+        "No accepted decision question is assigned to this source. Overlap named above is partial; the original coding task remains."
       ],
       "decisions": [
         {
-          "id": "q002-1",
-          "reason": "Shallow patch preservation is covered more strongly by 003-patch_nested/q1. The old read-before-patch premise was too strong: a direct awaited patch rejects a valid deleted ID, confirmed by a local control."
+          "id": "gap",
+          "reason": "003-mutations/003 tests the patch distinction more strongly. The prior missing-document prompt overstated the need to read before patch; a direct awaited patch can reject a deleted ID."
         }
       ]
     },
     {
       "sourceEval": "003-mutations/005-cascade_delete_nested",
       "coverageLimits": [
-        "Discovering all multi-hop and cross-user dependencies and implementing efficient deletion remain unconverted. Missing-user behavior is underspecified by TASK and stronger in grader."
+        "No accepted decision question is assigned to this source. Overlap named above is partial; the original coding task remains."
       ],
       "decisions": [
         {
-          "id": "q005-1",
-          "reason": "Generic graph enumeration; Convex manual-cascade knowledge is shared with 004-cascade_delete/q004-1. Multi-hop implementation remains unconverted."
-        },
-        {
-          "id": "q005-2",
-          "reason": "Duplicate of 004-cascade_delete/q004-2. Deleting the parent first does not permit partial commits in a failed mutation; the old rationale was false."
+          "id": "gap",
+          "reason": "The Convex-specific absence of automatic cascades is covered by 003-mutations/004. Discovering all graph edges and writing the deletion is still coding coverage."
         }
       ]
     },
     {
       "sourceEval": "003-mutations/009-budget_aware_batch_delete",
       "coverageLimits": [
-        "Budget-aware deletion implementation remains unconverted: applying live transaction budgets and constructing bounded continuations across workloads under the source-provided API-reference condition. The accepted scheduled-boundary item covers separate transactions, not this implementation target. No accepted decision item replaces the retired metrics target.",
-        "Finite backend scenarios do not prove universal resource safety. Real deletion traces reach bytesRead and documentsRead reserves; bytesWritten/documentsWritten thresholds are isolated in predicate controls rather than separate natural limiting backend cases."
+        "No accepted decision question is assigned to this source. Overlap named above is partial; the original coding task remains."
       ],
       "decisions": [
         {
-          "id": "q009-1",
-          "reason": "Retired for Convex-knowledge relevance after independent review R1. The final question supplies the native metrics API, snapshot meaning and stop/schedule-once contract; its alternatives mainly test await, refreshing a snapshot, and return versus continuing. The exact key, failed alternatives and repairs are verified correct. This is not a runtime failure."
-        },
-        {
-          "id": "q009-2",
-          "reason": "The reserve OR policy is supplied common setup and separately exercised by predicate controls, not scored as generic Boolean knowledge."
+          "id": "gap",
+          "reason": "The former item was executable but its alternatives mostly tested supplied await/loop rules. A fair, distinct native-metrics item remains unverified; the real resource-budget implementation stays in the coding task."
         }
       ]
     },
     {
       "sourceEval": "004-actions/001-run_mutation",
       "coverageLimits": [
-        "Mutation authoring, schema creation, return type annotations and full HTTP implementation are supplied.",
-        "Redundant candidate omitted: q2. Shared knowledge remains at 004-actions/002-run_query_mutation/q1."
+        "No accepted decision question in this source; original coding task remains intact."
       ],
       "decisions": [
         {
-          "id": "q1",
-          "reason": "Retired an incidental insert-and-return-ID application requirement. q2 supplies that helper and retains the action-to-database boundary."
-        },
-        {
-          "id": "q2",
-          "reason": "Rewritten around one supplied Convex boundary with parallel alternatives and exact local execution; incidental application requirements are held constant. Final cross-bank selection: The action database-boundary item covers invoking a supplied save mutation with runMutation after fetching, as well as the read/query boundary. Keep that representative instead of counting the same action-to-mutation dispatch knowledge twice. The supplied writer returns an inserted ID; implementing that writer and the complete fetch-and-save function remain unconverted by this shared recognition coverage. Shared coverage: 004-actions/002-run_query_mutation/q1."
+          "id": "gap",
+          "reason": "Its action-to-mutation boundary is represented by 002/q1; a second item here would repeat that API distinction. Fetch/save implementation and error handling remain coding coverage only."
         }
       ]
     },
     {
       "sourceEval": "004-actions/007-http_action_routing",
       "coverageLimits": [
-        "This source has no remaining decision question. Its HTTP method and literal-prefix knowledge is shared with the independently accepted 000-fundamentals/002-basic_http_endpoint/q1 in foundations-01. Specific endpoint names, payload implementation and HEAD behavior are not separately measured."
+        "No accepted decision question in this source; original coding task remains intact."
       ],
       "decisions": [
         {
-          "id": "q1",
-          "reason": "Retired by parent reconciliation because the method and literal-prefix target duplicates the independently accepted foundations-01 item 000-fundamentals/002-basic_http_endpoint/q1. Preserve one representative instead of double-weighting this knowledge."
+          "id": "gap",
+          "reason": "The GET, POST, PUT and wildcard route implementation is a real decision-bank gap. This pass did not construct or execute a new fair routing item, so it stays unrepresented."
         }
       ]
     },
     {
       "sourceEval": "005-idioms/000-internal_fns",
       "coverageLimits": [
-        "Stats constants, log messages and event timestamp selection remain coding behavior rather than independent knowledge questions.",
-        "Admin-client invocation is explicitly supplied by the source TASK and deliberately omitted from this decision bank. The linked ordinary-client visibility, server dispatch and scheduling questions do not directly test admin-client callability."
+        "No accepted decision question is assigned to this source. Overlap named above is partial; the original coding task remains."
       ],
       "decisions": [
         {
-          "id": "q1",
-          "reason": "Ordinary-client builder visibility is shared with empty_functions; server-context dispatch and scheduling are shared with function_calling and no_scheduler. These replacements do not directly test admin-client invocation. That source-supplied capability is deliberately omitted rather than claimed as equivalent coverage."
-        },
-        {
-          "id": "q2",
-          "reason": "The timestamp/null results are incidental outputs specified by this app, not a separate Convex knowledge target."
+          "id": "gap",
+          "reason": "Public visibility, internal dispatch, and scheduling overlap other retained questions. Admin-client invocation remains unrepresented and should not be claimed covered."
         }
       ]
     },
     {
       "sourceEval": "005-idioms/002-batch_queries",
       "coverageLimits": [
-        "The specific empty result and indexed read bodies stay supplied. The QueryCtx helper target overlaps helper_fns, but this item adds composed reads and unnecessary dispatch avoidance.",
-        "No retained decision item directly measures helper factoring, nested-dispatch overhead or complete user/posts composition. No runtime benchmark or snapshot-race claim is made."
+        "No accepted decision question is assigned to this source. Overlap named above is partial; the original coding task remains."
       ],
       "decisions": [
         {
-          "id": "q1",
-          "reason": "Ordinary helper reuse is generic TypeScript organization. Once the no-subtransaction requirement is supplied, the choice is visible call structure, while nested runQuery is also transactionally consistent. Keep source coding coverage and do not call a valid implementation semantically wrong."
+          "id": "gap",
+          "reason": "Helper factoring is mostly generic TypeScript organization. Nested runQuery can also be transactionally consistent, so the old item had no unique semantic key."
         }
       ]
     },
     {
       "sourceEval": "005-idioms/003-authorization",
       "coverageLimits": [
-        "Task text, completed:false and returned ID are incidental CRUD contracts. Auth configuration is explicitly preconfigured.",
-        "No retained decision item establishes per-project membership enforcement on reads and writes; preserve the original coding task for this application security behavior."
+        "No accepted decision question is assigned to this source. Overlap named above is partial; the original coding task remains."
       ],
       "decisions": [
         {
-          "id": "q1",
-          "reason": "The membership guard is application policy and indexed pair matching. Its Convex identity access and issuer-safe identity keys are covered by authentication_guard. Retire rather than score hidden tenant policy as a new Convex API target."
-        },
-        {
-          "id": "q2",
-          "reason": "completed:false and task ownership are app defaults; the task and grader do not require the ID-return detail in the old key."
+          "id": "gap",
+          "reason": "Identity null handling and issuer-safe lookup are covered by 005-idioms/004. Per-project membership policy remains an important coding-task behavior, but the prior decision item mostly tested a supplied application rule."
         }
       ]
     },
     {
       "sourceEval": "005-idioms/005-convex_testing",
       "coverageLimits": [
-        "Writing a complete local test suite, applying the prescribed convex-test APIs and edge-runtime configuration, and implementing the requested empty/create/complete/remove assertions remain coding-eval coverage. This source has no retained decision question."
+        "No accepted decision question is assigned to this source. Overlap named above is partial; the original coding task remains."
       ],
       "decisions": [
         {
-          "id": "q1",
-          "reason": "TASK.txt:37-45 explicitly supplies t.query and t.mutation with the generated api. Asking the model to select t.mutation removes the source-supplied guidance and converts implementation of that guidance into API recall. Retire despite correct key and runtime evidence."
-        },
-        {
-          "id": "q2",
-          "reason": "Task lifecycle defaults are generic CRUD requirements. They remain control assertions and the full coding task."
+          "id": "gap",
+          "reason": "The source task already supplies t.query and t.mutation. Selecting that API would test recall after removing supplied guidance; writing the test suite remains coding coverage."
         }
       ]
     },
     {
       "sourceEval": "005-idioms/007-explicit_table_names",
       "coverageLimits": [
-        "Implementing contact CRUD with the supplied explicit-table API signatures, validating document existence and preserving the requested behavior remain coding-eval coverage. This source has no retained decision question."
+        "No accepted decision question is assigned to this source. Overlap named above is partial; the original coding task remains."
       ],
       "decisions": [
         {
-          "id": "q1",
-          "reason": "TASK.txt:25-28 supplies ctx.db.get(\"contacts\", id) verbatim, and line 48 explicitly says the literal table name is the first argument to each ID-based operation. Asking for that argument order removes the source-supplied usage guidance. Retire despite correct key and runtime evidence."
-        },
-        {
-          "id": "q2",
-          "reason": "Patch-versus-replace and ID preservation duplicate retained basic mutation coverage in other sources. Implementing the prescribed explicit-table forms remains source coding coverage."
+          "id": "gap",
+          "reason": "The source supplies the table-name-first signatures verbatim. Asking for that argument order would switch away from the original supplied-reference condition."
         }
       ]
     },
     {
       "sourceEval": "007-components/013-choose_workpool_completion",
       "coverageLimits": [
-        "Full endpoint implementation and source grader coverage are not replaced by decision recognition.",
-        "Source-specific upload ID typing, queued/processed status writes and deleted-upload failure path are not separately converted; shared enqueue/completion concepts map to source 010."
+        "No accepted decision question in this source; original coding task remains intact."
       ],
       "decisions": [
         {
-          "id": "q1",
-          "reason": "Completion behavior duplicates 007-components/010-workpool_completion_tracking/q2. Shared concept retained there with failed-job runtime evidence."
-        },
-        {
-          "id": "q2",
-          "reason": "Background enqueue behavior duplicates 007-components/010-workpool_completion_tracking/q1. The original repeats its return contract rather than testing a distinct component fact."
+          "id": "gap",
+          "reason": "The onComplete/context behavior is already represented by 010/q2. This source's static component-selection and audit wiring are not fully measured by that question."
         }
       ]
     },
     {
       "sourceEval": "007-components/020-choose_presence_typing",
       "coverageLimits": [
-        "Typing UI events and source unaided component selection are not independently assessed by the mapped outcome question.",
-        "Automatic expiry coverage remains pending review of the mapped source019 item."
+        "No accepted decision question in this source; original coding task remains intact."
       ],
       "decisions": [
         {
-          "id": "q1",
-          "reason": "Retire the domain-label duplicate of document presence: both sources delegate heartbeat/list/disconnect to Presence, requiring automatic reactive expiry and room isolation."
+          "id": "gap",
+          "reason": "The source selects Presence for typing indicators. Existing 018 and 019 items measure room-token behavior and expiry; a typing-specific item would need its own verified consequence, so this remains a gap."
         }
       ]
     },
     {
       "sourceEval": "007-components/021-choose_presence_multisession",
       "coverageLimits": [
-        "Unaided component choice is not measured by source018, which retains its original supplied-documentation condition.",
-        "Concurrent heartbeat/leave implementation and arbitrary interleaving correctness remain coding coverage; source018 outcome is sequential.",
-        "Multisession coverage remains pending review of mapped source018/q2."
+        "No accepted decision question in this source; original coding task remains intact."
       ],
       "decisions": [
         {
-          "id": "q1",
-          "reason": "The proposed one-user/any-live-session/last-disconnect outcome duplicates the exact finalized source018/q2 question. Retire this additional weight rather than repeating it under workspace labels."
+          "id": "gap",
+          "reason": "The exact multi-session rule is represented by 018/q2. Its source-specific selection and concurrency implementation remain outside multiple choice coverage."
         }
       ]
     }

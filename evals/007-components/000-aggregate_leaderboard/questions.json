@@ -1,36 +1,36 @@
 {
   "version": 1,
   "sourceEval": "007-components/000-aggregate_leaderboard",
-  "coverageNotes": "Applies supplied API documentation. Does not assess mounting, independent upsert implementation or large-table performance. Applies supplied documentation to one bounded read. No independent synchronization or scale benchmark.",
+  "coverageNotes": "Applies supplied API documentation. Does not assess mounting, independent upsert implementation or large-table performance. Applies supplied documentation to one bounded read. No independent synchronization or scale benchmark. This local revision incorporates the exact-input presentation pilot q1; other questions are preserved.",
   "questions": [
     {
       "id": "q1",
-      "concept": "Synchronizing a TableAggregate replacement",
-      "context": "Convex 1.41.0, @convex-dev/aggregate 0.2.2. Supplied package reference: `insert(ctx, doc)` adds a full stored document; `replace(ctx, oldDoc, newDoc)` synchronizes a replacement in the same mutation as the table write. Reads include `count(ctx)`, `count(ctx, { bounds: { lower: { key, inclusive: false } } })`, and `indexOf(ctx, key)`. Bounds also support `upper` and `inclusive: true`.\n\nA mounted `scoreAggregate` sorts stored `scores` documents by `-doc.score`. New users are already inserted into both the table and aggregate. For a returning user, the mutation has loaded `existing`, patched its score, and loaded the full `updated` document. Complete its synchronization step.",
-      "question": "Which call keeps one aggregate entry for the user as their score changes?",
+      "concept": "TableAggregate maintenance after a table update",
+      "context": "Convex 1.41.0, @convex-dev/aggregate 0.2.2. A mounted `scoreAggregate` is a `TableAggregate` with `sortKey: (doc) => doc.score`. Each player starts with one `scores` document and one matching aggregate entry:\n\n| Player | `scores.score` | aggregate score key |\n| --- | ---: | ---: |\n| Alice | 100 | 100 |\n| Bob | 50 | 50 |\n| Carol | 10 | 10 |\n\nThe functions use `mutation` and `query` from the standard generated `./_generated/server`. No trigger wrapper is installed.\n\n```ts\nexport const changeScore = mutation({\n  args: { id: v.id(\"scores\") },\n  handler: async (ctx, { id }) => {\n    await ctx.db.patch(\"scores\", id, { score: 20 });\n  },\n});\n\nexport const bobRank = query({\n  args: {},\n  handler: async (ctx) =>\n    1 + await scoreAggregate.count(ctx, {\n      bounds: { lower: { key: 50, inclusive: false } },\n    }),\n});\n```",
+      "question": "You call `changeScore` with Alice's document ID, then call `bobRank`. What happens?",
       "options": [
         {
           "id": "a",
-          "text": "```ts\nawait scoreAggregate.replace(ctx, updated, updated);\n```",
-          "rationale": "Uses the new key as the old key. When the score moves, deleting the old entry at that new key fails."
+          "text": "`changeScore` succeeds, and `bobRank` returns 1.",
+          "rationale": "This assumes the table patch automatically updates the component's stored sort key. It does not under the shown plain mutation setup."
         },
         {
           "id": "b",
-          "text": "```ts\nawait scoreAggregate.insert(ctx, updated);\n```",
-          "rationale": "Adds the new key without deleting the old key, so score changes leave duplicate entries for this user."
+          "text": "`changeScore` succeeds, and `bobRank` returns 2.",
+          "rationale": "Alice's table score becomes 20, but her aggregate entry remains at 100. The strict count above Bob's score of 50 remains one, so the returned rank remains two."
         },
         {
           "id": "c",
-          "text": "```ts\nawait scoreAggregate.replace(ctx, existing, updated);\n```",
-          "rationale": "Deletes the entry at the old score and inserts the new score inside the same transaction."
+          "text": "`changeScore` fails, leaving Alice's score at 100.",
+          "rationale": "A normal table patch is not rejected because separate aggregate maintenance is omitted. The mutation commits Alice's new score."
         },
         {
           "id": "d",
-          "text": "```ts\nawait scoreAggregate.replace(ctx, updated, existing);\n```",
-          "rationale": "Reverses old and new: deletion looks for the new key before it exists."
+          "text": "`changeScore` succeeds, but `bobRank` throws an error.",
+          "rationale": "The aggregate count reads the stored aggregate keys; it does not compare each key against the current source table score or reject this mismatch."
         }
       ],
-      "correctOptionId": "c",
+      "correctOptionId": "b",
       "sourceReferences": [
         "TASK.txt",
         "answer/package.json",
