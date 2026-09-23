@@ -16,6 +16,24 @@ export const DECISION_CI_MODELS = {
   sol: { provider: "openrouter", model: "openai/gpt-5.6-sol" },
   astra: { provider: "openrouter", model: "openai/gpt-6-astra" },
   grok47: { provider: "openrouter", model: "x-ai/grok-4.7" },
+  opus55: { provider: "openrouter", model: "anthropic/claude-opus-5.5" },
+  sonnet5: { provider: "openrouter", model: "anthropic/claude-sonnet-5" },
+  gemini31pro: {
+    provider: "openrouter",
+    model: "google/gemini-3.1-pro-preview",
+  },
+  gemini38flash: { provider: "openrouter", model: "google/gemini-3.8-flash" },
+  deepseek41flash: {
+    provider: "openrouter",
+    model: "deepseek/deepseek-v4.1-flash",
+  },
+  qwen3827b: { provider: "openrouter", model: "qwen/qwen3.8-27b" },
+  kimi3: { provider: "openrouter", model: "moonshotai/kimi-k3" },
+  glm53: { provider: "openrouter", model: "z-ai/glm-5.3" },
+  mistralmedium35: {
+    provider: "openrouter",
+    model: "mistralai/mistral-medium-3-5",
+  },
 } satisfies Record<string, { provider: DecisionProvider; model: string }>;
 
 async function main(): Promise<void> {
