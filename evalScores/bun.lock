@@ -6,7 +6,6 @@
       "name": "evalscores",
       "dependencies": {
         "@convex-dev/migrations": "^0.3.1",
-        "@types/jszip": "^3.4.1",
         "convex": "^1.44.0",
         "jszip": "^3.10.1",
         "zod": "^4.2.1",
@@ -14,7 +13,7 @@
       "devDependencies": {
         "@edge-runtime/vm": "^5.0.0",
         "@types/bun": "latest",
-        "convex-test": "^0.0.56",
+        "convex-test": "^0.0.60",
         "vitest": "^5.0.0",
       },
       "peerDependencies": {
@@ -139,8 +138,6 @@
 
     "@types/estree": ["@types/estree@1.0.8", "", {}, "sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w=="],
 
-    "@types/jszip": ["@types/jszip@3.4.1", "", { "dependencies": { "jszip": "*" } }, "sha512-TezXjmf3lj+zQ651r6hPqvSScqBLvyPI9FxdXBqpEwBijNGQ2NXpaFW/7joGzveYkKQUil7iiDHLo6LV71Pc0A=="],
-
     "@types/node": ["@types/node@22.13.10", "", { "dependencies": { "undici-types": "~6.20.0" } }, "sha512-I6LPUvlRH+O6VRUqYOcMudhaIdUVWfsjnZavnsraHvpBwaEyMN29ry+0UVJhImYL16xsscu0aske3yA+uPOWfw=="],
 
     "@types/ws": ["@types/ws@8.5.14", "", { "dependencies": { "@types/node": "*" } }, "sha512-bd/YFLW+URhBzMXurx7lWByOu+xzU9+kb3RboOteXYDfW+tr+JZa99OyNmPINEGB/ahzKrEuc8rcv4gnpJmxTw=="],
@@ -157,7 +154,7 @@
 
     "convex": ["convex@1.44.0", "", { "dependencies": { "esbuild": "0.27.0", "prettier": "^3.0.0", "ws": "8.21.0" }, "peerDependencies": { "@auth0/auth0-react": "^2.0.1", "@clerk/clerk-react": "^4.12.8 || ^5.0.0", "@clerk/react": "^6.4.3", "react": "^18.0.0 || ^19.0.0-0 || ^19.0.0" }, "optionalPeers": ["@auth0/auth0-react", "@clerk/clerk-react", "@clerk/react", "react"], "bin": { "convex": "bin/main.js" } }, "sha512-84bBa1ufSX4qohXdycXuQl2c2kAmfVpTCpypcmIgxpS5rUBgv5qjhArYugTkJVbljMs5SH2mW30bjJo+SQwe1w=="],
 
-    "convex-test": ["convex-test@0.0.56", "", { "peerDependencies": { "convex": "^1.43.0" } }, "sha512-dLYXlQjKFoGqvjAmPzyLgb2HsYI7iLo1iuNTU2DZmSrMRLWosYk94erjSU67GG5ovfP6+MjX8RJO+ebhmL6QYA=="],
+    "convex-test": ["convex-test@0.0.60", "", { "peerDependencies": { "convex": "^1.43.0" } }, "sha512-qCAFx+CO6bmpXNc9s1jZvw8NJPS4yM074ib87PUY675FsiaRRW4ALotEB+RbVCYDRMYxh623KMnYZBlrMJIv1Q=="],
 
     "core-util-is": ["core-util-is@1.0.3", "", {}, "sha512-ZQBvi1DcpJ4GDqanjucZ2Hj3wEO5pZDS89BWbkcrvdxksJorwUDDZamX9ldFkp9aw2lmBDLgkObEA4DWNJ9FYQ=="],
 
