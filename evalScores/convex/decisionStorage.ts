@@ -32,6 +32,7 @@ import {
   decisionSummary,
 } from "./schema.js";
 import { sameJson } from "./decisionIdentity.js";
+import { estimateDecisionRunCost } from "./decisionCosts.js";
 
 const decisionOrigin = v.union(
   v.object({
@@ -484,6 +485,73 @@ export const recomputeDecisionScore = internalMutation({
     if (existing) await ctx.db.replace(existing._id, aggregate);
     else await ctx.db.insert("modelScores", aggregate);
     return null;
+  },
+});
+
+/** Repair derived cost metadata without rewriting scores or reported billing.
+ * Explicit small batches keep the one-off production backfill bounded. */
+export const backfillDecisionCostEstimates = internalMutation({
+  args: { runIds: v.array(v.id("runs")) },
+  returns: v.object({ updatedRuns: v.number() }),
+  handler: async (ctx, { runIds }) => {
+    if (runIds.length > 5)
+      throw new Error("Backfill at most five decision runs at a time");
+    let updatedRuns = 0;
+    const cohorts = new Map<
+      string,
+      {
+        benchmarkVersion: Id<"benchmarkVersions">;
+        model: string;
+        condition: DecisionRun["condition"];
+        profileHash: string;
+      }
+    >();
+    for (const runId of new Set(runIds)) {
+      const stored = await ctx.db.get("runs", runId);
+      if (!stored) continue;
+      const run = requireDecisionRun(stored);
+      if (run.status !== "completed" || !run.summary) continue;
+      const results = (
+        await ctx.db
+          .query("evals")
+          .withIndex("by_kind_runId", (q) =>
+            q.eq("kind", "decision").eq("runId", runId),
+          )
+          .collect()
+      ).map(requireDecisionResult);
+      const orphanAttempts =
+        run.summary.requestAttempts -
+        results.reduce((total, result) => total + result.requestAttempts, 0);
+      const estimatedCostUsd =
+        run.summary.costUsd === null
+          ? estimateDecisionRunCost(
+              results,
+              run.plannedQuestions.length * run.profile.repetitions,
+              orphanAttempts,
+            )
+          : undefined;
+      if (run.summary.estimatedCostUsd === estimatedCostUsd) continue;
+      const summary = { ...run.summary };
+      if (estimatedCostUsd === undefined) delete summary.estimatedCostUsd;
+      else summary.estimatedCostUsd = estimatedCostUsd;
+      await ctx.db.patch("runs", runId, { summary });
+      updatedRuns++;
+      const cohort = {
+        benchmarkVersion: run.benchmarkVersion,
+        model: run.model,
+        condition: run.condition,
+        profileHash: run.profileHash,
+      };
+      cohorts.set(JSON.stringify(cohort), cohort);
+    }
+    for (const cohort of cohorts.values()) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.decisionStorage.recomputeDecisionScore,
+        cohort,
+      );
+    }
+    return { updatedRuns };
   },
 });
 

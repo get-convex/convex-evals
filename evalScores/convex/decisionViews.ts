@@ -55,6 +55,7 @@ const publicSummaryValidator = v.object({
   requestAttempts: v.number(),
   costUsd: v.union(v.number(), v.null()),
   knownCostUsd: v.number(),
+  estimatedCostUsd: v.optional(v.number()),
   medianDurationMs: v.union(v.number(), v.null()),
   p95DurationMs: v.union(v.number(), v.null()),
 });
@@ -109,6 +110,7 @@ const publicScoreValidator = v.object({
   averageKnownRunCostUsd: v.number(),
   completeCostRunCount: v.number(),
   averageRunCostUsd: v.union(v.number(), v.null()),
+  estimatedAverageRunCostUsd: v.optional(v.number()),
   latestRunId: v.id("runs"),
   latestRunTime: v.number(),
 });
@@ -329,6 +331,9 @@ export const decisionLeaderboard = query({
         averageKnownRunCostUsd: score.averageKnownRunCostUsd,
         completeCostRunCount: score.completeCostRunCount,
         averageRunCostUsd: score.averageRunCostUsd,
+        ...(score.estimatedAverageRunCostUsd !== undefined
+          ? { estimatedAverageRunCostUsd: score.estimatedAverageRunCostUsd }
+          : {}),
         latestRunId: score.latestRunId,
         latestRunTime: score.latestRunTime,
       };

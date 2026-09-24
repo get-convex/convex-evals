@@ -1,3 +1,4 @@
+import { estimateDecisionRunCost } from "./decisionCosts.js";
 import type { DecisionResult, DecisionRun } from "./documentKinds.js";
 
 export const DECISION_SCORE_RUN_LIMIT = 10;
@@ -36,6 +37,7 @@ export interface DecisionSummary {
   requestAttempts: number;
   costUsd: number | null;
   knownCostUsd: number;
+  estimatedCostUsd?: number;
   medianDurationMs: number | null;
   p95DurationMs: number | null;
 }
@@ -103,6 +105,13 @@ export function computeDecisionSummary(
     journal.orphanKnownCostUsd;
   const completeCost =
     !journal.hasUnknownOrphanCost && results.every((result) => result.costUsd !== null);
+  const estimatedCostUsd = completeCost || journal.hasUnknownOrphanCost
+    ? undefined
+    : estimateDecisionRunCost(
+        results,
+        run.plannedQuestions.length * run.profile.repetitions,
+        journal.orphanAttempts,
+      );
   const durations = results.map((result) => result.durationMs);
 
   return {
@@ -127,6 +136,7 @@ export function computeDecisionSummary(
         journal.orphanKnownCostUsd
       : null,
     knownCostUsd,
+    ...(estimatedCostUsd !== undefined ? { estimatedCostUsd } : {}),
     medianDurationMs: percentile(durations, 0.5),
     p95DurationMs: percentile(durations, 0.95),
   };
@@ -170,6 +180,15 @@ export function aggregateDecisionRuns(
     (summary) => summary.costUsd !== null,
   ).length;
   const allCostsComplete = completeCostRunCount === summaries.length;
+  const comparableCosts = summaries.map(
+    (summary) => summary.costUsd ?? summary.estimatedCostUsd ?? null,
+  );
+  // Every contributing run needs a price. Never improve the cost comparison by
+  // silently dropping the runs whose billing is still unknown.
+  const estimatedAverageRunCostUsd = !allCostsComplete &&
+    comparableCosts.every((cost): cost is number => cost !== null)
+    ? mean(comparableCosts)
+    : undefined;
 
   return {
     kind: "decision" as const,
@@ -208,6 +227,9 @@ export function aggregateDecisionRuns(
     averageRunCostUsd: allCostsComplete
       ? mean(summaries.map((summary) => summary.costUsd!))
       : null,
+    ...(estimatedAverageRunCostUsd !== undefined
+      ? { estimatedAverageRunCostUsd }
+      : {}),
     latestRunId: latest._id,
     latestRunTime: latest._creationTime,
   };
