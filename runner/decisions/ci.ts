@@ -18,6 +18,7 @@ export const DECISION_CI_MODELS = {
   grok47: { provider: "openrouter", model: "x-ai/grok-4.7" },
   opus55: { provider: "openrouter", model: "anthropic/claude-opus-5.5" },
   sonnet5: { provider: "openrouter", model: "anthropic/claude-sonnet-5" },
+  fable51: { provider: "openrouter", model: "anthropic/claude-fable-5.1" },
   gemini31pro: {
     provider: "openrouter",
     model: "google/gemini-3.1-pro-preview",

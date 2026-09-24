@@ -16,6 +16,7 @@ on:
           - grok47
           - opus55
           - sonnet5
+          - fable51
           - gemini31pro
           - gemini38flash
           - deepseek41flash
@@ -41,7 +42,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        model: ${{ fromJSON(inputs.model == 'all' && '["jev","luna","sol","astra","grok47","opus55","sonnet5","gemini31pro","gemini38flash","deepseek41flash","qwen3827b","kimi3","glm53","mistralmedium35"]' || format('["{0}"]', inputs.model)) }}
+        model: ${{ fromJSON(inputs.model == 'all' && '["jev","luna","sol","astra","grok47","opus55","sonnet5","fable51","gemini31pro","gemini38flash","deepseek41flash","qwen3827b","kimi3","glm53","mistralmedium35"]' || format('["{0}"]', inputs.model)) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
