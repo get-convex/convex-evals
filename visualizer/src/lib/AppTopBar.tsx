@@ -38,11 +38,13 @@ function parsePath(pathname: string): {
 
 export function AppTopBar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const isDecision =
+    pathname === "/decision" || pathname.startsWith("/decision/");
   const { level, experimentId, runId, category, evalId } = parsePath(pathname);
 
   const run = useQuery(
     api.runs.getRunDetails,
-    runId ? { runId: runId as Id<"runs"> } : "skip"
+    runId ? { runId: runId as Id<"runs"> } : "skip",
   );
 
   const runModel = run && run !== null ? run.model : undefined;
@@ -69,14 +71,34 @@ export function AppTopBar() {
           Convex Evals
         </Link>
         <nav className="top-bar-breadcrumb" aria-label="Breadcrumb">
-          <Breadcrumbs
-            experimentId={level === "home" ? undefined : experimentId}
-            runId={runId}
-            runModel={runModel}
-            category={category}
-            evalName={evalName}
-            current={level === "home" ? "experiment" : current}
-          />
+          {isDecision ? (
+            <Link to="/decision" className="text-slate-300 hover:text-white">
+              Decision runs
+            </Link>
+          ) : (
+            <Breadcrumbs
+              experimentId={level === "home" ? undefined : experimentId}
+              runId={runId}
+              runModel={runModel}
+              category={category}
+              evalName={evalName}
+              current={level === "home" ? "experiment" : current}
+            />
+          )}
+        </nav>
+        <nav
+          aria-label="Evaluation format"
+          className="ml-auto flex gap-4 text-sm"
+        >
+          <Link to="/" className={isDecision ? "text-slate-400" : "text-white"}>
+            Coding
+          </Link>
+          <Link
+            to="/decision"
+            className={isDecision ? "text-white" : "text-slate-400"}
+          >
+            Decision
+          </Link>
         </nav>
       </div>
     </header>
