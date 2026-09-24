@@ -2,13 +2,14 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
   "ignorePaths": [
-    "evals/**/answer/**"
+    "evals/**/answer/**",
+    "verification/decisions/dependencies/**"
   ],
   "automerge": false,
   "packageRules": [
     {
       "description": "Group all @ai-sdk/* packages so they update together",
-      "matchPackagePrefixes": ["@ai-sdk/"],
+      "matchPackageNames": ["@ai-sdk/**"],
       "groupName": "AI SDK packages"
     },
     {
@@ -25,8 +26,7 @@
     },
     {
       "description": "Disable major version updates for core runner dependencies - breaking changes in these can silently break model integrations",
-      "matchPackageNames": ["ai", "convex"],
-      "matchPackagePrefixes": ["@ai-sdk/"],
+      "matchPackageNames": ["ai", "convex", "@ai-sdk/**"],
       "matchUpdateTypes": ["major"],
       "enabled": false
     },
@@ -50,6 +50,23 @@
     {
       "description": "Presence is pinned by a benchmark eval and must be upgraded deliberately with that eval",
       "matchPackageNames": ["@convex-dev/presence"],
+      "enabled": false
+    },
+    {
+      "description": "Root devDependencies let component eval answers typecheck. A 0.x minor bump is breaking, so upgrade these deliberately with the evals that pin them; patches are fine",
+      "matchPackageNames": [
+        "@convex-dev/action-cache",
+        "@convex-dev/agent",
+        "@convex-dev/aggregate",
+        "@convex-dev/rate-limiter",
+        "@convex-dev/workpool"
+      ],
+      "matchUpdateTypes": ["major", "minor"],
+      "enabled": false
+    },
+    {
+      "description": "esbuild is pinned to the exact version convex depends on so the query sandbox bundles like Convex does; bump it only when convex does",
+      "matchPackageNames": ["esbuild"],
       "enabled": false
     },
     {
