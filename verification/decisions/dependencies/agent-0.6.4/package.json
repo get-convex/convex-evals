@@ -5,7 +5,7 @@
     "convex": "1.41.0",
     "typescript": "5.7.3",
     "@types/node": "22.10.5",
-    "ws": "8.21.0",
+    "ws": "8.21.3",
     "@convex-dev/agent": "0.6.4",
     "@convex-dev/presence": "0.3.2",
     "ai": "6.0.229",
