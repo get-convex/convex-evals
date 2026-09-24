@@ -36,9 +36,14 @@ export function estimateDecisionRunCost(
     knownCostUsd += result.knownCostUsd;
     if (result.costUsd === null) {
       // A received answer with missing usage is not evidence of an unanswered
-      // request. Partly billed retries do not tell us how many attempts lack
-      // usage either, so leave both cases unknown instead of double-counting.
-      if (result.outcome !== "provider_error" || result.knownCostUsd !== 0) {
+      // request. Retries do not tell us how many attempts lack usage, even
+      // when known cost is zero: [0, null] and [null, null] collapse to the
+      // same totals. Leave these ambiguous cases unknown.
+      if (
+        result.outcome !== "provider_error" ||
+        result.knownCostUsd !== 0 ||
+        result.requestAttempts !== 1
+      ) {
         return undefined;
       }
       missingAttempts += result.requestAttempts;

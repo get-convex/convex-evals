@@ -25,14 +25,14 @@ describe("decision cost estimates", () => {
     expect(results[3].costUsd).toBeNull();
   });
 
-  it("counts unpriced retries and retains billed provider failures", () => {
+  it("includes fully billed retries and retains billed provider failures", () => {
     const results = [
       { ...answered(2), requestAttempts: 2 },
       answered(2),
       { ...failure, costUsd: 0.5, knownCostUsd: 0.5 },
-      { ...failure, requestAttempts: 2 },
+      failure,
     ];
-    expect(estimateDecisionRunCost(results, 4)).toBeCloseTo(4.5 + 8 / 3);
+    expect(estimateDecisionRunCost(results, 4)).toBeCloseTo(4.5 + 4 / 3);
   });
 
   it("keeps a genuine zero-cost sample distinct from missing billing", () => {
@@ -53,6 +53,14 @@ describe("decision cost estimates", () => {
     expect(
       estimateDecisionRunCost(
         [answered(1), { ...failure, knownCostUsd: 0.2, requestAttempts: 2 }],
+        2,
+      ),
+    ).toBeUndefined();
+    // A reported zero plus a missing cost is indistinguishable from two
+    // missing costs once attempts have been aggregated into one result.
+    expect(
+      estimateDecisionRunCost(
+        [answered(1), { ...failure, knownCostUsd: 0, requestAttempts: 2 }],
         2,
       ),
     ).toBeUndefined();
