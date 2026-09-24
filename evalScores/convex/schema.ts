@@ -154,6 +154,7 @@ export const decisionSummary = v.object({
   requestAttempts: v.number(),
   costUsd: v.union(v.number(), v.null()),
   knownCostUsd: v.number(),
+  estimatedCostUsd: v.optional(v.number()),
   medianDurationMs: v.union(v.number(), v.null()),
   p95DurationMs: v.union(v.number(), v.null()),
 });
@@ -293,6 +294,7 @@ export const decisionModelScore = v.object({
   completeCostRunCount: v.number(),
   // Null if any contributing run has unknown total cost.
   averageRunCostUsd: v.union(v.number(), v.null()),
+  estimatedAverageRunCostUsd: v.optional(v.number()),
   latestRunId: v.id("runs"),
   latestRunTime: v.number(),
 });
