@@ -27,6 +27,8 @@ export const Route = createRootRoute({
 function RootComponent() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isHome = pathname === "/" || pathname === "";
+  const isDecision =
+    pathname === "/decision" || pathname.startsWith("/decision/");
 
   return (
     <html lang="en">
@@ -38,7 +40,7 @@ function RootComponent() {
           <div className="flex flex-col h-screen">
             <AppTopBar />
             <div className="flex flex-1 min-h-0">
-              {!isHome && <AppSidebar />}
+              {!isHome && !isDecision && <AppSidebar />}
               <Outlet />
             </div>
           </div>

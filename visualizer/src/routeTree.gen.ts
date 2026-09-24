@@ -10,10 +10,12 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as DecisionIndexRouteImport } from './routes/decision.index'
 import { Route as ModelModelRouteImport } from './routes/model.$model'
 import { Route as ExperimentExperimentIdRouteImport } from './routes/experiment.$experimentId'
 import { Route as ModelModelIndexRouteImport } from './routes/model.$model.index'
 import { Route as ExperimentExperimentIdIndexRouteImport } from './routes/experiment.$experimentId.index'
+import { Route as DecisionRunRunIdRouteImport } from './routes/decision.run.$runId'
 import { Route as ModelModelExperimentExperimentIdRouteImport } from './routes/model.$model.experiment.$experimentId'
 import { Route as ExperimentExperimentIdRunRunIdRouteImport } from './routes/experiment.$experimentId.run.$runId'
 import { Route as ModelModelExperimentExperimentIdIndexRouteImport } from './routes/model.$model.experiment.$experimentId.index'
@@ -30,6 +32,11 @@ import { Route as ModelModelExperimentExperimentIdRunRunIdCategoryEvalIdRouteImp
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DecisionIndexRoute = DecisionIndexRouteImport.update({
+  id: '/decision/',
+  path: '/decision/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ModelModelRoute = ModelModelRouteImport.update({
@@ -53,6 +60,11 @@ const ExperimentExperimentIdIndexRoute =
     path: '/',
     getParentRoute: () => ExperimentExperimentIdRoute,
   } as any)
+const DecisionRunRunIdRoute = DecisionRunRunIdRouteImport.update({
+  id: '/decision/run/$runId',
+  path: '/decision/run/$runId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ModelModelExperimentExperimentIdRoute =
   ModelModelExperimentExperimentIdRouteImport.update({
     id: '/experiment/$experimentId',
@@ -130,6 +142,8 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/experiment/$experimentId': typeof ExperimentExperimentIdRouteWithChildren
   '/model/$model': typeof ModelModelRouteWithChildren
+  '/decision/': typeof DecisionIndexRoute
+  '/decision/run/$runId': typeof DecisionRunRunIdRoute
   '/experiment/$experimentId/': typeof ExperimentExperimentIdIndexRoute
   '/model/$model/': typeof ModelModelIndexRoute
   '/experiment/$experimentId/run/$runId': typeof ExperimentExperimentIdRunRunIdRouteWithChildren
@@ -147,6 +161,8 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/decision': typeof DecisionIndexRoute
+  '/decision/run/$runId': typeof DecisionRunRunIdRoute
   '/experiment/$experimentId': typeof ExperimentExperimentIdIndexRoute
   '/model/$model': typeof ModelModelIndexRoute
   '/experiment/$experimentId/run/$runId': typeof ExperimentExperimentIdRunRunIdIndexRoute
@@ -162,6 +178,8 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/experiment/$experimentId': typeof ExperimentExperimentIdRouteWithChildren
   '/model/$model': typeof ModelModelRouteWithChildren
+  '/decision/': typeof DecisionIndexRoute
+  '/decision/run/$runId': typeof DecisionRunRunIdRoute
   '/experiment/$experimentId/': typeof ExperimentExperimentIdIndexRoute
   '/model/$model/': typeof ModelModelIndexRoute
   '/experiment/$experimentId/run/$runId': typeof ExperimentExperimentIdRunRunIdRouteWithChildren
@@ -183,6 +201,8 @@ export interface FileRouteTypes {
     | '/'
     | '/experiment/$experimentId'
     | '/model/$model'
+    | '/decision/'
+    | '/decision/run/$runId'
     | '/experiment/$experimentId/'
     | '/model/$model/'
     | '/experiment/$experimentId/run/$runId'
@@ -200,6 +220,8 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/decision'
+    | '/decision/run/$runId'
     | '/experiment/$experimentId'
     | '/model/$model'
     | '/experiment/$experimentId/run/$runId'
@@ -214,6 +236,8 @@ export interface FileRouteTypes {
     | '/'
     | '/experiment/$experimentId'
     | '/model/$model'
+    | '/decision/'
+    | '/decision/run/$runId'
     | '/experiment/$experimentId/'
     | '/model/$model/'
     | '/experiment/$experimentId/run/$runId'
@@ -234,6 +258,8 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ExperimentExperimentIdRoute: typeof ExperimentExperimentIdRouteWithChildren
   ModelModelRoute: typeof ModelModelRouteWithChildren
+  DecisionIndexRoute: typeof DecisionIndexRoute
+  DecisionRunRunIdRoute: typeof DecisionRunRunIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -243,6 +269,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/decision/': {
+      id: '/decision/'
+      path: '/decision'
+      fullPath: '/decision/'
+      preLoaderRoute: typeof DecisionIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/model/$model': {
@@ -272,6 +305,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/experiment/$experimentId/'
       preLoaderRoute: typeof ExperimentExperimentIdIndexRouteImport
       parentRoute: typeof ExperimentExperimentIdRoute
+    }
+    '/decision/run/$runId': {
+      id: '/decision/run/$runId'
+      path: '/decision/run/$runId'
+      fullPath: '/decision/run/$runId'
+      preLoaderRoute: typeof DecisionRunRunIdRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/model/$model/experiment/$experimentId': {
       id: '/model/$model/experiment/$experimentId'
@@ -486,6 +526,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ExperimentExperimentIdRoute: ExperimentExperimentIdRouteWithChildren,
   ModelModelRoute: ModelModelRouteWithChildren,
+  DecisionIndexRoute: DecisionIndexRoute,
+  DecisionRunRunIdRoute: DecisionRunRunIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
