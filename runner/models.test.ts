@@ -30,6 +30,7 @@ describe("ALL_MODELS", () => {
   });
 
   it("contains the current curated models", () => {
+    expect(ALL_MODELS).toContain("anthropic/claude-sonnet-5.5");
     expect(ALL_MODELS).toContain("anthropic/claude-sonnet-5");
     expect(ALL_MODELS).toContain("anthropic/claude-opus-5");
     expect(ALL_MODELS).toContain("anthropic/claude-opus-4.8");
