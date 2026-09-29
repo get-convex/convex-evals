@@ -7,6 +7,7 @@ import {
   mkdirSync,
   chmodSync,
   utimesSync,
+  statSync,
 } from "fs";
 import { join } from "path";
 import { arch, platform, tmpdir } from "os";
@@ -14,6 +15,7 @@ import { rmSync } from "fs";
 import JSZip from "jszip";
 import {
   ADMIN_KEY,
+  CACHED_BINARY_MAX_AGE_MS,
   downloadConvexBinaryImpl,
   fetchConvexReleasesWithRetry,
   findCachedConvexBinary,
@@ -327,10 +329,15 @@ describe("binary cache lookup", () => {
     )[platform() as "darwin" | "linux" | "win32"] ?? platform();
   const assetName = `convex-local-backend-${cpuArch}-${osTriple}.zip`;
 
-  function writeBinary(name: string, mtimeSeconds: number): string {
+  const NOW = Date.UTC(2026, 8, 29);
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const now = (): number => NOW;
+
+  function writeBinary(name: string, ageMs: number = 0): string {
     const path = join(binaryDir, name);
     writeFileSync(path, "binary");
     chmodSync(path, 0o755);
+    const mtimeSeconds = (NOW - ageMs) / 1000;
     utimesSync(path, mtimeSeconds, mtimeSeconds);
     return path;
   }
@@ -366,17 +373,18 @@ describe("binary cache lookup", () => {
   it("uses the newest cached binary without calling the releases API", async () => {
     writeBinary(
       `convex-local-backend-precompiled-2026-08-12-c809010${exe}`,
-      1_000,
+      2 * DAY_MS,
     );
     const newest = writeBinary(
       `convex-local-backend-precompiled-2026-08-17-6363ab3${exe}`,
-      2_000,
+      DAY_MS,
     );
     let releaseCalls = 0;
     let downloadCalls = 0;
 
     const result = await downloadConvexBinaryImpl({
       binaryDir,
+      now,
       refresh: false,
       fetchReleases: async () => {
         releaseCalls++;
@@ -393,11 +401,111 @@ describe("binary cache lookup", () => {
     expect(downloadCalls).toBe(0);
   });
 
+  it("uses a cached binary just inside the maximum age", async () => {
+    const cached = writeBinary(
+      `convex-local-backend-precompiled-2026-09-23-1111111${exe}`,
+      CACHED_BINARY_MAX_AGE_MS - 1,
+    );
+
+    const result = await downloadConvexBinaryImpl({
+      binaryDir,
+      now,
+      refresh: false,
+      fetchReleases: async () => {
+        throw new Error("should not look up releases");
+      },
+    });
+
+    expect(result).toBe(cached);
+  });
+
+  it("looks up and downloads the latest release when the cache is stale", async () => {
+    writeBinary(
+      `convex-local-backend-precompiled-2026-09-01-2222222${exe}`,
+      CACHED_BINARY_MAX_AGE_MS + DAY_MS,
+    );
+    const version = "precompiled-2026-09-28-3333333";
+    let releaseCalls = 0;
+    const downloads: string[] = [];
+
+    const result = await downloadConvexBinaryImpl({
+      binaryDir,
+      now,
+      refresh: false,
+      fetchReleases: async () => {
+        releaseCalls++;
+        return releasesFor(version);
+      },
+      fetchImpl: (async (url: string) => {
+        downloads.push(url);
+        return zipResponse();
+      }) as unknown as typeof fetch,
+    });
+
+    expect(releaseCalls).toBe(1);
+    expect(downloads).toEqual([`https://example.test/${version}/${assetName}`]);
+    expect(result).toBe(
+      join(binaryDir, `convex-local-backend-${version}${exe}`),
+    );
+  });
+
+  it("restarts the cache window when a stale binary is still the latest", async () => {
+    const version = "precompiled-2026-09-01-4444444";
+    const cached = writeBinary(
+      `convex-local-backend-${version}${exe}`,
+      CACHED_BINARY_MAX_AGE_MS,
+    );
+
+    const result = await downloadConvexBinaryImpl({
+      binaryDir,
+      now,
+      refresh: false,
+      fetchReleases: async () => releasesFor(version),
+      fetchImpl: (async () => {
+        throw new Error("should not download");
+      }) as unknown as typeof fetch,
+    });
+
+    expect(result).toBe(cached);
+    expect(statSync(cached).mtimeMs).toBe(NOW);
+  });
+
+  it("falls back to a stale binary when the release lookup fails", async () => {
+    const cached = writeBinary(
+      `convex-local-backend-precompiled-2026-09-01-5555555${exe}`,
+      CACHED_BINARY_MAX_AGE_MS + DAY_MS,
+    );
+
+    const result = await downloadConvexBinaryImpl({
+      binaryDir,
+      now,
+      refresh: false,
+      fetchReleases: async () => {
+        throw new Error("HTTP 403 (rate limit remaining=0)");
+      },
+    });
+
+    expect(result).toBe(cached);
+  });
+
+  it("still fails when the release lookup fails and nothing is cached", async () => {
+    // eslint-disable-next-line @typescript-eslint/await-thenable
+    await expect(
+      downloadConvexBinaryImpl({
+        binaryDir,
+        now,
+        refresh: false,
+        fetchReleases: async () => {
+          throw new Error("HTTP 403 (rate limit remaining=0)");
+        },
+      }),
+    ).rejects.toThrow("rate limit remaining=0");
+  });
+
   it("ignores release zips, partial downloads and empty files", () => {
-    writeBinary(assetName, 3_000);
+    writeBinary(assetName);
     writeBinary(
       `convex-local-backend-precompiled-2026-09-01-aaaaaaa${exe}.partial`,
-      3_000,
     );
     writeFileSync(
       join(
@@ -406,7 +514,7 @@ describe("binary cache lookup", () => {
       ),
       "",
     );
-    writeBinary("unrelated-file", 3_000);
+    writeBinary("unrelated-file");
 
     expect(findCachedConvexBinary(binaryDir, isWindows)).toBeNull();
   });
@@ -414,7 +522,6 @@ describe("binary cache lookup", () => {
   it.skipIf(isWindows)("ignores binaries without the executable bit", () => {
     const path = writeBinary(
       "convex-local-backend-precompiled-2026-09-03-ccccccc",
-      1_000,
     );
     chmodSync(path, 0o644);
 
@@ -428,12 +535,13 @@ describe("binary cache lookup", () => {
   });
 
   it("downloads the latest release when nothing usable is cached", async () => {
-    writeBinary(assetName, 1_000);
+    writeBinary(assetName);
     const version = "precompiled-2026-09-20-ddddddd";
     const downloads: string[] = [];
 
     const result = await downloadConvexBinaryImpl({
       binaryDir,
+      now,
       refresh: false,
       fetchReleases: async () => releasesFor(version),
       fetchImpl: (async (url: string) => {
@@ -452,15 +560,13 @@ describe("binary cache lookup", () => {
   });
 
   it("asks GitHub for the latest release when a refresh is requested", async () => {
-    writeBinary(
-      `convex-local-backend-precompiled-2026-08-12-c809010${exe}`,
-      1_000,
-    );
+    writeBinary(`convex-local-backend-precompiled-2026-08-12-c809010${exe}`);
     const version = "precompiled-2026-09-21-eeeeeee";
     let releaseCalls = 0;
 
     const result = await downloadConvexBinaryImpl({
       binaryDir,
+      now,
       refresh: true,
       fetchReleases: async () => {
         releaseCalls++;
@@ -477,10 +583,11 @@ describe("binary cache lookup", () => {
 
   it("reuses a refreshed release that is already cached without downloading", async () => {
     const version = "precompiled-2026-09-22-fffffff";
-    const cached = writeBinary(`convex-local-backend-${version}${exe}`, 1_000);
+    const cached = writeBinary(`convex-local-backend-${version}${exe}`);
 
     const result = await downloadConvexBinaryImpl({
       binaryDir,
+      now,
       refresh: true,
       fetchReleases: async () => releasesFor(version),
       fetchImpl: (async () => {

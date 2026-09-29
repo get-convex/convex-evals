@@ -11,6 +11,7 @@ import {
   readdirSync,
   renameSync,
   statSync,
+  utimesSync,
 } from "fs";
 import { join } from "path";
 import { homedir, platform, arch } from "os";
@@ -283,37 +284,66 @@ export function findCachedConvexBinary(
   return newest?.path ?? null;
 }
 
+/**
+ * How long a cached binary is trusted before asking GitHub for the latest
+ * release again. Age is the file's mtime, which is set when the binary is
+ * downloaded and refreshed whenever the API confirms it is still the latest.
+ * A week keeps local runs close to the version CI downloads while staying
+ * far below the anonymous API limit.
+ */
+export const CACHED_BINARY_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Set to "1" to skip the cache and always ask GitHub for the latest release. */
+export const BACKEND_REFRESH_ENV_VAR = "CONVEX_BACKEND_REFRESH";
+
 export interface ConvexBinaryOptions {
   binaryDir?: string;
   fetchReleases?: () => Promise<GitHubRelease[]>;
   fetchImpl?: typeof fetch;
   /** Skip the cache and ask GitHub for the latest release. */
   refresh?: boolean;
+  now?: () => number;
 }
 
 /**
  * Resolve a local backend binary, downloading one only when needed.
  *
- * A cached binary is used without calling the GitHub releases API, because
- * the anonymous API limit is 60 requests an hour and every local run, answer
- * validation and test process would otherwise make its own request. CI
- * runners start with an empty cache, so they still download the
- * latest release. Set CONVEX_BACKEND_REFRESH=1 to check for a newer release
- * locally.
+ * A cached binary younger than CACHED_BINARY_MAX_AGE_MS is used without
+ * calling the GitHub releases API, because the anonymous API limit is 60
+ * requests an hour and every local run, answer validation and test process
+ * would otherwise make its own request. CI runners start with an empty cache,
+ * so they still download the latest release. Set CONVEX_BACKEND_REFRESH=1 to
+ * check for a newer release regardless of the cache age.
  */
 export async function downloadConvexBinaryImpl({
   binaryDir = join(homedir(), ".convex-evals", "releases"),
   fetchReleases = fetchConvexReleases,
   fetchImpl = fetch,
-  refresh = process.env.CONVEX_BACKEND_REFRESH === "1",
+  refresh = process.env[BACKEND_REFRESH_ENV_VAR] === "1",
+  now = Date.now,
 }: ConvexBinaryOptions = {}): Promise<string> {
   const isWindows = platform() === "win32";
-  if (!refresh) {
-    const cached = findCachedConvexBinary(binaryDir, isWindows);
-    if (cached) return cached;
+  const cached = findCachedConvexBinary(binaryDir, isWindows);
+  if (
+    !refresh &&
+    cached &&
+    now() - statSync(cached).mtimeMs < CACHED_BINARY_MAX_AGE_MS
+  ) {
+    return cached;
   }
 
-  const releases = await fetchReleases();
+  let releases: GitHubRelease[];
+  try {
+    releases = await fetchReleases();
+  } catch (error) {
+    // A stale binary still runs; prefer it to failing the whole run when
+    // GitHub is unavailable or rate limiting this machine.
+    if (!cached) throw error;
+    logInfo(
+      `[backend] Release lookup failed (${String(error)}), using cached binary ${cached}`,
+    );
+    return cached;
+  }
 
   const cpuArch = ARCH_MAP[arch()] ?? arch();
   const osTriple = OS_MAP[platform()] ?? platform();
@@ -329,7 +359,13 @@ export async function downloadConvexBinaryImpl({
   const binaryName = `${BINARY_PREFIX}${match.version}${isWindows ? ".exe" : ""}`;
   const binaryPath = join(binaryDir, binaryName);
 
-  if (existsSync(binaryPath)) return binaryPath;
+  if (existsSync(binaryPath)) {
+    // GitHub confirmed this cached binary is still the latest, so restart its
+    // cache window instead of calling the API on every run until a release.
+    const confirmedAt = now() / 1000;
+    utimesSync(binaryPath, confirmedAt, confirmedAt);
+    return binaryPath;
+  }
 
   logInfo(`Latest release: ${match.version}`);
   logInfo(`Downloading: ${match.asset.browser_download_url}`);
