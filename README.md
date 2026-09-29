@@ -54,9 +54,7 @@ decision benchmark has been minted. Minting does not initiate model calls.
 Hosted question/source evidence remains JSON. Final run evidence is a `.json.gz`
 file whose digest covers the compressed bytes; repeated journal requests are
 represented by hashes checked against the reconstructed requests. The original
-local request/attempt logs remain unchanged. The
-[shared-table rollout guide](docs/shared-kind-migration.md) covers the compatible
-deployment, tag-only migration and separately deployed strict stage.
+local request/attempt logs remain unchanged.
 
 Jev uses OpenRouter's `/api/alpha/decisions` endpoint with native typed questions;
 the language models use `/api/v1/chat/completions`. The hosted Jev configuration
@@ -88,10 +86,16 @@ First, install dependencies:
 npm install -g bun
 bun install
 
-echo "ANTHROPIC_API_KEY=<your ANTHROPIC_API_KEY>" > .env
-echo "OPENAI_API_KEY=<your OPENAI_API_KEY>" >> .env
-bun run setup:convex
+echo "OPENROUTER_API_KEY=<your OPENROUTER_API_KEY>" > .env
+# Only needed for no_guidelines_with_web runs:
+echo "EXA_API_KEY=<your EXA_API_KEY>" >> .env
+bun run setup
 ```
+
+Every model runs through OpenRouter, so `OPENROUTER_API_KEY` is the only
+required key. `bun run setup` installs root, `evalScores` and `visualizer`
+dependencies, copies `.env` from another worktree when it is missing, and runs
+`bun run setup:convex`.
 
 `bun run setup:convex` creates ignored `.env.local` files for the shared Convex
 development deployment. Codex worktrees run this automatically via
@@ -114,27 +118,23 @@ This launches an interactive menu where you can:
 - Run all evals
 - Select specific categories to run
 - Select individual evals
-- Re-run failed evals from your last run
 - Choose which model(s) to use
 
 #### CLI Commands
 
-| Command                         | Description                            |
-| ------------------------------- | -------------------------------------- |
-| `bun run evals`                 | Interactive mode                       |
-| `bun run evals list`            | List all available evals by category   |
-| `bun run evals status`          | Show results from last run             |
-| `bun run evals status --failed` | Show only failed evals                 |
-| `bun run evals models`          | List available models                  |
-| `bun run evals:failed`          | Re-run only failed evals from last run |
+| Command                | Description                          |
+| ---------------------- | ------------------------------------ |
+| `bun run evals`        | Interactive mode                     |
+| `bun run evals list`   | List all available evals by category |
+| `bun run evals models` | List available models                |
 
 #### CLI Options
 
-Run evals directly without interactive mode:
+Run evals directly without interactive mode. Always pass a model: without `-m` or `MODELS`, a run uses every curated model in `ALL_MODELS` (about $87 per full pass as of 2026-09-29).
 
 ```bash
 # Run specific categories
-bun run evals run -c 000-fundamentals 002-queries
+bun run evals run -m anthropic/claude-sonnet-5 -c 000-fundamentals 002-queries
 
 # Run with a specific model
 bun run evals run -m anthropic/claude-sonnet-5 -c 005-idioms
@@ -142,14 +142,8 @@ bun run evals run -m anthropic/claude-sonnet-5 -c 005-idioms
 # Run with multiple models
 bun run evals run -m anthropic/claude-sonnet-5 -m openai/gpt-5.5 -f "000-fundamentals"
 
-# Re-run failed evals
-bun run evals run --failed
-
 # Filter by regex pattern
-bun run evals run -f "pagination"
-
-# Post results to Convex database
-bun run evals run --post-to-convex -c 000-fundamentals
+bun run evals run -m anthropic/claude-sonnet-5 -f "pagination"
 ```
 
 ### Running directly
@@ -157,28 +151,30 @@ bun run evals run --post-to-convex -c 000-fundamentals
 You can run the eval runner directly:
 
 ```bash
-bun run runner/index.ts
+MODELS=anthropic/claude-sonnet-5 bun run runner/index.ts
 ```
 
 You can specify a test filter regex via an environment variable:
 
 ```bash
-TEST_FILTER='data_modeling' bun run runner/index.ts
+MODELS=anthropic/claude-sonnet-5 TEST_FILTER='data_modeling' bun run runner/index.ts
 ```
 
 The test will also print out what temporary directory it's using for storing the generated files. You can override this
 with the `OUTPUT_TEMPDIR` environment variable.
 
 ```bash
-OUTPUT_TEMPDIR=/tmp/convex-codegen-evals bun run runner/index.ts
+MODELS=anthropic/claude-sonnet-5 OUTPUT_TEMPDIR=/tmp/convex-codegen-evals bun run runner/index.ts
 ```
 
 ### Environment variables
 
-`no_guidelines_with_web` provides common web tools in our harness. It currently
-pins OpenRouter search and fetch to Exa using the existing `OPENROUTER_API_KEY`.
-Use `DISABLE_CONVEX_REPORTING=1` until the updated backend is deployed. See the
-[experiment guide](docs/no-guidelines-with-web.md) for its limits and traces.
+`no_guidelines_with_web` gives models client-owned Exa search and page-fetch
+tools in our harness. It needs `CLIENT_WEB_TOOLS=1`, `OPENROUTER_API_KEY` and
+`EXA_API_KEY`. Local runs also need `DISABLE_CONVEX_REPORTING=1`, and
+`bun run evals run -e no_guidelines_with_web -m <model>` sets both flags. See the
+[experiment guide](docs/no-guidelines-with-web.md) and
+[benchmark source filtering](docs/web-source-filtering.md) for its limits.
 
 | Variable            | Description                                             |
 | ------------------- | ------------------------------------------------------- |
@@ -206,12 +202,10 @@ Note that test or category names cannot contain dashes.
 ### Implementing the answer
 
 1. Create `schema.ts` first
-2. Run codegen to generate types:
-   ```bash
-   cd evals/<category>/<eval>/answer && bunx convex codegen
-   ```
+2. Copy `convex/_generated` from a sibling single-module eval's answer.
+   `bunx convex codegen` fails without a Convex deployment, and the scorer
+   regenerates `_generated` when it deploys.
 3. Implement solution files
-4. Run codegen again after any schema changes
 
 ## Writing evals
 
@@ -298,6 +292,11 @@ An optional `eval.json` can select another pipeline:
 
 ## AI grading
 
+`createAIGraderTest` is currently a no-op. Its test body is commented out in
+`grader/aiGrader.ts`, so evals that call it get no AI assessment. The rest of
+this section describes it as it would run if re-enabled, which would need
+`OPENAI_API_KEY`.
+
 Grader tests can include a lightweight AI-based assessment that reviews the generated project and provides concise reasoning on pass/fail.
 
 The grader builds a prompt from `TASK.txt` plus a manifest of files from the generated output directory and asks a model to decide pass/fail with reasoning. On failure, the reasoning appears directly in the test output and in `run.log`.
@@ -337,7 +336,7 @@ bun run scripts/listModels.ts --due-only --format json
 The repo has one scheduled periodic eval workflow:
 
 - `periodic_evals.yml` runs every 4 hours
-- each run unions candidates from curated models, top-weekly non-curated OpenRouter models, and top OpenRouter benchmark models
+- each run unions candidates from curated models and up to 15 top-weekly non-curated OpenRouter models
 - the combined candidate list is deduped before the workflow matrix expands
 
 The periodic workflow uses the same scheduling policy before it actually queues a model:
@@ -371,8 +370,11 @@ sentinel, so the foreign key is always present without publishing a version
 automatically. Local runners are also prevented from reporting to the
 production Convex deployment.
 
-After explicit approval, mint the version against a configured deployment:
+After explicit approval, mint through the workflow on `main`:
 
 ```bash
-bun run benchmark:mint
+gh workflow run mint_benchmark.yml --ref main -f kind=coding   # or kind=decision
 ```
+
+`bun run benchmark:mint` fails without `BENCHMARK_KIND` and refuses production
+outside that workflow.
