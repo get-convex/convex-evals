@@ -84,8 +84,8 @@ their behavior must be inspected before interpreting that apparent contrast.
 ## Proposed task clarifications
 
 The nested-limit clarification has been applied. The time-window clarification
-was applied to `TASK.txt` in #306. The cascade-delete wording
-remains a proposal; that task has not been edited in this batch.
+was applied to `TASK.txt` in #306. The cascade-delete proposal was dropped on
+2026-09-29; that task stays as it is.
 
 ### Time-window query
 
@@ -100,23 +100,6 @@ implementation of that requested property, not spontaneous selection of a
 reactive time-update strategy. If spontaneous strategy selection is the intended
 goal instead, use a separate product scenario with observable freshness and
 allowed alternatives rather than silently grading this narrower query as one.
-
-### Cascade delete
-
-To preserve the current grader's intended missing-user behavior, add:
-
-> If the user does not exist, throw an error and leave all stored data unchanged.
-> The error message is not prescribed.
-
-Idempotent deletion is also a reasonable product choice, but would require a
-different explicit contract. "Proper error handling" does not decide between
-them. Add fixtures for comments and likes authored by the deleted user on another
-user's surviving post, alongside other users' records that must remain.
-
-The current reference loads dependent records with `collect()`. This eval should
-make no claim about deletion of an unbounded account history; that needs the
-separate batching/completion coverage already requested. Making a single
-transaction delete arbitrarily many rows would be an incompatible requirement.
 
 ### Nested mutation limit
 
