@@ -48,5 +48,17 @@ export const ALL_MODELS: string[] = [
 
 export const MODEL_NAMES: Set<string> = new Set(ALL_MODELS);
 
+// These models' no_guidelines_with_web runs aborted twice in the 2026-09-16
+// client-web batch (request timeouts in the tool loop, or Gemini's corrupted
+// thought signature). The periodic schedule skips only their web condition.
+// Remove an entry to let the schedule retry it.
+export const PERIODIC_WEB_EXCLUDED_MODELS: string[] = [
+  "deepseek/deepseek-v4-pro-0813",
+  "google/gemini-3.8-flash",
+  "tencent/hy3",
+  "tencent/hy4-preview",
+  "upstage/solar-pro4",
+];
+
 export const SYSTEM_PROMPT =
   "You are convexbot, a highly advanced software engineer specialized in creating applications using Convex and TypeScript.";

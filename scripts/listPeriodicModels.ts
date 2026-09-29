@@ -7,12 +7,19 @@
  *
  * Usage:
  *   bun run scripts/listPeriodicModels.ts --format json [--output-file <path>]
+ *     [--experiments '["default","no_guidelines"]']
+ *
+ * With --experiments, the output is a GitHub Actions matrix of model and
+ * experiment pairs instead of a model list.
  */
 import "dotenv/config";
 import chalk from "chalk";
 import { ConvexHttpClient } from "convex/browser";
 import { writeFile } from "node:fs/promises";
-import { ALL_MODELS } from "../runner/models/index.js";
+import {
+  ALL_MODELS,
+  PERIODIC_WEB_EXCLUDED_MODELS,
+} from "../runner/models/index.js";
 import {
   getTextOutputEvalIncompatibilityReason,
   resolveModel,
@@ -42,10 +49,20 @@ export interface MergeModelsResult {
   modelSources: Record<string, ModelSourceName[]>;
 }
 
-function parseArgs(): { format: string; outputFile?: string } {
+export interface PeriodicMatrixEntry {
+  model: string;
+  experiment: string;
+}
+
+function parseArgs(): {
+  format: string;
+  outputFile?: string;
+  experiments?: string[];
+} {
   const args = process.argv.slice(2);
   let format = DEFAULT_FORMAT;
   let outputFile: string | undefined;
+  let experiments: string[] | undefined;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--format" && args[i + 1]) {
@@ -54,9 +71,12 @@ function parseArgs(): { format: string; outputFile?: string } {
     if (args[i] === "--output-file" && args[i + 1]) {
       outputFile = args[++i];
     }
+    if (args[i] === "--experiments" && args[i + 1]) {
+      experiments = JSON.parse(args[++i]) as string[];
+    }
   }
 
-  return { format, outputFile };
+  return { format, outputFile, experiments };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -184,6 +204,24 @@ export function mergeModelSources(
     models,
     modelSources: Object.fromEntries(modelSources),
   };
+}
+
+export function buildPeriodicMatrix(
+  models: string[],
+  experiments: string[],
+  webExcludedModels: ReadonlySet<string> = new Set(
+    PERIODIC_WEB_EXCLUDED_MODELS,
+  ),
+): PeriodicMatrixEntry[] {
+  return models.flatMap((model) =>
+    experiments
+      .filter(
+        (experiment) =>
+          experiment !== "no_guidelines_with_web" ||
+          !webExcludedModels.has(model),
+      )
+      .map((experiment) => ({ model, experiment })),
+  );
 }
 
 function logSelectionSummary(
@@ -385,10 +423,26 @@ export async function selectPeriodicModels(): Promise<string[]> {
 }
 
 export async function main(): Promise<void> {
-  const { format, outputFile } = parseArgs();
+  const { format, outputFile, experiments } = parseArgs();
   const models = await selectPeriodicModels();
-  const serializedModels =
-    format === "json" ? JSON.stringify(models) : models.join(",");
+  let serializedModels: string;
+  if (experiments) {
+    const include = buildPeriodicMatrix(models, experiments);
+    if (experiments.includes("no_guidelines_with_web")) {
+      for (const model of models.filter((m) =>
+        PERIODIC_WEB_EXCLUDED_MODELS.includes(m),
+      )) {
+        logWarning(
+          `[periodic] [matrix] skipping no_guidelines_with_web for ${model}: listed in PERIODIC_WEB_EXCLUDED_MODELS`,
+        );
+      }
+    }
+    logSummary(`[periodic] matrix contains ${include.length} jobs`);
+    serializedModels = JSON.stringify({ include });
+  } else {
+    serializedModels =
+      format === "json" ? JSON.stringify(models) : models.join(",");
+  }
 
   if (outputFile) {
     await writeFile(outputFile, serializedModels, "utf8");

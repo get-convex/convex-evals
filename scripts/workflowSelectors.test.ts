@@ -5,7 +5,10 @@ import {
   shouldSkipForProviderError,
   shouldSkipForMissingEndpoint,
 } from "./listTopOpenRouterModels.js";
-import { mergeModelSources } from "./listPeriodicModels.js";
+import {
+  buildPeriodicMatrix,
+  mergeModelSources,
+} from "./listPeriodicModels.js";
 
 describe("top OpenRouter selector helpers", () => {
   it("deduplicates while preserving ranking order", () => {
@@ -98,5 +101,30 @@ describe("periodic selector helpers", () => {
         c: ["top-weekly"],
       },
     });
+  });
+
+  it("skips only the web condition for web-excluded models", () => {
+    expect(
+      buildPeriodicMatrix(
+        ["a", "b"],
+        ["default", "no_guidelines", "no_guidelines_with_web"],
+        new Set(["b"]),
+      ),
+    ).toEqual([
+      { model: "a", experiment: "default" },
+      { model: "a", experiment: "no_guidelines" },
+      { model: "a", experiment: "no_guidelines_with_web" },
+      { model: "b", experiment: "default" },
+      { model: "b", experiment: "no_guidelines" },
+    ]);
+  });
+
+  it("keeps excluded models when web is not scheduled", () => {
+    expect(
+      buildPeriodicMatrix(["b"], ["default", "no_guidelines"], new Set(["b"])),
+    ).toEqual([
+      { model: "b", experiment: "default" },
+      { model: "b", experiment: "no_guidelines" },
+    ]);
   });
 });

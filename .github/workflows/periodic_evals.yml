@@ -8,13 +8,18 @@ on:
 permissions:
   contents: read
 
+# A catch-up pass can outlast the 4-hour cron. Queue the next pass instead of
+# overlapping it, so models that have not started yet are not dispatched twice.
+concurrency:
+  group: periodic-evals
+  cancel-in-progress: false
+
 jobs:
   setup:
     runs-on: ubuntu-latest
     outputs:
-      models: ${{ steps.set-models.outputs.models }}
+      matrix: ${{ steps.set-models.outputs.matrix }}
       has_models: ${{ steps.set-models.outputs.has_models }}
-      experiments: ${{ steps.set-experiments.outputs.experiments }}
     steps:
       - uses: actions/checkout@v4
 
@@ -41,11 +46,12 @@ jobs:
         env:
           CONVEX_EVAL_URL: ${{ secrets.CONVEX_EVAL_URL }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          EXPERIMENTS: ${{ steps.set-experiments.outputs.experiments }}
         run: |
-          bun run scripts/listPeriodicModels.ts --format json --output-file /tmp/periodic-models.json
-          models=$(< /tmp/periodic-models.json)
-          echo "models=$models" >> $GITHUB_OUTPUT
-          if [ "$models" = "[]" ]; then
+          bun run scripts/listPeriodicModels.ts --format json --experiments "$EXPERIMENTS" --output-file /tmp/periodic-matrix.json
+          matrix=$(< /tmp/periodic-matrix.json)
+          echo "matrix=$matrix" >> $GITHUB_OUTPUT
+          if [ "$matrix" = '{"include":[]}' ]; then
             echo "has_models=false" >> $GITHUB_OUTPUT
           else
             echo "has_models=true" >> $GITHUB_OUTPUT
@@ -59,9 +65,7 @@ jobs:
     strategy:
       fail-fast: false
       max-parallel: 4
-      matrix:
-        model: ${{ fromJson(needs.setup.outputs.models) }}
-        experiment: ${{ fromJson(needs.setup.outputs.experiments) }}
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
 
     env:
       ENVIRONMENT: ci
