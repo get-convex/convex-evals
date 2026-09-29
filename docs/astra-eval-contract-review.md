@@ -1,4 +1,4 @@
-> **Current review status:** the previous platform-grader readiness statement was withdrawn after independent review. The active correction replaces the shared QuickJS execution runtime, separates grader infrastructure errors from model scores, and clarifies task contracts. See [the current review and decision record](query-probe-review.md). This batch remains uncommitted.
+> **Current review status:** the previous platform-grader readiness statement was withdrawn after independent review. The active correction replaces the shared QuickJS execution runtime, separates grader infrastructure errors from model scores, and clarifies task contracts. See [the current review and decision record](query-probe-review.md). This batch was committed in cc33c61 (#306).
 
 # Astra eval task-contract review
 
@@ -84,7 +84,7 @@ their behavior must be inspected before interpreting that apparent contrast.
 ## Proposed task clarifications
 
 The nested-limit clarification has been applied. The time-window clarification
-is now drafted in the uncommitted `TASK.txt` changes. The cascade-delete wording
+was applied to `TASK.txt` in #306. The cascade-delete wording
 remains a proposal; that task has not been edited in this batch.
 
 ### Time-window query
