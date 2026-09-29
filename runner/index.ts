@@ -446,6 +446,24 @@ export async function runEvalsForModel(
         runId = null;
         throw new InfrastructureError(reason);
       }
+
+      // Provider failures that survive retries are scored as failed evals.
+      // When they dominate a run, the score measures the provider rather
+      // than the model, so invalidate the run the same way.
+      const providerFailureReason = getProviderFailureRunReason(allResults);
+      if (providerFailureReason) {
+        console.error(
+          `Run invalid, marking ${runId} failed: ${providerFailureReason}`,
+        );
+        await completeRun(runId, {
+          kind: "failed",
+          failureReason: providerFailureReason,
+          durationMs: Date.now() - runStartTime,
+        });
+        logInfo(`Marked run ${runId} as failed due to provider failures`);
+        runId = null;
+        throw new InfrastructureError(providerFailureReason);
+      }
     }
 
     // Print summary
@@ -880,6 +898,46 @@ function hasZeroTotalTokens(usage: LanguageModelUsage | undefined): boolean {
     return true;
   }
   return false;
+}
+
+/**
+ * Share of evals that may fail on the provider before the run is discarded.
+ *
+ * Chosen from production data (2026-09-29): across 257 completed full runs
+ * since provider retries landed on 2026-08-26, the worst healthy run had
+ * 13/111 (11.7%) provider-failure evals and p99 was 10.8%, all from models
+ * with chronic empty responses. The Fable 5.1 incident on 2026-09-01 was
+ * about 25%. 15% leaves headroom above the healthy tail and still catches it.
+ */
+export const MAX_PROVIDER_FAILURE_SHARE = 0.15;
+
+/**
+ * Minimum provider-failure evals before the share applies, so a small
+ * filtered run (e.g. 1 of 2 evals hitting a provider error) is not discarded.
+ */
+export const MIN_PROVIDER_FAILURES_TO_INVALIDATE = 5;
+
+const PROVIDER_FAILURE_PREFIXES = ["[infrastructure]", "[rate_limit]"];
+
+/** Return the run failure reason when too many evals failed on the provider. */
+export function getProviderFailureRunReason(
+  results: readonly EvalIndividualResult[],
+): string | null {
+  if (results.length === 0) return null;
+  const providerFailures = results.filter(
+    (result) =>
+      !result.passed &&
+      PROVIDER_FAILURE_PREFIXES.some((prefix) =>
+        result.failure_reason?.startsWith(prefix),
+      ),
+  ).length;
+  if (
+    providerFailures < MIN_PROVIDER_FAILURES_TO_INVALIDATE ||
+    providerFailures / results.length <= MAX_PROVIDER_FAILURE_SHARE
+  ) {
+    return null;
+  }
+  return `[infrastructure] [provider_failures] ${providerFailures}/${results.length} evals failed on the provider`;
 }
 
 function truncateRawModelResponse(response: string): string {

@@ -8,6 +8,9 @@ import {
   chmodSync,
   unlinkSync,
   writeFileSync,
+  readdirSync,
+  renameSync,
+  statSync,
 } from "fs";
 import { join } from "path";
 import { homedir, platform, arch } from "os";
@@ -164,7 +167,7 @@ const OS_MAP: Record<string, string> = {
   win32: "pc-windows-msvc",
 };
 
-interface GitHubRelease {
+export interface GitHubRelease {
   tag_name: string;
   assets: Array<{ name: string; browser_download_url: string }>;
 }
@@ -243,8 +246,74 @@ async function downloadConvexBinary(): Promise<string> {
   }
 }
 
-async function downloadConvexBinaryImpl(): Promise<string> {
-  const releases = await fetchConvexReleases();
+const BINARY_PREFIX = "convex-local-backend-";
+
+/**
+ * Find the most recently downloaded backend binary in `binaryDir`.
+ *
+ * Cached binaries are named `convex-local-backend-<release tag>` (plus `.exe`
+ * on Windows). The release zip and in-progress downloads share the prefix, so
+ * anything with another extension is ignored, as are empty files and, off
+ * Windows, files without the executable bit.
+ */
+export function findCachedConvexBinary(
+  binaryDir: string,
+  isWindows: boolean = platform() === "win32",
+): string | null {
+  if (!existsSync(binaryDir)) return null;
+
+  let newest: { path: string; mtimeMs: number } | null = null;
+  for (const name of readdirSync(binaryDir)) {
+    if (!name.startsWith(BINARY_PREFIX)) continue;
+    const version = isWindows
+      ? name.endsWith(".exe")
+        ? name.slice(BINARY_PREFIX.length, -".exe".length)
+        : null
+      : name.slice(BINARY_PREFIX.length);
+    if (!version || version.includes(".")) continue;
+
+    const path = join(binaryDir, name);
+    const stats = statSync(path);
+    if (!stats.isFile() || stats.size === 0) continue;
+    if (!isWindows && (stats.mode & 0o111) === 0) continue;
+    if (!newest || stats.mtimeMs > newest.mtimeMs) {
+      newest = { path, mtimeMs: stats.mtimeMs };
+    }
+  }
+  return newest?.path ?? null;
+}
+
+export interface ConvexBinaryOptions {
+  binaryDir?: string;
+  fetchReleases?: () => Promise<GitHubRelease[]>;
+  fetchImpl?: typeof fetch;
+  /** Skip the cache and ask GitHub for the latest release. */
+  refresh?: boolean;
+}
+
+/**
+ * Resolve a local backend binary, downloading one only when needed.
+ *
+ * A cached binary is used without calling the GitHub releases API, because
+ * the anonymous API limit is 60 requests an hour and every local run, answer
+ * validation and test process would otherwise make its own request. CI
+ * runners start with an empty cache, so they still download the
+ * latest release. Set CONVEX_BACKEND_REFRESH=1 to check for a newer release
+ * locally.
+ */
+export async function downloadConvexBinaryImpl({
+  binaryDir = join(homedir(), ".convex-evals", "releases"),
+  fetchReleases = fetchConvexReleases,
+  fetchImpl = fetch,
+  refresh = process.env.CONVEX_BACKEND_REFRESH === "1",
+}: ConvexBinaryOptions = {}): Promise<string> {
+  const isWindows = platform() === "win32";
+  if (!refresh) {
+    const cached = findCachedConvexBinary(binaryDir, isWindows);
+    if (cached) return cached;
+  }
+
+  const releases = await fetchReleases();
 
   const cpuArch = ARCH_MAP[arch()] ?? arch();
   const osTriple = OS_MAP[platform()] ?? platform();
@@ -255,11 +324,9 @@ async function downloadConvexBinaryImpl(): Promise<string> {
     throw new Error(`Could not find matching asset for ${targetPattern}`);
   }
 
-  const binaryDir = join(homedir(), ".convex-evals", "releases");
   mkdirSync(binaryDir, { recursive: true });
 
-  const isWindows = platform() === "win32";
-  const binaryName = `convex-local-backend-${match.version}${isWindows ? ".exe" : ""}`;
+  const binaryName = `${BINARY_PREFIX}${match.version}${isWindows ? ".exe" : ""}`;
   const binaryPath = join(binaryDir, binaryName);
 
   if (existsSync(binaryPath)) return binaryPath;
@@ -272,7 +339,7 @@ async function downloadConvexBinaryImpl(): Promise<string> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
     try {
-      const resp = await fetch(match.asset.browser_download_url, {
+      const resp = await fetchImpl(match.asset.browser_download_url, {
         signal: controller.signal,
       });
       if (!resp.ok) {
@@ -305,12 +372,16 @@ async function downloadConvexBinaryImpl(): Promise<string> {
         );
       }
 
+      // Write under a temporary name so an interrupted extraction never
+      // leaves a truncated binary that the cache lookup would reuse.
       const content = await entry.async("nodebuffer");
-      writeFileSync(binaryPath, content);
+      const partialPath = `${binaryPath}.partial`;
+      writeFileSync(partialPath, content);
 
       if (!isWindows) {
-        chmodSync(binaryPath, 0o755);
+        chmodSync(partialPath, 0o755);
       }
+      renameSync(partialPath, binaryPath);
 
       // Clean up zip
       try {

@@ -1,6 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import { rejects } from "node:assert/strict";
-import { buildEvalResult, runEvalsForModel } from "./index.js";
+import {
+  buildEvalResult,
+  getProviderFailureRunReason,
+  MAX_PROVIDER_FAILURE_SHARE,
+  MIN_PROVIDER_FAILURES_TO_INVALIDATE,
+  runEvalsForModel,
+} from "./index.js";
+import type { EvalIndividualResult } from "./reporting.js";
 
 describe("experiment validation before starting a run", () => {
   it("rejects a missing OpenRouter key before starting any model or reporting work", async () => {
@@ -135,5 +142,124 @@ describe("buildEvalResult", () => {
     expect(result.passed).toBe(false);
     expect(result.failure_reason).toBe("tests fail");
     expect(result.tests_pass_score).toBe(0.5);
+  });
+});
+
+describe("getProviderFailureRunReason", () => {
+  function results(counts: {
+    passed?: number;
+    modelFailures?: number;
+    infrastructure?: number;
+    rateLimit?: number;
+  }): EvalIndividualResult[] {
+    const make = (
+      passed: boolean,
+      failureReason: string | null,
+    ): EvalIndividualResult => ({
+      category: "000-fundamentals",
+      name: "000-empty_functions",
+      passed,
+      tests_pass_score: passed ? 1 : 0,
+      failure_reason: failureReason,
+      directory_path: null,
+      scores: {},
+    });
+    return [
+      ...Array.from({ length: counts.passed ?? 0 }, () => make(true, null)),
+      ...Array.from({ length: counts.modelFailures ?? 0 }, () =>
+        make(false, "tests fail"),
+      ),
+      ...Array.from({ length: counts.infrastructure ?? 0 }, () =>
+        make(
+          false,
+          "[infrastructure] error: EmptyProviderResponseError: Provider returned an empty response",
+        ),
+      ),
+      ...Array.from({ length: counts.rateLimit ?? 0 }, () =>
+        make(false, "[rate_limit] error: 429 Too Many Requests"),
+      ),
+    ];
+  }
+
+  it("keeps a healthy run with the worst provider-failure count seen in production", () => {
+    // 13/111 (11.7%) was the highest share in a completed production run.
+    expect(
+      getProviderFailureRunReason(
+        results({ passed: 80, modelFailures: 18, infrastructure: 13 }),
+      ),
+    ).toBeNull();
+  });
+
+  it("fails a full run where about a quarter of evals failed on the provider", () => {
+    expect(
+      getProviderFailureRunReason(
+        results({
+          passed: 80,
+          modelFailures: 4,
+          infrastructure: 20,
+          rateLimit: 8,
+        }),
+      ),
+    ).toBe(
+      "[infrastructure] [provider_failures] 28/112 evals failed on the provider",
+    );
+  });
+
+  it("counts rate-limit failures towards the threshold", () => {
+    expect(
+      getProviderFailureRunReason(results({ passed: 90, rateLimit: 22 })),
+    ).toBe(
+      "[infrastructure] [provider_failures] 22/112 evals failed on the provider",
+    );
+  });
+
+  it("uses a strict share threshold", () => {
+    const atThreshold = Math.round(100 * MAX_PROVIDER_FAILURE_SHARE);
+    expect(
+      getProviderFailureRunReason(
+        results({ passed: 100 - atThreshold, infrastructure: atThreshold }),
+      ),
+    ).toBeNull();
+    expect(
+      getProviderFailureRunReason(
+        results({ passed: 99 - atThreshold, infrastructure: atThreshold + 1 }),
+      ),
+    ).not.toBeNull();
+  });
+
+  it("does not fail a small filtered run below the minimum failure count", () => {
+    expect(
+      getProviderFailureRunReason(results({ passed: 1, infrastructure: 1 })),
+    ).toBeNull();
+    expect(
+      getProviderFailureRunReason(
+        results({
+          passed: 1,
+          infrastructure: MIN_PROVIDER_FAILURES_TO_INVALIDATE - 1,
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it("fails a small run once the minimum count and share are both exceeded", () => {
+    expect(
+      getProviderFailureRunReason(
+        results({
+          passed: 5,
+          infrastructure: MIN_PROVIDER_FAILURES_TO_INVALIDATE,
+        }),
+      ),
+    ).toBe(
+      `[infrastructure] [provider_failures] ${MIN_PROVIDER_FAILURES_TO_INVALIDATE}/${
+        5 + MIN_PROVIDER_FAILURES_TO_INVALIDATE
+      } evals failed on the provider`,
+    );
+  });
+
+  it("ignores model failures and empty runs", () => {
+    expect(
+      getProviderFailureRunReason(results({ passed: 10, modelFailures: 90 })),
+    ).toBeNull();
+    expect(getProviderFailureRunReason([])).toBeNull();
   });
 });
