@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { rejects } from "node:assert/strict";
-import { buildEnvVars } from "./runEvals";
+import { buildEnvVars, resolveRunModels } from "./runEvals";
 import { runEvalsForModel } from "../runner/index";
 
 const previous = { ...process.env };
@@ -76,4 +76,20 @@ test("web selection still gives an actionable missing-key error", async () => {
     }),
     /EXA_API_KEY is required/,
   );
+});
+
+test("run without -m never leaves MODELS unset for the runner", () => {
+  const [defaultModel] = resolveRunModels(undefined, {});
+  expect(defaultModel).toBeTruthy();
+  expect(buildEnvVars({ models: [defaultModel] }, {}).MODELS).toBe(
+    defaultModel,
+  );
+  expect(resolveRunModels(undefined, { MODELS: " " })).toEqual([defaultModel]);
+  // An explicit MODELS in the shell passes through untouched.
+  const inherited = { MODELS: "a/b,c/d" };
+  expect(
+    buildEnvVars({ models: resolveRunModels(undefined, inherited) }, inherited)
+      .MODELS,
+  ).toBe("a/b,c/d");
+  expect(resolveRunModels(["x/y"], inherited)).toEqual(["x/y"]);
 });

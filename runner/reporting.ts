@@ -20,8 +20,22 @@ import type { LanguageModelUsage } from "ai";
 
 // ── Config ────────────────────────────────────────────────────────────
 
-function isConvexReportingDisabled(): boolean {
-  return process.env.DISABLE_CONVEX_REPORTING === "1";
+export const FILTERED_RUN_REPORTING_MESSAGE =
+  "TEST_FILTER is set, so Convex reporting is disabled for this process: " +
+  "a partial run would count as the model's latest run for scheduling and " +
+  "skew its average run cost";
+let warnedAboutFilteredRunReporting = false;
+
+export function isConvexReportingDisabled(
+  environment: Record<string, string | undefined> = process.env,
+): boolean {
+  if (environment.DISABLE_CONVEX_REPORTING === "1") return true;
+  if (!environment.TEST_FILTER) return false;
+  if (!warnedAboutFilteredRunReporting) {
+    logInfo(FILTERED_RUN_REPORTING_MESSAGE);
+    warnedAboutFilteredRunReporting = true;
+  }
+  return true;
 }
 
 const PRODUCTION_CONVEX_URL = "https://fabulous-panther-525.convex.cloud";

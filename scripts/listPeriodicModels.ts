@@ -28,6 +28,7 @@ import {
 import type { ResolvedModel } from "../runner/models/index.js";
 import {
   fetchTopDailySlugs,
+  isOpenRouterFreeVariant,
   shouldSkipForProviderError,
   shouldSkipForMissingEndpoint,
 } from "./listTopOpenRouterModels.js";
@@ -148,19 +149,35 @@ async function collectTopDayModels(): Promise<string[]> {
   logInfo(
     `[periodic] fetching top-weekly OpenRouter models, target ${TOP_DAY_LIMIT}`,
   );
-  const knownModels = new Set(ALL_MODELS);
   const topSlugs = await fetchTopDailySlugs().catch((error) => {
     logError(
       `[periodic] top-weekly OpenRouter source unavailable, continuing with curated models only: ${String(error)}`,
     );
     return [];
   });
+  const selected = selectTopWeeklyCandidates(topSlugs, TOP_DAY_LIMIT);
+  logInfo(`[periodic] top-weekly source produced ${selected.length} models`);
+  return selected;
+}
+
+export function selectTopWeeklyCandidates(
+  topSlugs: string[],
+  limit: number,
+  knownModels: ReadonlySet<string> = new Set(ALL_MODELS),
+): string[] {
   const selected: string[] = [];
 
   for (const slug of topSlugs) {
     if (knownModels.has(slug)) {
       logWarning(
         `[periodic] [top-weekly] skipping ${slug}: already covered by curated models`,
+      );
+      continue;
+    }
+
+    if (isOpenRouterFreeVariant(slug)) {
+      logWarning(
+        `[periodic] [top-weekly] skipping ${slug}: free variants are rate limited`,
       );
       continue;
     }
@@ -172,12 +189,11 @@ async function collectTopDayModels(): Promise<string[]> {
 
     selected.push(slug);
     logSuccess(
-      `[periodic] [top-weekly] selected ${slug} (${selected.length}/${TOP_DAY_LIMIT})`,
+      `[periodic] [top-weekly] selected ${slug} (${selected.length}/${limit})`,
     );
-    if (selected.length >= TOP_DAY_LIMIT) break;
+    if (selected.length >= limit) break;
   }
 
-  logInfo(`[periodic] top-weekly source produced ${selected.length} models`);
   return selected;
 }
 

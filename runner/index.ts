@@ -6,8 +6,10 @@
  *   bun run runner/index.ts
  *
  * Environment variables:
- *   MODELS           - comma-separated model names (default: see below)
- *   TEST_FILTER      - regex to filter evals by "category/name"
+ *   MODELS           - required: comma-separated OpenRouter slugs, or "all"
+ *                      for every curated model (optional in answer mode)
+ *   TEST_FILTER      - regex to filter evals by "category/name"; disables
+ *                      Convex reporting so partial runs are never recorded
  *   OUTPUT_TEMPDIR   - output directory (default: OS temp dir)
  *   EVALS_EXPERIMENT - experiment name (e.g. "no_guidelines")
  *   EVALS_EXECUTION_MODE - "generate" (default) or "answer"
@@ -103,10 +105,27 @@ export function runAnswerValidation(
   });
 }
 
-// ── Default models ────────────────────────────────────────────────────
+// ── Model selection ───────────────────────────────────────────────────
 
-// Keep one source of truth for both scheduled and ad-hoc default runs.
-const DEFAULT_MODEL_NAMES = ALL_MODELS;
+const ALL_MODELS_KEYWORD = "all";
+
+export const MISSING_MODELS_MESSAGE =
+  "MODELS is not set. Set MODELS to comma-separated OpenRouter slugs " +
+  '(e.g. MODELS=openai/gpt-5), or MODELS=all to run every curated model.';
+
+/**
+ * Parse the MODELS env var. There is deliberately no default: a full pass
+ * over every curated model is expensive, so it must be asked for explicitly
+ * with `MODELS=all`.
+ */
+export function parseModelNames(value: string | undefined): string[] {
+  const names = (value ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .flatMap((name) => (name === ALL_MODELS_KEYWORD ? ALL_MODELS : [name]));
+  return [...new Set(names)];
+}
 
 // ── Eval discovery ────────────────────────────────────────────────────
 
@@ -189,11 +208,11 @@ async function main(): Promise<void> {
   validateExperimentConfiguration(process.env.EVALS_EXPERIMENT);
   validateWebResearchRun(process.env.EVALS_EXPERIMENT);
   const executionMode = parseExecutionMode(process.env.EVALS_EXECUTION_MODE);
-  const modelNames = process.env.MODELS
-    ? process.env.MODELS.split(",")
-        .map((s) => s.trim())
-        .filter(Boolean)
-    : DEFAULT_MODEL_NAMES;
+  const modelNames = parseModelNames(process.env.MODELS);
+  if (modelNames.length === 0 && executionMode !== "answer") {
+    console.error(MISSING_MODELS_MESSAGE);
+    process.exit(1);
+  }
 
   const resolvedModels: Array<{
     model: ResolvedModel;
@@ -228,21 +247,29 @@ async function main(): Promise<void> {
     ? new RegExp(process.env.TEST_FILTER)
     : undefined;
 
+  const shared: SharedRunOptions = {
+    tempdir: td,
+    testFilter: tf,
+    customGuidelinesPath: process.env.CUSTOM_GUIDELINES_PATH,
+    convexEvalUrl: process.env.CONVEX_EVAL_URL,
+    convexAuthToken: process.env.CONVEX_AUTH_TOKEN,
+    experiment: process.env.EVALS_EXPERIMENT,
+  };
+
+  // Answer mode calls no models, so it only needs a model identity when the
+  // caller supplies one. Without MODELS, validate the answers once.
+  if (resolvedModels.length === 0) await runAnswerValidation(shared);
+
   for (const resolved of resolvedModels) {
-    const cfg: RunConfig = {
-      model: resolved.model,
-      provider: resolved.provider,
-      tempdir: td,
-      testFilter: tf,
-      executionMode,
-      customGuidelinesPath: process.env.CUSTOM_GUIDELINES_PATH,
-      convexEvalUrl: process.env.CONVEX_EVAL_URL,
-      convexAuthToken: process.env.CONVEX_AUTH_TOKEN,
-      experiment: process.env.EVALS_EXPERIMENT,
-    };
-    await runEvalsForModel(cfg, {
-      openRouterFirstSeenAt: resolved.openRouterFirstSeenAt,
-    });
+    await runEvalsForModel(
+      {
+        ...shared,
+        model: resolved.model,
+        provider: resolved.provider,
+        executionMode,
+      },
+      { openRouterFirstSeenAt: resolved.openRouterFirstSeenAt },
+    );
   }
 
   await closeClient();

@@ -1,6 +1,81 @@
 import { describe, expect, it } from "bun:test";
 import { rejects } from "node:assert/strict";
-import { buildEvalResult, runEvalsForModel } from "./index.js";
+import { ALL_MODELS } from "./models/index.js";
+import {
+  MISSING_MODELS_MESSAGE,
+  buildEvalResult,
+  parseModelNames,
+  runEvalsForModel,
+} from "./index.js";
+
+/** Run the CLI entrypoint with a controlled environment. No network is used. */
+async function runCli(
+  overrides: Record<string, string>,
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    DISABLE_CONVEX_REPORTING: "1",
+    ...overrides,
+  };
+  delete env.EVALS_EXPERIMENT;
+  delete env.CLIENT_WEB_TOOLS;
+  const child = Bun.spawn(["bun", "run", "runner/index.ts"], {
+    cwd: `${import.meta.dir}/..`,
+    env,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [exitCode, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  return { exitCode, stdout, stderr };
+}
+
+describe("MODELS selection", () => {
+  it("has no default: an unset or empty MODELS selects nothing", () => {
+    expect(parseModelNames(undefined)).toEqual([]);
+    expect(parseModelNames("")).toEqual([]);
+    expect(parseModelNames(" , ")).toEqual([]);
+  });
+
+  it("parses comma-separated slugs", () => {
+    expect(parseModelNames(" a/b , c/d,,a/b")).toEqual(["a/b", "c/d"]);
+  });
+
+  it("expands MODELS=all to every curated model", () => {
+    expect(parseModelNames("all")).toEqual([...ALL_MODELS]);
+    expect(parseModelNames(`all,${ALL_MODELS[0]},x/y`)).toEqual([
+      ...ALL_MODELS,
+      "x/y",
+    ]);
+  });
+
+  it.each(["", " , "])(
+    "exits with an actionable error when MODELS is %j",
+    async (models) => {
+      const { exitCode, stderr } = await runCli({
+        MODELS: models,
+        EVALS_EXECUTION_MODE: "generate",
+      });
+      expect(exitCode).toBe(1);
+      expect(stderr).toContain(MISSING_MODELS_MESSAGE);
+      expect(MISSING_MODELS_MESSAGE).toContain("MODELS=all");
+    },
+  );
+
+  it("still runs answer mode without MODELS, as a single answer validation", async () => {
+    const { exitCode, stdout } = await runCli({
+      MODELS: "",
+      EVALS_EXECUTION_MODE: "answer",
+      TEST_FILTER: "^no-such-category/no-such-eval$",
+    });
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Running 0 evals for model Answer Validation");
+    expect(stdout.match(/Running \d+ evals for model/g)).toHaveLength(1);
+  });
+});
 
 describe("experiment validation before starting a run", () => {
   it("rejects a missing OpenRouter key before starting any model or reporting work", async () => {
