@@ -28,7 +28,7 @@ The decision benchmark is optional, so ask if unsure. Pick a short key without d
 - the `model` input's `options` in `.github/workflows/decision_evals.yml`
 - the `all` JSON array on the `matrix.model` line of the same file
 
-No test checks that the three match. PR #338 is a complete example.
+`runner/decisions/ci.test.ts` fails if the three drift apart. PR #338 is a complete example.
 
 `manual_evals.yml` needs no edit. It takes models as a dispatch input.
 
@@ -38,7 +38,7 @@ No test checks that the three match. PR #338 is a complete example.
 DISABLE_CONVEX_REPORTING=1 MODELS=<slug> TEST_FILTER="000-fundamentals/000-empty_functions|000-fundamentals/003-crons" bun run local:run
 ```
 
-This reads `OPENROUTER_API_KEY` from the root `.env`. A git worktree may lack `.env` and `node_modules`. Copy `.env` from the main checkout and run `bun install`.
+This reads `OPENROUTER_API_KEY` from the root `.env`. In a new worktree, run `bun run setup` first. It installs all dependencies and copies `.env` from another worktree.
 
 Expect `[preflight] Endpoint is available` and a score for both evals. A low score is fine. `not supported and not found on OpenRouter` means a wrong slug. A model-specific request error, like Kimi K3 rejecting `temperature` (PR #225), needs a runner change, so stop and raise it.
 
