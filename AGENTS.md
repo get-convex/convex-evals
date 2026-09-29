@@ -5,7 +5,41 @@
 - This project uses bun extensively, including for its package manager and running tests and scripts
 - You should look at the package.json for the scripts you can use
 - You should `bun run typecheck` regularly to ensure that any changes have not broken the types
-- Run `bun run test` to run all test suites (runner unit tests + evalScores backend tests). Do this after making changes to the runner or evalScores backend.
+- Before opening a PR, run what PR Checks (`.github/workflows/pr_checks.yml`) runs:
+  ```bash
+  bun run typecheck
+  bun run test
+  bun run lint
+  bun run format-check:guidelines
+  bun run decisions validate && node verification/decisions/verify.mjs
+  bunx vitest run grader/pollUntil.test.ts
+  cd visualizer && bun run test && bun run build
+  ```
+
+## Paid Runs and Repo Settings
+
+- Before any paid model run, local or workflow, state the estimated dollar cost and get Mike's approval. Estimate it from per-run averages with the cost-lookup snippet in `.cursor/skills/add-model/SKILL.md` (step 6).
+- Local runs must set `MODELS` (or `-m` for `bun run evals run`). Without it the runner runs every model in `ALL_MODELS` (`DEFAULT_MODEL_NAMES` in `runner/index.ts`), about $87 per full pass as of 2026-09-29.
+- Validate Guideline Changes (`validate_guidelines.yml`) is manual dispatch only. It runs two full suites (before and after) for each of its four default models, about $45 unfiltered as of 2026-09-29, so it needs an estimate and approval like any paid run.
+- When starting a batch of workflow runs, dispatch one first and check it before dispatching the rest. For untested models, dispatch `manual_evals.yml` with `-f max_concurrency=2` or lower.
+- Never enable or disable workflows, or change repo variables, secrets or branch settings, without asking Mike. An agent disabled Periodic Evaluations on 2026-09-16 and it stayed off for 13 days.
+
+## Pull Requests and Merging
+
+Never push directly to `main`. Every change goes through a PR and merges only after PR Checks pass. Until branch protection exists, nothing technically stops a direct push, and a direct push deploys to production through `release.yml`.
+
+- Agents may merge their own PRs that only change docs, skills, tests or dev tooling (setup scripts, repo config for agents), and only after CI passes.
+- Changes to runner behavior, workflow triggers or state, spend, the Convex schema, or production data need Mike's go-ahead before merging. So do new evals and eval changes.
+
+## Skills
+
+Task playbooks live in `.cursor/skills/<name>/SKILL.md`. Read the matching one before starting.
+
+- `add-model`: use when the user wants to add or onboard a model, or names a new model or OpenRouter link for the leaderboard.
+- `add-eval`: use when the user wants to add a new eval, test a new Convex concept, or expand eval coverage.
+- `analyze-eval`: use when the user shares a visualizer URL for a specific eval, asks about a specific failing eval, or references an eval ID.
+- `analyze-run`: use when the user asks to analyze an entire run, review all its failures, or understand why a model scored poorly.
+- `validate-guidelines`: use when proposing or reviewing changes to `runner/models/guidelines.md`, or when the user asks to validate guidelines.
 
 ## Web experiment direction
 
@@ -13,19 +47,26 @@
 search and page-fetch tools. Set `CLIENT_WEB_TOOLS=1`; eval runs cannot use the
 historical unfiltered server-tool path. Both `OPENROUTER_API_KEY` and `EXA_API_KEY`
 are required. See `docs/web-source-filtering.md` for benchmark-source protections
-and limits, and `docs/client-web-rollout.md` for release gates. Use
+and limits, and `docs/client-web-rollout.md` for a record of the rollout. Use
 `DISABLE_CONVEX_REPORTING=1` for local validation.
+It runs in production. The repo variables `ENABLE_CLIENT_WEB_PRODUCTION`
+(required for web runs from main-branch Actions) and
+`ENABLE_NO_GUIDELINES_WITH_WEB` (adds the web condition to the periodic
+schedule) have both been `true` since 2026-09-16. Periodic web runs skip the
+models in `PERIODIC_WEB_EXCLUDED_MODELS` (`runner/models/index.ts`).
 The earlier provider-search and native coding-harness experiments are retired;
 do not resume them from old handoffs. Historical experiment literals in the
 backend are storage compatibility only.
 
 ## API Keys & Environment
 
-All API keys (OpenAI, Anthropic, Google, etc.) are stored in the root `.env` file and loaded automatically via `dotenv`. You do not need to set them manually — they are already configured for local development.
+New worktrees have no `.env` and no `evalScores` or `visualizer` dependencies, so run `bun run setup` first. It installs root, `evalScores` and `visualizer` dependencies, copies `.env` from another worktree when it is missing, and runs `bun run setup:convex`.
+
+Keys live in the root `.env`, loaded via `dotenv`. Coding runs send every model through OpenRouter, so they need only `OPENROUTER_API_KEY`, plus `EXA_API_KEY` for web runs. `bun run decisions run` defaults to `--provider typesafe`, which needs `TYPESAFE_API_KEY`, so pass `--provider openrouter` to use OpenRouter.
 
 ## Running Evals Locally
 
-Use environment variables `MODELS` and `TEST_FILTER` with `bun run local:run`. `MODELS` takes OpenRouter slugs. A bare name like `gpt-5` fails discovery and the runner exits.
+Use environment variables `MODELS` and `TEST_FILTER` with `bun run local:run`. `MODELS` takes OpenRouter slugs. A bare name like `gpt-5` fails discovery and the runner exits. Always set `MODELS` and state the cost first (see Paid Runs and Repo Settings).
 
 ```bash
 # Run a single eval for a specific model:
@@ -47,7 +88,6 @@ The interactive `bun run evals` script provides a menu-driven way to select mode
 
 ## Convex Deployments
 
-[text](https://www.convex.dev/llm-leaderboard/with-guidelines)
 The evalScores backend has two Convex deployments:
 
 - **Production**: `https://fabulous-panther-525.convex.cloud` — used by CI/GitHub Actions. The GitHub secret `CONVEX_EVAL_URL` must point to this URL.
@@ -59,9 +99,26 @@ The Convex LLM leaderboard (https://www.convex.dev/llm-leaderboard/) uses the da
 
 The runner communicates with the Convex backend via `ConvexClient` using the public mutations/queries in `evalScores/convex/admin.ts`. Authentication is done via a bearer token passed as an argument to each function (validated against the `authTokens` table). The GitHub secret `CONVEX_AUTH_TOKEN` holds this token for CI.
 
-When deploying changes to the evalScores backend, use `npx convex deploy` from the `evalScores/` directory (handled automatically by the release workflow). Do NOT deploy local dev changes to production accidentally.
+Backend changes reach production through `release.yml`, which runs `bunx convex deploy` on every push to `main`. Never run `npx convex deploy` against production yourself.
+
+## Production Access
+
+Agents usually cannot run `npx convex run --prod`, because the Convex team requires SSO ("Single-sign on login is required to access this team").
+
+Public queries work over HTTP without auth:
+
+```bash
+curl -s https://fabulous-panther-525.convex.cloud/api/query -H 'Content-Type: application/json' -d '{"path":"module:function","args":{}}'
+```
+
+- Public: `models:getBySlug`, `modelScores:getSchedulingStats`, `runs:listExperiments`, `runs:listRuns`, and `runs:getRunDetails` (a run's evals with statuses and steps).
+- Internal, so HTTP returns a bare `Server Error`: `debug:getEvalDebugInfo` (used by analyze-eval and analyze-run), `debugQueries:getFailedEvalsForRun` (used by analyze-run), `runs:deleteRun`, and everything in `migrations` and `benchmarkVersions`. Give Mike the exact command to run from `evalScores/`.
+
+Any write to the production deployment needs Mike's explicit go-ahead first. That covers migrations, `deleteRun`, and seed or backfill functions. Give Mike the exact command rather than running it yourself.
 
 ## Deployment & Migration Workflow
+
+Every push to `main` runs `release.yml`, which deploys the backend to production. Changes must reach `main` through a merged PR (see Pull Requests and Merging).
 
 ### Schema Change Approval Gate
 
@@ -72,24 +129,23 @@ migration, or deploying the schema change to any Convex deployment.
 
 When making schema or data changes to the Convex backend that require migrations:
 
-1. **Never deploy directly to production** from your local dev environment.
-2. **Commit and push to `main`** to trigger the `release.yml` workflow, which auto-deploys the Convex backend to production.
-3. **Monitor the deploy** via: `gh run list --workflow=release.yml --limit=1 --watch`
-4. **After the deploy completes**, run any pending migrations via the CLI:
+1. **Open a PR against `main`.** PR Checks must pass, and the merge needs Mike's go-ahead.
+2. **Merging deploys.** The merge triggers `release.yml`, which deploys the Convex backend to production.
+3. **Monitor the deploy.** Find the release run for the merge commit, then watch it:
+   ```bash
+   gh run list --workflow=release.yml --commit <sha>
+   gh run watch <run-id> --exit-status
+   ```
+   A `cancelled` release run usually means a newer push superseded it in the `production-release` concurrency group, so check the latest release run.
+4. **After the deploy completes**, get Mike's go-ahead and give him the command to run pending migrations. `runAll` runs the migrations listed in `evalScores/convex/migrations.ts` and skips completed ones.
    ```bash
    cd evalScores && npx convex run migrations:runAll --prod
    ```
-5. **Monitor migration progress**:
+5. **Monitor migration progress** (also a command for Mike):
    ```bash
-   npx convex run --component migrations lib:getStatus --watch --prod
+   cd evalScores && npx convex run --component migrations lib:getStatus --watch --prod
    ```
-6. **If the migration enables further schema tightening** (e.g. making optional fields required, removing deprecated tables), make those changes in a **second commit** and push again to deploy the tightened schema.
-
-`migrations:runAll` currently includes the run benchmark-version ID backfill.
-Seed the reconstructed benchmark documents with
-`benchmarkVersions:seedHistorical` before running it. Do not tighten the schema
-until `migrations:auditBenchmarkVersionBackfill` reports zero unresolved runs
-and the derived `modelScores` rows have been rebuilt.
+6. **If the migration enables further schema tightening** (e.g. making optional fields required, removing deprecated tables), make those changes in a **second PR** after the migration completes.
 
 The general pattern is: deploy code first (with loose/compatible schema), run data migrations if needed, then deploy tightened schema.
 
@@ -105,13 +161,22 @@ Do not mint or publish a benchmark version without the user's explicit
 approval. Minting is metadata-only and must not trigger paid model runs; the
 normal periodic schedule populates the new version over time.
 
+Minting runs only through the workflow on `main`, and only with Mike's approval:
+
+```bash
+gh workflow run mint_benchmark.yml --ref main -f kind=coding   # or kind=decision
+```
+
+`bun run benchmark:mint` fails without `BENCHMARK_KIND` and refuses production
+outside that workflow.
+
 Local eval runs must never write to the production Convex deployment. Local
 runs may report only to the development deployment. Production eval reporting
 is reserved for GitHub Actions running on `main`.
 
 ## Deleting a Run
 
-To delete a run from the production Convex deployment (e.g. if it was corrupted by rate-limit errors), use the `deleteRun` internal mutation. This cascade-deletes all evals, steps, and output storage files associated with the run, and decrements the experiment stats.
+To delete a run from the production Convex deployment (e.g. if it was corrupted by rate-limit errors), use the `deleteRun` internal mutation. This cascade-deletes all evals, steps, and output storage files associated with the run, and decrements the experiment stats. It is a production write, so get Mike's explicit go-ahead first and give him the command to run:
 
 ```bash
 cd evalScores && npx convex run runs:deleteRun --prod '{"runId": "<convex_document_id>"}'
@@ -158,6 +223,6 @@ Conventions established during the 2026-07 eval-roadmap work (waves tracked in G
 - Graders must be returns-neutral: use `compareFunctionSpec(skip, { ignoreReturns: true })`, plus `publicOnly: true` when the task does not dictate internal function names/modules.
 - Never use fixed sleeps for scheduled work in graders - use `pollUntil` from `grader/pollUntil.ts`, and give slow poll-based tests explicit vitest timeouts (the scorer's vitest budget must exceed the summed per-test timeouts of the slowest grader; see `runner/scorer.ts` TIMEOUTS).
 - AST/source checks must be precise: tie checks to the consumed call chain (not "identifier appears somewhere"), resolve named constants anywhere in the file, and scope wall-clock/scan bans to what the task actually forbids. Behavioral tests should defeat cheats where possible (multi-cutoff, crowd-out, inverted-input patterns) before reaching for AST checks.
-- `bunx convex codegen` fails without a deployment; to produce `answer/convex/_generated`, copy it from a sibling single-module eval (they are module-name-generic) or run `bun run generate:answer-types`. The scorer regenerates during deployment anyway.
+- To produce `answer/convex/_generated`, copy it from a sibling single-module eval (they are module-name-generic). `bunx convex codegen` fails without a deployment, and the scorer regenerates during deployment anyway.
 - Validate any touched eval against a real local backend before pushing: `TEST_FILTER='<eval-name-regex>' bun run scripts/validateAnswers.ts` must report 100%.
 - Each answer's `package.json` pins its own deps (the root lockfile does not constrain generated projects); pin exact versions for component evals.

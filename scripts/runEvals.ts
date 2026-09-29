@@ -134,6 +134,19 @@ interface RunOptions {
   experiment?: Experiment;
 }
 
+/**
+ * The runner requires MODELS. Without `-m`, keep an inherited MODELS value,
+ * otherwise use the same single default model the interactive menu offers.
+ */
+export function resolveRunModels(
+  cliModels: string[] | undefined,
+  inherited: NodeJS.ProcessEnv = process.env,
+): string[] {
+  if (cliModels && cliModels.length > 0) return cliModels;
+  if (inherited.MODELS?.trim()) return [];
+  return [DEFAULT_MODEL];
+}
+
 export function buildEnvVars(
   options: RunOptions,
   inherited: NodeJS.ProcessEnv = process.env,
@@ -181,7 +194,7 @@ async function runEvals(options: RunOptions): Promise<void> {
   );
 
   console.log("Configuration:");
-  console.log(`  Models: ${options.models.join(", ") || "(default)"}`);
+  console.log(`  Models: ${env.MODELS ?? "(none)"}`);
   console.log(`  Filter: ${options.filter || "(all)"}`);
   console.log(`  Experiment: ${options.experiment || "(none)"}`);
   if (options.experiment === "no_guidelines_with_web")
@@ -489,7 +502,7 @@ program
     }
 
     await runEvals({
-      models: options.model || [],
+      models: resolveRunModels(options.model),
       filter,
       outputTempdir: options.output,
       experiment: options.experiment,

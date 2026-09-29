@@ -5,7 +5,8 @@ model can produce better Convex code by seeking public information when it has
 neither the Convex guidelines nor the Convex plugin.
 
 See [benchmark source filtering](web-source-filtering.md) for the enforced policy
-and its limitations. All eval runs now require `CLIENT_WEB_TOOLS=1`.
+and its limitations. Web eval runs require `CLIENT_WEB_TOOLS=1`. Setting it for
+any other experiment throws.
 
 ## Current rollout
 
@@ -15,14 +16,10 @@ harness records every dispatched search and page fetch itself. It reuses
 Use `CLIENT_WEB_TOOLS=1` and `DISABLE_CONVEX_REPORTING=1` for local pilots, with
 both `OPENROUTER_API_KEY` and a development `EXA_API_KEY` configured.
 
-See [implementation and local commands](client-web-pilot.md),
-[validation results](client-web-integration-validation.md), and
-[production rollout gates](client-web-rollout.md). The schedule remains paused
-pending approval. Published runs cannot fall back to the old server-tool path.
-
-The sections below describe the historical server-tool implementation and its
-original limits. They are retained for interpreting archived traces, not as the
-replacement rollout instructions.
+See [the rollout state](client-web-rollout.md). Periodic Evaluations runs the web
+condition, except for models in `PERIODIC_WEB_EXCLUDED_MODELS`
+(`runner/models/index.ts`). Published runs cannot fall back to the old
+server-tool path.
 
 ## Agreed direction
 
@@ -43,68 +40,42 @@ replacement rollout instructions.
   failures. A failed task or an unused tool does not by itself prove the docs
   are unclear.
 
-## Implementation and limits
+## Tool limits and traces
 
-The harness enables OpenRouter's [web search](https://openrouter.ai/docs/guides/features/server-tools/web-search)
-and [web fetch](https://openrouter.ai/docs/guides/features/server-tools/web-fetch)
-server tools. Both specify `engine: "exa"`, so the search and extraction backend
-is the same across models. The search mode is explicitly Exa's `auto` mode;
-this does not enable OpenRouter's automatic engine selection or native search.
-There is no domain allowlist. Only the existing `OPENROUTER_API_KEY` is needed.
+The model gets `web_search(query)` and `web_fetch(url)` function tools. The
+harness runs them against Exa (`runner/models/clientWebTools.ts` and
+`clientWebLoop.ts`) with these limits per sample:
 
-Every request sends the same fixed tool limits:
+- Six dispatched calls in total, at most five per tool. Rejected calls never
+  reach Exa.
+- Seven model turns, at most 20 requested calls per turn.
+- 30 seconds per Exa request and five minutes for the whole loop.
+- Search returns up to five results, each with at most 1,500 characters of
+  excerpts. Fetch returns one page, capped at 5,000 cl100k tokens.
+- The model's usual output limit applies to each turn, not cumulatively.
 
-- `max_tool_calls: 6` for OpenRouter's server-tool loop budget.
-- At most five searches and five fetches, using each tool's `max_uses`.
-- Five results per search, 25 results overall, and at most 1,500 characters of
-  source excerpts per result.
-- At most 5,000 approximate tokens of extracted page text per fetch.
-- A five-minute generation timeout and a 16 MB response stream limit enforced
-  by our harness.
-
-Search remains optional: `tool_choice` is `auto`, and the task prompt is identical
-to `no_guidelines`. Custom guideline files are rejected. Models retain their
-existing Chat Completions or Responses API adapter and output-token setting.
-OpenRouter executes the intermediate tool loop. We do not control its individual
-model steps, reserve a final answer step, or independently enforce a cumulative
-output-token allowance across those hidden steps. Keep this distinction in mind
-when interpreting a comparison with the baseline. SDK model retries remain at
-five; the server tool limits apply per request, including a retried request.
-
-Streams that end without a completion event get up to two runner retries, like
-explicit transient provider errors. Each attempt retains its own trace and
-generation ID when available. Partial text is never graded. Exhausted retries,
-API errors, invalid streams, and timeouts fail as infrastructure
-errors. Page-specific failures handled inside OpenRouter's loop can be returned
-to the model; Chat Completions does not expose enough detail to classify every
-internal search or fetch failure independently.
+Research stays optional: requests omit `tool_choice`. Only Chat Completions
+models are supported. Each generation attempt writes a JSONL journal to
+`<OUTPUT_TEMPDIR>/research/<model>/<category>/<eval>/attempt-N.jsonl`. Run usage
+stores the counts, costs and trace path under `usage.raw.clientWeb`.
 
 ## Running locally
 
-The existing root `.env` provides `OPENROUTER_API_KEY`. Choose a supported model
-slug and a small eval filter:
+Use the commands in [Local reruns](web-source-filtering.md#local-reruns). The
+`bun run evals` launcher sets `CLIENT_WEB_TOOLS=1` and `DISABLE_CONVEX_REPORTING=1`
+itself; a direct `bun run local:run` must set both. Both `OPENROUTER_API_KEY` and
+`EXA_API_KEY` must be set, for example in the root `.env`. Local web runs cannot
+report to any deployment, including development.
 
-```bash
-DISABLE_CONVEX_REPORTING=1 \
-EVALS_EXPERIMENT=no_guidelines_with_web \
-MODELS='your-model-slug' \
-TEST_FILTER='000-fundamentals/003-crons' \
-bun run local:run
-```
+## CI
 
-The interactive `bun run evals` menu also includes the experiment. Disable
-reporting until the target backend supports the new schema literal. After
-deployment, local runs may report only to development. A missing OpenRouter key
-fails before model discovery or generation.
-
-## CI rollout
-
-After the normal release workflow deploys the additive schema change, set the
-repository variable `ENABLE_NO_GUIDELINES_WITH_WEB=true`. The existing periodic
-workflow then runs the selected models under default, `no_guidelines`, and
-`no_guidelines_with_web` conditions. Each model/condition has its own job and
-120-minute timeout; the matrix retains the four-job concurrency limit. Clearing
-the variable stops future scheduled web runs without affecting the baselines.
+The repository variable `ENABLE_NO_GUIDELINES_WITH_WEB` has been `true` since
+2026-09-16. While it is set, the periodic workflow runs the selected models under
+default, `no_guidelines`, and `no_guidelines_with_web` conditions. It skips only
+the web condition for models in `PERIODIC_WEB_EXCLUDED_MODELS`. Each
+model/condition has its own job and 120-minute timeout; the matrix retains the
+four-job concurrency limit. Clearing the variable stops future scheduled web runs
+without affecting the baselines.
 
 The manual workflow also has a `run_no_guidelines_with_web` input, disabled by
 default. It can run this condition alone by disabling its two baseline inputs.
@@ -114,49 +85,6 @@ Both workflows upload the web condition's `research/` directory as an Actions
 artifact, including after failures, with 30-day retention. Download it before
 expiry for longer-term analysis. Run usage contains the research summary and
 local trace path; the full trace is in the artifact, not in the Convex database.
-
-## Traces and evidence limits
-
-Each generation attempt writes an atomic JSON trace under
-`<OUTPUT_TEMPDIR>/research/<model>/<category>/<eval>/attempt-N.json`, including
-failed attempts. The runner prints the path. Generated projects use the sibling
-`output/` directory as usual. Use a fresh output directory for each repetition.
-
-Trace version 2 records the exact request bodies, both pinned engines, raw JSON
-stream events, citations and source excerpts, completed server-tool items when
-exposed, optional router metadata, partial/final text, and returned usage.
-Authorization headers are never saved. Each HTTP retry has its own request entry.
-
-The trace is explicitly marked `provider-visible-only`:
-
-- Chat Completions exposes citations/excerpts and usage counters. Our live check
-  did not expose the search query or complete fetched-page contents.
-- Responses exposes `openrouter:web_search` and `openrouter:web_fetch` items when
-  provided. Our live check included the search query, source URLs, and fetched
-  page content.
-  The harness saves these before excluding the custom items from the installed
-  OpenAI SDK's parsing view. This does not alter what the evaluated model sees.
-- Missing counters remain null. Observed tool-item counts are separate from
-  provider-reported request counts; neither is inferred from prose or citations.
-- Cost is exactly what OpenRouter reports. If absent, it stays unknown: a model
-  token-price estimate would omit search/fetch charges. Failed requests without
-  usage cannot be included in a measured total. `usage.raw.providerUsageScope`
-  identifies successful-attempt-only or unavailable usage for web runs;
-  `providerUsageExcludesFailedAttempts` flags omitted failed attempts. The runner
-  also prints this limitation on web failures. These flags do not estimate
-  missing charges or claim coverage of OpenRouter's internal retries.
-
-Known socket failures (`ECONNRESET`, `EPIPE`, `ETIMEDOUT`, and `UND_ERR_SOCKET`)
-use the same bounded retries as interrupted streams. Runner aborts and local
-limits remain non-retryable.
-
-These API paths have different trace visibility. Do not call citations a complete
-research history, or interpret missing search metadata as zero searches. The raw
-stream is retained so additional provider details can be extracted later.
-
-Before claiming a score improvement, choose a representative task subset and
-run matched repetitions of both conditions. A forced-search smoke test verifies
-tool wiring only and must not be included in the benchmark results.
 
 ## Cleanup boundary
 

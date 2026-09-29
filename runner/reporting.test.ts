@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test";
 import {
   mkdtempSync,
   readFileSync,
@@ -12,7 +12,12 @@ import { createHash } from "crypto";
 import { join } from "path";
 import { tmpdir } from "os";
 import JSZip from "jszip";
-import { canReportEvalResultsTo } from "./reporting.js";
+import {
+  FILTERED_RUN_REPORTING_MESSAGE,
+  canReportEvalResultsTo,
+  isConvexReportingDisabled,
+  startRun,
+} from "./reporting.js";
 
 describe("production reporting boundary", () => {
   const productionUrl = "https://fabulous-panther-525.convex.cloud";
@@ -41,6 +46,55 @@ describe("production reporting boundary", () => {
     expect(
       canReportEvalResultsTo("https://brazen-pelican-414.convex.cloud", {}),
     ).toBe(true);
+  });
+});
+
+describe("filtered run reporting", () => {
+  const reportingKeys = [
+    "TEST_FILTER",
+    "DISABLE_CONVEX_REPORTING",
+    "CONVEX_EVAL_URL",
+    "CONVEX_AUTH_TOKEN",
+  ] as const;
+  const saved: Record<string, string | undefined> = {};
+  beforeEach(() => {
+    for (const key of reportingKeys) saved[key] = process.env[key];
+  });
+  afterEach(() => {
+    for (const key of reportingKeys) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+  });
+
+  it("never starts a run for a filtered process, even from Actions on main", async () => {
+    const log = spyOn(console, "log").mockImplementation(() => {});
+    process.env.TEST_FILTER = "000-fundamentals/000";
+    delete process.env.DISABLE_CONVEX_REPORTING;
+    // An unreachable URL: any client connection attempt would be a bug.
+    process.env.CONVEX_EVAL_URL = "https://filtered-run.invalid";
+    process.env.CONVEX_AUTH_TOKEN = "fixture";
+    try {
+      expect(await startRun("model", ["000-fundamentals/000"], "openrouter"))
+        .toBeNull();
+      const lines = log.mock.calls.map((call) => String(call.join(" ")));
+      expect(
+        lines.filter((line) => line.includes(FILTERED_RUN_REPORTING_MESSAGE)),
+      ).toHaveLength(1);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("disables reporting whenever TEST_FILTER is set", () => {
+    expect(isConvexReportingDisabled({})).toBe(false);
+    expect(isConvexReportingDisabled({ TEST_FILTER: "" })).toBe(false);
+    expect(isConvexReportingDisabled({ DISABLE_CONVEX_REPORTING: "1" })).toBe(
+      true,
+    );
+    expect(isConvexReportingDisabled({ TEST_FILTER: "000-fundamentals" })).toBe(
+      true,
+    );
   });
 });
 

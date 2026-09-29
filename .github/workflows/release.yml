@@ -39,12 +39,22 @@ jobs:
           bun run decisions validate
           node verification/decisions/verify.mjs
 
+      - name: Install evalScores dependencies
+        working-directory: evalScores
+        run: bun install --frozen-lockfile
+
+      - name: Run lint
+        run: bun run lint
+
+      - name: Run tests
+        run: bun run test
+
       - name: Build Release Files
         run: bun run buildRelease.ts
 
       - name: Create Release
         id: create_release
-        uses: rymndhng/release-on-push-action@master
+        uses: rymndhng/release-on-push-action@aebba2bbce07a9474bf95e8710e5ee8a9e922fe2 # master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -62,20 +72,8 @@ jobs:
             fi
           done
 
-      - name: Install evalScores dependencies
-        working-directory: evalScores
-        run: bun install --frozen-lockfile
-
-      - name: Run lint
-        run: bun run lint
-
-      - name: Run tests
-        run: bun run test
-
       - name: Deploy Convex
         working-directory: evalScores
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
-        # The strict shared-table schema replaces the legacy coding-only indexes
-        # after their kind-prefixed equivalents have already been backfilled.
-        run: bunx convex deploy --allow-deleting-large-indexes
+        run: bunx convex deploy

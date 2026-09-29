@@ -23,7 +23,7 @@ The client-owned tools enforce `exclude-known-benchmark-sources-v1`:
   returns an empty result list; the dispatched request still counts and costs
   money. Rejected pre-dispatch calls do not consume provider request budget.
 - Record the source-policy version in the journal header and raw usage metadata.
-  Eval runner entrypoints require `CLIENT_WEB_TOOLS=1`, even for local runs;
+  Web eval runs require `CLIENT_WEB_TOOLS=1`, even for local runs;
   the historical server-tool adapter is only retained for low-level diagnostics.
 
 These are protections against **known** sources, not a guarantee that every
@@ -55,5 +55,4 @@ raw journal is expected and does not mean it reached the model.
 Do not mix these local reruns with historical published scores. The old traces
 used provider-owned server tools; the replacement client loop has different
 execution semantics. Local reruns check current behavior, not the causal effect
-of filtering alone. Publishing replacement results and changing the schedule are
-separate rollout actions; this change does not mint a benchmark or alter schema.
+of filtering alone.

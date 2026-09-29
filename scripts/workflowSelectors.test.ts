@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { getTextOutputEvalIncompatibilityReason } from "../runner/models/openRouterDiscovery.js";
 import {
+  isOpenRouterFreeVariant,
   selectTopModels as selectTopOpenRouterModels,
   shouldSkipForProviderError,
   shouldSkipForMissingEndpoint,
@@ -8,6 +9,7 @@ import {
 import {
   buildPeriodicMatrix,
   mergeModelSources,
+  selectTopWeeklyCandidates,
 } from "./listPeriodicModels.js";
 
 describe("top OpenRouter selector helpers", () => {
@@ -87,6 +89,45 @@ describe("OpenRouter capability helpers", () => {
 });
 
 describe("periodic selector helpers", () => {
+  it("skips rate-limited :free variants from the top-weekly source and logs each one", () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      expect(
+        selectTopWeeklyCandidates(
+          [
+            "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "curated/model",
+            "a/b",
+            "poolside/laguna-s-2.1:free",
+            "c/d",
+            "e/f",
+          ],
+          2,
+          new Set(["curated/model"]),
+        ),
+      ).toEqual(["a/b", "c/d"]);
+      const lines = log.mock.calls.map((call) => String(call[0]));
+      for (const slug of [
+        "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "poolside/laguna-s-2.1:free",
+      ]) {
+        expect(
+          lines.some((line) =>
+            line.includes(`[periodic] [top-weekly] skipping ${slug}: free`),
+          ),
+        ).toBe(true);
+      }
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("only treats the :free suffix as a free variant", () => {
+    expect(isOpenRouterFreeVariant("poolside/laguna-s-2.1:free")).toBe(true);
+    expect(isOpenRouterFreeVariant("poolside/laguna-s-2.1")).toBe(false);
+    expect(isOpenRouterFreeVariant("free/model")).toBe(false);
+  });
+
   it("merges sources and deduplicates in source order", () => {
     expect(
       mergeModelSources([

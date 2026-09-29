@@ -36,6 +36,14 @@ interface OpenRouterModelsResponse {
   data?: OpenRouterModel[];
 }
 
+/**
+ * OpenRouter `:free` variants share tight rate limits, so a full eval pass
+ * stalls on 429s. Keep them out of scheduled runs.
+ */
+export function isOpenRouterFreeVariant(slug: string): boolean {
+  return slug.endsWith(":free");
+}
+
 export function shouldSkipForProviderError(error: unknown): boolean {
   const message = String(error);
   return message.includes("400 Bad Request: Provider returned error");
@@ -173,7 +181,11 @@ export async function selectTopOpenRouterModels(
   const excludeKnownModels = options.excludeKnownModels ?? true;
   const dueOnly = options.dueOnly ?? true;
   const runnableOnly = options.runnableOnly ?? true;
-  const topSlugs = await fetchTopDailySlugs();
+  const topSlugs = (await fetchTopDailySlugs()).filter((slug) => {
+    if (!isOpenRouterFreeVariant(slug)) return true;
+    console.error(`Skipping ${slug}: free variant, rate limited`);
+    return false;
+  });
   const topModels = selectTopModels(topSlugs, limit);
   const knownModels = new Set(ALL_MODELS);
   const candidateModels = excludeKnownModels

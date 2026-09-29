@@ -2,10 +2,24 @@
 
 Supplementary lookup doc for the add-eval skill. Keep workflow and sequencing in `SKILL.md`. Use this file for grader helpers, common test patterns, and durable conventions.
 
+## Eval Pipelines
+
+`getEvalPipeline` in `runner/scorer.ts` picks the pipeline from an optional `eval.json` in the eval directory. README.md ("Eval structure") describes the same options.
+
+| Pipeline | `eval.json` | What runs | Grader imports from |
+|----------|-------------|-----------|---------------------|
+| backend (default) | none | install, deploy, tsc, eslint, then the grader against the deployed backend | `grader/index.ts` |
+| static | `{ "pipeline": "static" }` | only the grader, on the raw generated files. No install, deploy, tsc or eslint | `grader/outputDir.ts` |
+| module | `{ "pipeline": "module" }` | install, then the grader. No backend. The grader typechecks and executes the module itself | `grader/outputDir.ts` |
+
+- **static** is for selection evals (AGENTS.md "Authoring New Evals"). It grades what the model chose and tolerates syntax errors and stale versions. Examples: the `choose_*` evals in `evals/007-components/`.
+- **module** is for an answer that is a plain TypeScript module, not a Convex backend. The prompt asks for only the task's files, with no backend scaffolding. Example: `evals/001-data_modeling/015-validator_composition`.
+- Static and module graders must not import `grader/index.ts`. It throws "CONVEX_PORT is not set" without a backend. `grader/outputDir.ts` exports `getLatestOutputProjectDir` and `readOutputFile`. The scorer sets `MODEL_OUTPUT_DIR` to the generated project in every pipeline.
+
 ## Grader Helper Catalog
 
-All helpers are exported from `grader/index.ts`. Import them in `grader.test.ts` using
-relative paths like `import { responseClient, addDocuments } from "../../../grader";`
+Backend-pipeline graders import these helpers from `grader/index.ts` using
+relative paths like `import { responseClient, addDocuments } from "../../../grader";`. Static and module graders import from `../../../grader/outputDir` instead (see Eval Pipelines).
 
 ### Clients
 
@@ -24,13 +38,21 @@ relative paths like `import { responseClient, addDocuments } from "../../../grad
 | `addDocuments` | `(adminClient, table, documents[]) => Promise<void>` | Insert documents into a table via the admin API. |
 | `listTable` | `(adminClient, table, limit?) => Promise<any[]>` | List documents from a table in ascending creation order. Default limit 32. |
 | `deleteAllDocuments` | `(adminClient, tables[]) => Promise<Record<string, number>>` | Clear all documents from the given tables. Use for test cleanup. |
+| `pollUntil` | `(predicate, { timeoutMs, intervalMs }) => Promise<void>` | Poll until the predicate returns true, or throw after `timeoutMs`. Use instead of fixed sleeps (pattern 11). |
+
+### Output Files
+
+| Helper | Signature | Description |
+|--------|-----------|-------------|
+| `getLatestOutputProjectDir` | `(category, name) => string` | Path of the model's generated project. Also exported from `grader/outputDir.ts`. |
+| `readOutputFile` | `(category, name, relativePath) => string` | Read one generated file, e.g. for AST checks. Also exported from `grader/outputDir.ts`. |
 
 ### Schema Inspection
 
 | Helper | Signature | Description |
 |--------|-----------|-------------|
 | `compareSchema` | `(skip) => Promise<void>` | Compare the model's schema to the answer's schema. Skips if answer backend unavailable. |
-| `compareFunctionSpec` | `(skip) => Promise<void>` | Compare the model's exported function signatures to the answer's. |
+| `compareFunctionSpec` | `(skip, options?) => Promise<void>` | Compare the model's exported function signatures to the answer's. Always pass `{ ignoreReturns: true }` (pattern 6). |
 | `getSchema` | `(adminClient) => Promise<any>` | Fetch the active schema from a backend. Returns parsed JSON with `tables` array. |
 | `findTable` | `(schema, tableName) => object \| null` | Find a table definition in a schema object. |
 | `hasIndexForFields` | `(schema, tableName, fields[]) => boolean` | Check if a table has an index with exactly the given fields (in order). |
@@ -122,15 +144,18 @@ afterEach(async () => {
 
 ### 6. Function spec comparison
 
-When the task fixes exported public/internal function names or locations, compare the function spec against the answer:
+When the task fixes exported public/internal function names or locations, compare the function spec against the answer. Graders must be returns-neutral (AGENTS.md), so always pass `ignoreReturns: true`:
 
 ```typescript
 import { compareFunctionSpec } from "../../../grader";
 
 test("compare function spec", async ({ skip }) => {
-  await compareFunctionSpec(skip);
+  await compareFunctionSpec(skip, { ignoreReturns: true });
 });
 ```
+
+- Add `publicOnly: true` when the task doesn't dictate internal function names or modules.
+- Add `allowAdditionalFunctions: true` when the task names required functions but allows extra helper exports.
 
 ### 7. HTTP endpoint testing
 
@@ -184,6 +209,27 @@ test("has correct indexes", async () => {
 });
 ```
 
+### 11. Waiting on scheduled work
+
+Never use fixed sleeps. Poll with `pollUntil`, and give slow poll-based tests an explicit vitest timeout above `timeoutMs`:
+
+```typescript
+import { listTable, pollUntil, responseAdminClient, responseClient } from "../../../grader";
+
+test("scheduled job completes", { timeout: 90_000 }, async () => {
+  await responseClient.mutation(api.index.startJob, {});
+  await pollUntil(
+    async () => {
+      const jobs = await listTable(responseAdminClient, "jobs");
+      return jobs.every((job) => job.status === "done");
+    },
+    { timeoutMs: 60_000, intervalMs: 250 },
+  );
+});
+```
+
+The grader's summed per-test timeouts must stay under the scorer's vitest budget (`TIMEOUTS.vitest` in `runner/scorer.ts`).
+
 ## Test Approach Decision Tree
 
 Use this to decide how to grade an eval:
@@ -197,14 +243,17 @@ Can the concept be verified by calling the function and checking the return valu
 │
 └── NO (concept is about HOW the code is structured, not WHAT it returns)
     ├── Is it about schema/index design?
-    │   └── YES -> Use schema inspection helpers (pattern 8)
+    │   └── YES -> Use schema inspection helpers (pattern 10)
     │       hasIndexForFields, hasIndexForPrefix, getSchema
     │
     ├── Is it about which files/functions are exported?
-    │   └── YES -> Use compareFunctionSpec
+    │   └── YES -> Use compareFunctionSpec with { ignoreReturns: true } (pattern 6)
     │
     ├── Is it about HTTP endpoint routing?
-    │   └── YES -> Use HTTP endpoint testing (pattern 5)
+    │   └── YES -> Use HTTP endpoint testing (pattern 7)
+    │
+    ├── Is it about which component or pattern the model chose, unprompted?
+    │   └── YES -> Selection eval: static pipeline, AST checks on the generated files
     │
     └── Is it about code style, patterns, or internal structure?
         └── STOP and discuss with user. Options:
@@ -270,6 +319,8 @@ test("model's test suite passes", () => {
 
 ## Answer Conventions
 
+AGENTS.md "Authoring New Evals" has the full rules. Don't put `returns:` validators in answers unless the task tests them (only `000-fundamentals/009-returns_validator` and `002-queries/018-pagination_returns_validator` do).
+
 ### package.json template
 
 ```json
@@ -282,6 +333,8 @@ test("model's test suite passes", () => {
 }
 ```
 
+Component evals pin exact versions of `convex` and the component instead, e.g. `"convex": "1.41.0"` and `"@convex-dev/aggregate": "0.2.2"`. Copy the pins from a sibling in `evals/007-components/`.
+
 ### Directory structure
 
 ```
@@ -289,8 +342,8 @@ answer/
 ├── package.json
 └── convex/
     ├── schema.ts          (if eval uses a schema)
-    ├── tsconfig.json      (auto-generated by codegen)
-    ├── _generated/        (auto-generated by codegen)
+    ├── tsconfig.json      (copied from a sibling eval)
+    ├── _generated/        (copied from a sibling eval)
     │   ├── api.d.ts
     │   ├── api.js
     │   ├── dataModel.d.ts
@@ -299,12 +352,12 @@ answer/
     └── <implementation>.ts (index.ts, public.ts, users.ts, etc.)
 ```
 
-### Codegen
+### Generated types
 
-After writing the answer source files, run codegen to generate types:
+`bunx convex codegen` fails without a deployment ("No CONVEX_DEPLOYMENT set"). Copy `answer/convex/_generated` and `answer/convex/tsconfig.json` from a sibling single-module eval with the same files:
 
 ```bash
-cd evals/<category>/<eval>/answer && bunx convex codegen
+cp -R evals/<sibling>/answer/convex/_generated evals/<sibling>/answer/convex/tsconfig.json evals/<category>/<eval>/answer/convex/
 ```
 
-Run codegen again if you change the schema. The grader imports types from `./answer/convex/_generated/api`, so codegen must be run before tests will compile.
+`api.d.ts` imports each module by file name (e.g. `../index.js`) and `dataModel.d.ts` imports `../schema.js` when a schema exists, so match the sibling's files or edit those imports. Most answers have `convex/index.ts` and `convex/schema.ts`. For a component eval, copy from a sibling that mounts the same component. Recheck the imports if you add a module or a schema later. The grader imports types from `./answer/convex/_generated/api`, so `_generated` must exist before tests will compile. The scorer regenerates it when it deploys.

@@ -54,6 +54,7 @@
   },
   "scripts": {
     "dev": "bun run scripts/dev.ts",
+    "setup": "bun run scripts/setup.ts",
     "setup:convex": "bun run scripts/setupConvexDeployment.ts",
     "format:guidelines": "prettier -w runner/models/guidelines.md",
     "format-check:guidelines": "prettier -c runner/models/guidelines.md",
@@ -75,7 +76,6 @@
     "benchmark:mint": "bun run scripts/mintBenchmark.ts",
     "validate:guidelines": "bun run scripts/validateGuidelines.ts",
     "validate:answers": "bun run scripts/validateAnswers.ts",
-    "generate:answer-types": "bun run scripts/generateAnswerTypes.ts",
     "generate:evalscores-types": "cd evalScores && bun run codegen",
     "visualizer:dev": "cd visualizer && bun run dev",
     "visualizer:build": "cd visualizer && bun run build",

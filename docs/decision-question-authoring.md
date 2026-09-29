@@ -160,7 +160,7 @@ Shuffled repetitions measure stability, not additional independent concepts. If 
 
 Judge question quality by relevance, clarity, fairness and verified correctness. A lower score or an expected ordering by model size is not an acceptance criterion. Keep useful easy questions for coverage. Do not keep rewriting questions until a particular model fails.
 
-Revisions receive a new recorded snapshot; old prompts, keys and results remain intact. Coding and decision questions continue to share one benchmark-version lineage. Keep results separated by evaluation format. Minting or publishing a shared version requires a separate approved step; local experiments do not publish anything automatically.
+Revisions receive a new recorded snapshot; old prompts, keys and results remain intact. Decision banks have their own benchmark identity, separate from coding. Keep results separated by evaluation format. A bank is published by running **Mint Benchmark Version** with `kind=decision`, after approval; local experiments do not publish anything automatically.
 
 ## 8. Audit and maintain the bank
 
@@ -195,7 +195,7 @@ Apply this standard within the scope approved for the work: audit the bank, prep
 - [ ] Coverage limits and observed versus constructed mistakes documented privately.
 - [ ] Blind review followed by evidence review; serialized model input contains no author-only material.
 - [ ] Coverage ledger updated; accepted content frozen before inference.
-- [ ] Historical artifacts preserved and shared versioning respected.
+- [ ] Historical artifacts preserved and decision benchmark versioning respected.
 
 ## File contract
 
