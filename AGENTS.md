@@ -1,7 +1,7 @@
 - See package.json to work out how to run the models
 - Model definitions are stored in /runner/models/index.ts
-- Models run periodically via github actions
-- When adding a new model, please run it at least once against one or two evals to make sure it works
+- Curated models run periodically via GitHub Actions, but only while the Periodic Evaluations workflow is enabled (`gh workflow list --all`)
+- When adding a new model, follow `.cursor/skills/add-model/SKILL.md`, which includes running it against one or two evals to make sure it works
 - This project uses bun extensively, including for its package manager and running tests and scripts
 - You should look at the package.json for the scripts you can use
 - You should `bun run typecheck` regularly to ensure that any changes have not broken the types
@@ -25,20 +25,20 @@ All API keys (OpenAI, Anthropic, Google, etc.) are stored in the root `.env` fil
 
 ## Running Evals Locally
 
-Use environment variables `MODELS` and `TEST_FILTER` with `bun run local:run`:
+Use environment variables `MODELS` and `TEST_FILTER` with `bun run local:run`. `MODELS` takes OpenRouter slugs. A bare name like `gpt-5` fails discovery and the runner exits.
 
 ```bash
 # Run a single eval for a specific model:
-MODELS=gpt-5.2-codex TEST_FILTER=000-fundamentals/003 bun run local:run
+MODELS=openai/gpt-5.2-codex TEST_FILTER=000-fundamentals/003 bun run local:run
 
 # Run all fundamentals for a model:
-MODELS=gpt-5.2-codex TEST_FILTER=000-fundamentals bun run local:run
+MODELS=openai/gpt-5.2-codex TEST_FILTER=000-fundamentals bun run local:run
 
 # Run multiple specific evals (TEST_FILTER is a regex):
-MODELS=gpt-5.2-codex TEST_FILTER="003-crons|012-index_and_filter|000-use_query" bun run local:run
+MODELS=openai/gpt-5.2-codex TEST_FILTER="003-crons|012-index_and_filter|000-use_query" bun run local:run
 
 # Run with a different experiment:
-EVALS_EXPERIMENT=no_guidelines MODELS=gpt-5 TEST_FILTER=000-fundamentals/000 bun run local:run
+EVALS_EXPERIMENT=no_guidelines MODELS=openai/gpt-5 TEST_FILTER=000-fundamentals/000 bun run local:run
 ```
 
 The `local:run` script is just `bun run runner/index.ts`. The convenience aliases `local:run:fundamentals` and `local:run:one` in package.json show the pattern.

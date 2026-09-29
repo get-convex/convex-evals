@@ -1,116 +1,105 @@
 ---
 name: add-model
-description: Add a new AI model to the eval runner, update the manual eval workflow, push changes, and trigger baseline eval runs. Use when the user wants to add a new model, onboard a model, or mentions a new model name/link to add to the leaderboard.
+description: Add a new model to the convex-evals coding leaderboard, and optionally the decision benchmark, through a PR, then dispatch its baseline runs. Use when the user wants to add or onboard a model, or names a new model or OpenRouter link for the leaderboard.
 ---
 
-# Add a New Model to the Eval Runner
+# Add a model
 
-Follow these steps whenever the user asks to add a new AI model to the eval suite.
+Every model runs through OpenRouter. The runner takes any OpenRouter slug and looks up the display name and API kind at run time (`runner/models/openRouterDiscovery.ts`). Adding a model is a list change in a PR plus paid baseline runs.
 
-## Step 0: Gather Information
-
-Determine the following (ask the user if not provided):
-
-1. **Model identifier** - the OpenRouter-style name, e.g. `anthropic/claude-opus-4.6`. If the user gives a marketing name or URL, look up the OpenRouter model id.
-2. **Formatted name** - human-readable, e.g. `Claude 4.6 Opus`.
-3. **Provider family & version** - needed to find older siblings (e.g. `claude-opus-4.5` is the predecessor of `claude-opus-4.6`).
-4. **`apiKind`** - only needed for OpenAI Codex/Responses-API models; set to `"responses"`. Omit for all other models.
-
-If you're unsure, check how the closest existing model in the same family is configured in `runner/models/index.ts` and match it.
-
-## Step 1: Add the Model to `runner/models/index.ts`
-
-Open `runner/models/index.ts` and add a new entry to the `ALL_MODELS` array. Place it next to its family siblings, respecting the existing grouping comments.
-
-**Template:**
-
-```typescript
-{
-  name: "<provider>/<model-id>",
-  formattedName: "<Human Name>",
-  // apiKind: "responses",  // only for OpenAI Codex / Responses-API models
-},
-```
-
-## Step 2: Update the Manual Evals Workflow
-
-Open `.github/workflows/manual_evals.yml` and **replace** the entire `matrix.model` list with only the new model. This workflow exists solely to collect baseline data for newly added models, so it should only ever contain the latest addition.
-
-```yaml
-matrix:
-  model:
-    - "<provider>/<model-id>"
-```
-
-## Step 3: Typecheck
-
-Run `bun run typecheck` to verify no type errors were introduced.
-
-## Step 4: Smoke Test the New Model Locally
-
-Before committing, run a quick local sanity check with one or two simple evals to confirm the model ID is valid, the API key works, and results are being produced. Use the simplest fundamentals evals:
+## 1. Find the OpenRouter slug
 
 ```bash
-MODELS=<new-model-name> TEST_FILTER="000-fundamentals/000" bun run local:run
+curl -s https://openrouter.ai/api/v1/models | jq -r '.data[] | "\(.id)\t\(.name)"' | grep -i sonnet
 ```
 
-If that passes, optionally run one more:
+Use the plain slug, e.g. `anthropic/claude-sonnet-5.5`, not a `:batch` variant or a `~...-latest` alias. If the model isn't listed, the runner can't run it yet.
+
+## 2. Add it to the lists
+
+`ALL_MODELS` is the curated list. It feeds the periodic schedule, the curated cohort of the next benchmark mint, and the ablation and guideline-validation scripts.
+
+- `runner/models/index.ts`: add the slug to `ALL_MODELS` next to its family. Entries are plain strings. Keep older siblings unless the maintainer says to drop them.
+- `runner/models.test.ts`: add `expect(ALL_MODELS).toContain("<slug>");` to "contains the current curated models".
+
+The decision benchmark is optional, so ask if unsure. Pick a short key without dots or dashes (`fable51`, `gemini38flash`) and add it in three places, next to its family each time:
+
+- `DECISION_CI_MODELS` in `runner/decisions/ci.ts`, e.g. `fable51: { provider: "openrouter", model: "anthropic/claude-fable-5.1" },`
+- the `model` input's `options` in `.github/workflows/decision_evals.yml`
+- the `all` JSON array on the `matrix.model` line of the same file
+
+No test checks that the three match. PR #338 is a complete example.
+
+`manual_evals.yml` needs no edit. It takes models as a dispatch input.
+
+## 3. Smoke test locally
 
 ```bash
-MODELS=<new-model-name> TEST_FILTER="000-fundamentals/001" bun run local:run
+DISABLE_CONVEX_REPORTING=1 MODELS=<slug> TEST_FILTER="000-fundamentals/000-empty_functions|000-fundamentals/003-crons" bun run local:run
 ```
 
-**What to look for:**
-- No authentication or "model not found" errors
-- The run completes and produces a score (even a low score is fine - we just want to confirm it runs)
-- If it fails with an API/auth error, stop and fix the model ID or check the `.env` file before proceeding
+This reads `OPENROUTER_API_KEY` from the root `.env`. A git worktree may lack `.env` and `node_modules`. Copy `.env` from the main checkout and run `bun install`.
 
-Only proceed to the next step once at least one eval completes successfully.
+Expect `[preflight] Endpoint is available` and a score for both evals. A low score is fine. `not supported and not found on OpenRouter` means a wrong slug. A model-specific request error, like Kimi K3 rejecting `temperature` (PR #225), needs a runner change, so stop and raise it.
 
-## Step 5: Commit and Push
-
-Create a descriptive commit message and push to `main`:
-
-```
-git add runner/models/index.ts .github/workflows/manual_evals.yml
-git commit -m "add <model-name>; demote older <family> versions"
-git push origin main
-```
-
-## Step 6: Trigger Manual Eval Runs for Baseline Data
-
-Use the GitHub CLI to dispatch the manual eval workflow **3 times** (to get a statistically meaningful baseline):
+## 4. Typecheck and test
 
 ```bash
-gh workflow run manual_evals.yml --ref main
+bun run typecheck
+bun run test
 ```
 
-Run this command 3 times, waiting ~5 seconds between dispatches to avoid collisions.
+## 5. Open a PR
 
-## Step 7: Monitor the Runs Until Completion
+Open it against `main` with Why, What, Validation (smoke result, typecheck, test counts) and, if you added a decision key, After merge. PR #340 is the template. Never merge it or enable auto-merge. The maintainer merges.
 
-**You MUST poll until all 3 runs reach a terminal state (completed/failed/cancelled). Do not stop monitoring early or hand back to the user while runs are still in progress.**
+## 6. Dispatch baseline coding runs
 
-Poll every ~2 minutes using:
+These don't wait for the merge. The runner discovers the slug, and dispatches on `main` report to the production leaderboard. Other refs run with reporting off.
+
+State a dollar estimate and get approval first. Take per-run averages for a model at a similar price from the public production query `modelScores:getSchedulingStats`:
 
 ```bash
-gh run list --workflow=manual_evals.yml --limit=6
+URL=https://fabulous-panther-525.convex.cloud
+ID=$(curl -s $URL/api/query -H 'Content-Type: application/json' \
+  -d '{"path":"models:getBySlug","args":{"slug":"anthropic/claude-sonnet-5"}}' | jq -r .value._id)
+for exp in '' ',"experiment":"no_guidelines"' ',"experiment":"no_guidelines_with_web"'; do
+  curl -s $URL/api/query -H 'Content-Type: application/json' \
+    -d "{\"path\":\"modelScores:getSchedulingStats\",\"args\":{\"modelId\":\"$ID\"$exp}}" | jq .value.averageRunCostUsd
+done
 ```
 
-Runs typically take 20-30 minutes. Keep checking until all show `completed`. If a run fails, immediately investigate:
+That prints the default, no_guidelines and no_guidelines_with_web averages. Web costs include Exa charges. One dispatch runs all three conditions, so three dispatches cost three times the sum. Sonnet 5 on 2026-09-29: $4.17 + $1.82 + $2.55 = $8.54 per dispatch, about $26 total.
+
+Then dispatch three times:
 
 ```bash
-gh run view <run-id> --log-failed
+gh workflow run manual_evals.yml --ref main -f models=<slug> -f run_guidelines=true -f run_no_guidelines=true -f run_no_guidelines_with_web=true
 ```
 
-Report the final pass/fail status for each run to the user once all 3 are done.
+- Web runs fail unless the repo variable `ENABLE_CLIENT_WEB_PRODUCTION` is `true` (`gh variable list`). The workflow supplies `EXA_API_KEY` and `CLIENT_WEB_TOOLS=1`.
+- If the provider rate-limits, pass `-f max_concurrency=2` or `1`.
+- The conditions are sequential steps in one job, and a failed step skips the rest. Re-dispatch just the missing ones with the others set to `false`.
+- In a web run, a provider or Exa error that survives its retries aborts the whole run, which is marked failed rather than scored. Read the log, re-dispatch, and don't count it.
 
-## Summary Checklist
+Find the runs with `gh run list --workflow=manual_evals.yml --limit 3`, follow one with `gh run watch <id>`, and read failures with `gh run view <id> --log-failed`.
 
-- [ ] Model added to `ALL_MODELS` in `runner/models/index.ts`
-- [ ] `.github/workflows/manual_evals.yml` matrix replaced with only the new model
-- [ ] `bun run typecheck` passes
-- [ ] Smoke test: at least one eval completes successfully locally
-- [ ] Changes committed and pushed to `main`
-- [ ] Manual eval workflow dispatched 3 times
-- [ ] All 3 runs monitored to completion
+## 7. Dispatch decision runs after the merge
+
+Skip this if you didn't add a decision key. The workflow only runs on `main`, and `ci.ts` rejects keys it doesn't know, so nothing works before the merge.
+
+Each job stops at $5 of known cost, which isn't a hard cap when a provider omits cost. Quote up to $15 and get approval, then dispatch three times, like every current decision model:
+
+```bash
+gh workflow run decision_evals.yml --ref main -f model=<key>
+```
+
+Always pass `model`. Its default, `all`, runs every decision model. `condition` defaults to `no_guidelines`, the only condition used so far.
+
+## 8. Check the periodic schedule
+
+```bash
+gh workflow list --all
+```
+
+If Periodic Evaluations is `disabled_manually`, the model only gets the manual runs above until the maintainer re-enables it. Don't re-enable it yourself. New models never need a benchmark mint. They score under the current version.
