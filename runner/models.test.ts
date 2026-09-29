@@ -40,6 +40,7 @@ describe("ALL_MODELS", () => {
     expect(ALL_MODELS).toContain("openai/gpt-5.6-terra");
     expect(ALL_MODELS).toContain("openai/gpt-5.6-luna");
     expect(ALL_MODELS).toContain("openai/gpt-6-astra");
+    expect(ALL_MODELS).toContain("openai/gpt-6.1-sol");
     expect(ALL_MODELS).toContain("deepseek/deepseek-v4-pro");
     expect(ALL_MODELS).toContain("z-ai/glm-5.3-flash");
     expect(ALL_MODELS).toContain("moonshotai/kimi-k3");

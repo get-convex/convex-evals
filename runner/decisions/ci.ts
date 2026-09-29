@@ -14,6 +14,7 @@ export const DECISION_CI_MODELS = {
   jev: { provider: "openrouter", model: "typesafe/jev-1.13" },
   luna: { provider: "openrouter", model: "openai/gpt-5.6-luna" },
   sol: { provider: "openrouter", model: "openai/gpt-5.6-sol" },
+  sol61: { provider: "openrouter", model: "openai/gpt-6.1-sol" },
   astra: { provider: "openrouter", model: "openai/gpt-6-astra" },
   grok47: { provider: "openrouter", model: "x-ai/grok-4.7" },
   opus55: { provider: "openrouter", model: "anthropic/claude-opus-5.5" },
