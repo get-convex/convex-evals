@@ -22,40 +22,57 @@ The visualizer URL pattern is:
 - `$runId` — the Convex document ID for the run (e.g. `jn7922j1w29pdxm76bj9ps0enx80mg9e`)
 - `$evalId` — the Convex document ID for the specific eval (e.g. `jh73jvjz2n00gfeve1dt5h963s80mbc6`)
 
-You need the **evalId** to query.
+You need the **runId** and the **evalId** to query.
 
-## Step 2: Query the debug action
+## Step 2: Fetch the eval
 
-Run the internal action from the `evalScores/` directory. Always use `--prod` to query the production database (where CI writes results):
+The debug action `debug:getEvalDebugInfo` is internal, so it needs `npx convex run --prod`, and agents usually hit team SSO ("Single-sign on login is required"). Use the public production queries over HTTP instead. They need no login. Work in a temp directory:
 
 ```bash
-npx convex run --prod debug:getEvalDebugInfo '{"evalId": "<evalId>"}'
+URL=https://fabulous-panther-525.convex.cloud
+curl -s $URL/api/query -H 'Content-Type: application/json' \
+  -d '{"path":"runs:getRunDetails","args":{"runId":"<runId>"}}' > run.json
+jq '.value | {model, provider, experiment, status: .status.kind}' run.json
+jq '.value.evals[] | select(._id == "<evalId>")' run.json > eval.json
 ```
 
-This returns a JSON object with:
+Get a download URL for the model output (`status.outputStorageId` in eval.json) and for the eval source (`evalSourceStorageId`):
 
-| Field | Contents |
-|-------|----------|
-| `eval` | Name, category, evalPath, status (pass/fail + failure reason), task text |
-| `run` | Model name, provider, experiment name, run status |
-| `steps` | Array of step results: filesystem, install, deploy, tsc, eslint, tests — each with pass/fail/skipped and failure reason |
-| `outputFiles` | Map of file path -> file content from the model's generated output (unzipped) |
-| `evalSourceFiles` | Map of file path -> file content from the eval source (answer dir, grader, TASK.txt, etc.) |
+```bash
+curl -s $URL/api/query -H 'Content-Type: application/json' \
+  -d '{"path":"runs:getOutputUrl","args":{"storageId":"<storageId>"}}' | jq -r .value
+```
+
+Download each with `curl -s -o`, then unzip the output into `output/` and the source into `source/`. That gives you:
+
+| Source | Contents |
+|--------|----------|
+| `eval.json` | evalPath, category, name, status (pass/fail + failure reason), task text |
+| `eval.json` `steps` | Array of step results: filesystem, install, deploy, tsc, eslint, tests. Each is passed, failed or skipped, with a failure reason |
+| run metadata | Model slug, provider, experiment (`null` means default), run status |
+| `output/` | The model's generated files |
+| `source/` | The eval source (answer dir, grader, TASK.txt, etc.) |
+
+If you have an eval ID but no run ID, ask for the visualizer URL, or give Mike this command to run and paste back:
+
+```bash
+cd evalScores && npx convex run --prod debug:getEvalDebugInfo '{"evalId": "<evalId>"}'
+```
 
 ## Step 3: Analyze the failure
 
 With the data returned, compare:
 
-1. **Which step failed?** — Check `steps` for the first entry with `status.kind === "failed"`. The `failureReason` field has the error message.
-2. **What did the model generate?** — Look at `outputFiles` for the model's code.
-3. **What was expected?** — Look at `evalSourceFiles` for the answer directory and grader test files.
-4. **What was the task?** — Check `eval.task` for the TASK.txt content.
+1. **Which step failed?** Check `steps` for the first entry with `status.kind === "failed"`. The `failureReason` field has the error message.
+2. **What did the model generate?** Look at `output/` for the model's code.
+3. **What was expected?** Look at `source/` for the answer directory and grader test files.
+4. **What was the task?** Check `task` in eval.json for the TASK.txt content.
 
 Common failure patterns:
-- **eslint fail** — Check the failure reason for the specific lint rule violated. Compare the model output against the answer to spot the lint issue.
-- **tsc fail** — TypeScript compilation error. Check the failure reason for the specific type error.
-- **convex dev fail** — Schema or function definition issues that prevent Convex from deploying.
-- **tests fail** — The grader tests didn't pass. Compare `outputFiles` against `evalSourceFiles` (look for files like `grader.test.ts` or `answer/`) to understand what the tests expected.
+- **eslint fail.** Check the failure reason for the specific lint rule violated. Compare the model output against the answer to spot the lint issue.
+- **tsc fail.** TypeScript compilation error. Check the failure reason for the specific type error.
+- **convex dev fail.** Schema or function definition issues that prevent Convex from deploying.
+- **tests fail.** The grader tests didn't pass. Compare `output/` against `source/` (look for files like `grader.test.ts` or `answer/`) to understand what the tests expected.
 
 ## Step 4: Classify and report findings
 

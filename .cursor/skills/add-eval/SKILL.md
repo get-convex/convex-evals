@@ -5,9 +5,9 @@ description: Design, implement, validate, and calibrate a new eval for the conve
 
 # Add a New Eval
 
-Follow these steps whenever the user asks to create a new eval. Read `.cursor/skills/add-eval/reference.md` for grader helpers, test patterns, and conventions.
+Follow these steps whenever the user asks to create a new eval. Read `.cursor/skills/add-eval/reference.md` for grader helpers, test patterns, and conventions. The eval-writing rules in AGENTS.md ("Authoring New Evals") and README.md ("Writing evals") take precedence over this skill.
 
-**Switch to Plan mode immediately.** Steps 0-2 (gather info, research, design) are collaborative and read-only. The user should see the research findings and approve the eval design before any files are created. Switch back to Agent mode at Step 3.
+**Steps 0-2 (gather info, research, design) are collaborative and read-only.** Don't create or edit any files until the user has seen the research findings and approved the eval design. Implementation starts at Step 3.
 
 ## Step 0: Gather Information
 
@@ -29,6 +29,7 @@ List the existing categories by scanning `evals/` top-level directories, then pr
 | `004-actions` | HTTP fetch, file storage, node runtime, HTTP action routing |
 | `005-idioms` | File organization, internal functions, batch patterns |
 | `006-clients` | useQuery, useMutation, usePaginatedQuery |
+| `007-components` | Components: usage evals wiring a named component, selection evals choosing one, local components, function handles |
 
 - If the concept **clearly fits** one category, propose it with a brief justification.
 - If it's **ambiguous** (e.g. "scheduled mutations" could be fundamentals or mutations), stop and ask the user. Present the candidate categories with reasoning for each.
@@ -49,7 +50,7 @@ Run these four research tracks. Use sub-agents or parallel tool calls where poss
 
 ### B. Existing Guidelines
 
-1. Read the relevant sections of `runner/models/guidelines.ts` (or the generated guidelines) for the concept being tested.
+1. Read the relevant sections of `runner/models/guidelines.md` for the concept being tested. It is the source. `runner/models/guidelines.ts` only loads it.
 2. Record:
    - Which existing guidelines are relevant
    - What behavior those guidelines would lead a model to produce
@@ -75,7 +76,11 @@ Run these four research tracks. Use sub-agents or parallel tool calls where poss
 
 ## Step 2: Design the Eval
 
-You should already be in Plan mode. Present the full eval design to the user for review.
+Present the full eval design to the user for review. Stay read-only until they approve it.
+
+### Why this matters
+
+State what Convex-specific knowledge the eval measures and what silently breaks in production when a model lacks it. Every eval issue and PR needs this section (AGENTS.md). If you can't write it, the eval probably tests trivia.
 
 ### TASK.txt Draft
 
@@ -97,6 +102,7 @@ Describe the files that will be created and the key implementation approach. Don
 Describe how the eval will be graded:
 
 - Pick the primary grading primitive first: behavior tests, schema inspection, function-spec comparison, HTTP testing, AI grading, AST analysis, or some combination.
+- Pick the pipeline: backend (default), static for selection evals, or module. See "Eval Pipelines" in `reference.md`.
 - Which grader helpers to use (see `reference.md` for the catalog and decision tree).
 - What behaviors to assert on.
 - Whether standard unit tests are sufficient, or if you need schema inspection, HTTP testing, AI grading, or something else.
@@ -120,7 +126,7 @@ Summarize the guideline context before implementation:
 - Whether failures on this eval would likely indicate a model gap, an eval/task problem, or a missing/weak guideline
 - Any existing guideline that might need to be revised if calibration shows an unexpected result
 
-If a new guideline is likely needed, design it **minimal-first**. Every token in the guidelines is sent with every prompt, so bloat costs real money. Start with the smallest guideline that teaches the critical pattern (usually one code example), test it, and only expand if models still fail. Avoid pinning specific dependency versions in guidelines as they age quickly. Prefer "always install the latest version" instead.
+If a new guideline is likely needed, design it **minimal-first**. Every token in the guidelines is sent with every prompt, so bloat costs real money. Start with the smallest guideline that teaches the critical pattern (usually one code example), test it, and only expand if models still fail. Avoid pinning specific dependency versions in guidelines as they age quickly. Prefer "always install the latest version" instead. Follow the guideline rules in AGENTS.md "Authoring New Evals": prove the line helps a specific eval, and prefer improving an existing line over adding one.
 
 ### Push Back
 
@@ -134,11 +140,11 @@ Before presenting the design, critically evaluate it. Warn the user if:
 
 ## Step 3: Implement the Eval
 
-After the user approves the design, **switch back to Agent mode** and implement:
+After the user approves the design, implement:
 
 1. **Create directory:** `evals/<category>/<eval_slug>/`
 
-2. **Write TASK.txt** with the approved content.
+2. **Write TASK.txt** with the approved content. For the static or module pipeline, also add `eval.json` (see "Eval Pipelines" in `reference.md`).
 
 3. **Create answer directory:**
    - `answer/package.json`:
@@ -151,20 +157,23 @@ After the user approves the design, **switch back to Agent mode** and implement:
        }
      }
      ```
+     Component evals pin exact versions of `convex` and the component instead (e.g. `"convex": "1.41.0"`, `"@convex-dev/aggregate": "0.2.2"`). Copy the pins from a sibling in `evals/007-components/`. Usage-eval tasks state the same pins. Selection-eval tasks can't name the component, so they pin only `convex`.
    - `answer/convex/schema.ts` (if applicable)
    - Implementation files (e.g. `answer/convex/index.ts`)
+   - No `returns:` validators unless the task tests them (AGENTS.md). Answers are likely training data.
 
-4. **Run codegen:**
+4. **Add generated types:** `bunx convex codegen` fails without a deployment ("No CONVEX_DEPLOYMENT set"). Copy `_generated` and `tsconfig.json` from a sibling single-module eval with the same files, e.g. `convex/index.ts` and `convex/schema.ts`:
    ```bash
-   cd evals/<category>/<eval_slug>/answer && bunx convex codegen
+   cp -R evals/<sibling>/answer/convex/_generated evals/<sibling>/answer/convex/tsconfig.json evals/<category>/<eval_slug>/answer/convex/
    ```
+   See "Generated types" in `reference.md` for when to edit the copied imports.
 
-5. **Write grader.test.ts** using the approved test approach. Import paths are relative:
+5. **Write grader.test.ts** using the approved test approach. Backend-pipeline graders import from `grader/index.ts` with relative paths:
    ```typescript
    import { responseClient, responseAdminClient, addDocuments } from "../../../grader";
    import { api } from "./answer/convex/_generated/api";
    ```
-   Adjust the depth of `../` based on the eval's nesting level.
+   Adjust the depth of `../` based on the eval's nesting level. Static and module graders import from `../../../grader/outputDir` instead. `grader/index.ts` throws "CONVEX_PORT is not set" without a backend.
 
 6. **Typecheck:**
    ```bash
@@ -179,13 +188,34 @@ First run canonical answer validation for the new eval:
 TEST_FILTER=<category>/<eval_slug> bun run validate:answers
 ```
 
-Then run the eval for one model as a smoke test. This validates model generation against the new eval:
+### Cost approval
+
+The smoke test below and Step 5 make paid model calls. Before running either, state a dollar estimate and wait for the user's approval. Take each model's average full-suite cost from the public production query `modelScores:getSchedulingStats`, as in the add-model skill:
 
 ```bash
-MODELS=anthropic/claude-sonnet-4.6 TEST_FILTER=<category>/<eval_slug> bun run local:run
+URL=https://fabulous-panther-525.convex.cloud
+for slug in anthropic/claude-sonnet-5 anthropic/claude-opus-4.8 openai/gpt-5.5 deepseek/deepseek-v4-pro; do
+  ID=$(curl -s $URL/api/query -H 'Content-Type: application/json' \
+    -d "{\"path\":\"models:getBySlug\",\"args\":{\"slug\":\"$slug\"}}" | jq -r .value._id)
+  for exp in '' ',"experiment":"no_guidelines"'; do
+    printf "%s%s " "$slug" "$exp"
+    curl -s $URL/api/query -H 'Content-Type: application/json' \
+      -d "{\"path\":\"modelScores:getSchedulingStats\",\"args\":{\"modelId\":\"$ID\"$exp}}" | jq .value.averageRunCostUsd
+  done
+done
 ```
 
-Do NOT set `CONVEX_EVAL_URL` or `CONVEX_AUTH_TOKEN`, so results stay local-only.
+Divide each average by the eval count (`ls -d evals/*/*/ | wc -l`) for a per-eval cost, sum over the models and conditions you'll run, and multiply by the repeats. On 2026-09-29 these four models averaged about $22.60 per default suite and $14 per `no_guidelines` suite over 112 evals, so one eval in both conditions cost about $0.33 per repeat, or $1 for three repeats. Evals with long tasks cost more.
+
+### Smoke test
+
+Run the eval for one model. This validates model generation against the new eval:
+
+```bash
+DISABLE_CONVEX_REPORTING=1 MODELS=anthropic/claude-sonnet-5 TEST_FILTER=<category>/<eval_slug> bun run local:run
+```
+
+`DISABLE_CONVEX_REPORTING=1` keeps results local.
 
 If the smoke test fails:
 
@@ -195,20 +225,22 @@ If the smoke test fails:
 
 ## Step 5: Run Against Multiple Models
 
-Start with a smaller representative set of models to calibrate difficulty. If the result is unclear, expand to a broader sweep. Launch separate background processes, one per model:
+Start with a smaller representative set of models to calibrate difficulty. If the result is unclear, expand to a broader sweep. Use full OpenRouter slugs from `ALL_MODELS` in `runner/models/index.ts`. Run each model in both conditions, default and `EVALS_EXPERIMENT=no_guidelines`. The difference is the guidelines' measured contribution (AGENTS.md). Launch one background process per model:
 
 ```bash
 # Suggested first-pass set
-MODELS=anthropic/claude-sonnet-4.6 TEST_FILTER=<category>/<eval_slug> bun run local:run &
-MODELS=openai/gpt-5.4 TEST_FILTER=<category>/<eval_slug> bun run local:run &
-MODELS=google/gemini-3.1-pro-preview TEST_FILTER=<category>/<eval_slug> bun run local:run &
-MODELS=anthropic/claude-haiku-4.5 TEST_FILTER=<category>/<eval_slug> bun run local:run &
+for m in anthropic/claude-sonnet-5 anthropic/claude-opus-4.8 openai/gpt-5.5 deepseek/deepseek-v4-pro; do
+  (
+    DISABLE_CONVEX_REPORTING=1 MODELS=$m TEST_FILTER=<category>/<eval_slug> bun run local:run
+    DISABLE_CONVEX_REPORTING=1 EVALS_EXPERIMENT=no_guidelines MODELS=$m TEST_FILTER=<category>/<eval_slug> bun run local:run
+  ) > "/tmp/calibrate-${m//\//_}.log" 2>&1 &
+done
 wait
 ```
 
-If those results are too noisy or too uniform, expand to a broader sweep across providers and tiers. The user can override the list. Do NOT set `CONVEX_EVAL_URL` or `CONVEX_AUTH_TOKEN`.
+If those results are too noisy or too uniform, expand to a broader sweep across providers and tiers from `ALL_MODELS`. The user can override the list. Any expansion needs a new estimate and approval.
 
-Monitor the background processes by reading their terminal output files. Each process runs one eval so they should complete in a few minutes.
+Monitor progress by reading the log files. Each process runs one eval in two conditions, so they should complete in a few minutes.
 
 ### Run-to-run variance
 
@@ -220,14 +252,14 @@ Run each model **at least twice** (ideally three times) to distinguish systemati
 
 ## Step 6: Review Results and Calibrate
 
-Collect pass/fail from all model runs and present a summary table:
+Collect pass/fail from all model runs in both conditions and present a summary table:
 
 ```
-Model                          Result
------------------------------  ------
-anthropic/claude-sonnet-4.6    PASS
-anthropic/claude-haiku-4.5     FAIL
-openai/gpt-5.4                 PASS
+Model                        default  no_guidelines
+---------------------------  -------  -------------
+anthropic/claude-sonnet-5    3/3      1/3
+anthropic/claude-opus-4.8    3/3      2/3
+openai/gpt-5.5               2/3      0/3
 ...
 ```
 
@@ -242,7 +274,7 @@ Then explicitly ask: is this primarily an **eval/task gap**, a **model gap**, or
 
 - **Eval/task gap** - The task is ambiguous, over-specified, under-specified, or the grader is not testing the right thing. Fix the eval first.
 - **Model gap** - The task is sound, the grading is sound, and failures are what we would expect. Keep the eval.
-- **Guideline gap** - The failures suggest there should be a guideline that helps here, or an existing guideline is weak/confusing/contradictory. Recommend following up with the `validate-guidelines` skill after the eval is settled.
+- **Guideline gap** - The failures suggest there should be a guideline that helps here, or an existing guideline is weak/confusing/contradictory. If default and `no_guidelines` match, the current guidelines aren't moving this eval. After the eval is settled, recommend a change to `runner/models/guidelines.md` that follows AGENTS.md, then a regression check with the `validate-guidelines` skill filtered to this eval's category. That run needs its own cost estimate and approval.
 
 ### Debugging failures
 
@@ -263,13 +295,15 @@ This is essential for distinguishing "model wrote bad code" from "model's code i
 - [ ] Convex docs consulted for the feature being tested
 - [ ] Relevant existing guidelines checked, with expected implications noted
 - [ ] No significant overlap with existing evals (or overlap discussed with user)
-- [ ] TASK.txt reviewed and approved by user (Plan mode)
-- [ ] Test approach discussed, especially if non-standard grading is needed
-- [ ] Answer implemented and codegen run
+- [ ] "Why this matters" written
+- [ ] TASK.txt reviewed and approved by user before any files were created
+- [ ] Test approach and pipeline discussed, especially if non-standard grading is needed
+- [ ] Answer implemented and `_generated` copied from a sibling eval
 - [ ] grader.test.ts written
 - [ ] `bun run typecheck` passes
 - [ ] `bun run validate:answers` passes for the new eval
 - [ ] Smoke test passes for at least one model
-- [ ] Calibrated on a representative set of models, expanded if needed
+- [ ] Cost estimate approved before any model run
+- [ ] Calibrated on a representative set of models in both conditions, expanded if needed
 - [ ] Results reviewed, including eval gap vs model gap vs guideline gap
 - [ ] Difficulty is appropriate

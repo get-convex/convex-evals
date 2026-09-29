@@ -21,9 +21,11 @@ Extract the run ID from the visualizer URL. The URL pattern is:
 
 The `$runId` is the Convex document ID (e.g. `jn7922j1w29pdxm76bj9ps0enx80mg9e`).
 
+This skill covers coding runs only. For a decision run (visualizer URLs under `/decision/run/`), the queries below throw "This operation requires a coding run", which the public API reports as a bare "Server Error".
+
 ## Step 2: Check previous reports for this model
 
-Reports are stored in `reports/{provider}/{model}/` (e.g. `reports/anthropic/claude-opus-4-6/`).
+Reports are stored in `reports/{provider}/{model}/`, where `{provider}/{model}` is the run's model slug (the `model` field from Step 3), e.g. `reports/anthropic/claude-opus-4.8/` for `anthropic/claude-opus-4.8`. Don't use the run's `provider` field. It stores the OpenRouter endpoint provider (or `openrouter` when discovery failed), which can differ from the slug's vendor.
 List the directory for the model being analyzed and read the most recent report(s). This gives you:
 - Known recurring failures for this model
 - Actions already taken (lint config changes, grader fixes, task updates)
@@ -33,36 +35,59 @@ Reference prior findings when the same eval fails again — note whether it's a 
 
 ## Step 3: Fetch the failure summary
 
-Run from the `evalScores/` directory:
+Use the public production query `runs:getRunDetails` over HTTP. It needs no login:
 
 ```bash
-npx convex run --prod debugQueries:getFailedEvalsForRun '{"runId": "<runId>"}'
+URL=https://fabulous-panther-525.convex.cloud
+curl -s $URL/api/query -H 'Content-Type: application/json' \
+  -d '{"path":"runs:getRunDetails","args":{"runId":"<runId>"}}' > /tmp/run-<runId>.json
+jq '.value | {model, provider, experiment, status: .status.kind,
+  totalEvals: (.evals | length),
+  passedCount: ([.evals[] | select(.status.kind == "passed")] | length),
+  failedEvals: [.evals[] | select(.status.kind == "failed") | {_id, evalPath,
+    failureReason: .status.failureReason,
+    failedStep: ([.steps[] | select(.status.kind == "failed") | {name, failureReason: .status.failureReason}] | first)}]}' /tmp/run-<runId>.json
 ```
 
 This returns:
-- `run` -- model name, provider, experiment, status
-- `totalEvals`, `passedCount`, `failedCount` -- overall stats
-- `failedEvals` -- array of failed evals, each with `_id`, `evalPath`, `category`, `name`, `failureReason`, and `failedStep` (which step failed and its error)
+- `model` (the slug), `provider`, `experiment` (`null` means default), `status` -- run metadata
+- `totalEvals`, `passedCount` -- overall stats
+- `failedEvals` -- array of failed evals, each with `_id`, `evalPath`, `failureReason`, and `failedStep` (which step failed and its error)
 
 If there are no failures, report that all evals passed and stop.
 
+Don't use `npx convex run --prod` for this. The debug functions (`debugQueries:getFailedEvalsForRun`, `debug:getEvalDebugInfo`) are internal, and agents usually hit team SSO ("Single-sign on login is required").
+
 ## Step 4: Fan out sub-agents to analyze each failure
 
-For each failed eval, spawn a sub-agent (up to 4 in parallel) with this prompt template:
+For each failed eval, spawn a sub-agent (up to 4 in parallel) with this prompt template. Fill in `<REPO_ROOT>` with the absolute path from `git rev-parse --show-toplevel`. If a sub-agent can't fetch its eval, give Mike this command to run and paste back: `cd evalScores && npx convex run --prod debug:getEvalDebugInfo '{"evalId": "<EVAL_ID>"}'`.
 
 ```
 You are investigating a failing eval from the convex-evals system.
 
-The workspace is at c:\dev\convex\convex-evals
-Run this command from the evalScores/ directory:
+The repo root is <REPO_ROOT>. Work in a new temp directory, not the repo.
+Fetch the eval from the public production API (no login needed):
 
-npx convex run --prod debug:getEvalDebugInfo '{"evalId": "<EVAL_ID>"}'
+URL=https://fabulous-panther-525.convex.cloud
+curl -s $URL/api/query -H 'Content-Type: application/json' \
+  -d '{"path":"runs:getRunDetails","args":{"runId":"<RUN_ID>"}}' \
+  | jq '.value.evals[] | select(._id == "<EVAL_ID>")' > eval.json
+
+eval.json has the task text (task), status (failureReason, outputStorageId),
+evalSourceStorageId, and steps. Get a download URL for each storage ID:
+
+curl -s $URL/api/query -H 'Content-Type: application/json' \
+  -d '{"path":"runs:getOutputUrl","args":{"storageId":"<STORAGE_ID>"}}' | jq -r .value
+
+Download status.outputStorageId to output.zip and evalSourceStorageId to
+source.zip with curl -s -o, then unzip each into output/ and source/.
+Don't use npx convex run --prod. If a request fails, stop and report the error.
 
 Then analyze the result:
 1. Which step failed and what was the exact error?
-2. Look at the model's generated code in outputFiles.
-3. Look at the expected answer and grader in evalSourceFiles.
-4. Look at the task description in eval.task.
+2. Look at the model's generated code in output/.
+3. Look at the expected answer and grader in source/.
+4. Look at the task description in eval.json's task field.
 5. Is this a genuine model mistake, or is the test/lint/task unfair?
 
 Classify the failure as one of:
@@ -113,9 +138,9 @@ Always create a report file at:
 reports/{provider}/{model}/{runIdPrefix}_{date}.md
 ```
 
-For example: `reports/anthropic/claude-opus-4-6/jn72t14a_2026-02-06.md`
+For example: `reports/anthropic/claude-opus-4.8/jn72t14a_2026-09-29.md` for a run of `anthropic/claude-opus-4.8`.
 
-The `runIdPrefix` is the first 8 characters of the run ID.
+`{provider}/{model}` is the run's model slug, as in Step 2. The `runIdPrefix` is the first 8 characters of the run ID.
 
 The report should contain:
 - Run metadata (ID, model, experiment, date, pass rate)
