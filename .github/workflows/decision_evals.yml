@@ -6,8 +6,9 @@ on:
       model:
         description: Model to evaluate on the complete accepted decision bank
         type: choice
-        default: all
+        default: none
         options:
+          - none
           - all
           - jev
           - luna
@@ -36,7 +37,7 @@ permissions:
 
 jobs:
   decisions:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && inputs.model != 'none'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     strategy:

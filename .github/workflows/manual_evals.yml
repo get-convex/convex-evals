@@ -5,10 +5,9 @@ on:
     inputs:
       models:
         description: "Comma-separated model names to evaluate"
-        required: false
-        default: "anthropic/claude-opus-4.8"
+        required: true
       test_filter:
-        description: "Regex to filter evals (e.g. '000-fundamentals', '000-fundamentals/000')"
+        description: "Regex to filter evals (e.g. '000-fundamentals', '000-fundamentals/000'). Filtered runs are pilots and do not report to production"
         required: false
         default: ""
       run_guidelines:
