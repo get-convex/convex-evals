@@ -13,6 +13,7 @@ import type { DecisionProvider } from "./protocol.js";
 export const DECISION_CI_MODELS = {
   jev: { provider: "openrouter", model: "typesafe/jev-1.13" },
   luna: { provider: "openrouter", model: "openai/gpt-5.6-luna" },
+  luna6: { provider: "openrouter", model: "openai/gpt-6-luna" },
   sol: { provider: "openrouter", model: "openai/gpt-5.6-sol" },
   sol61: { provider: "openrouter", model: "openai/gpt-6.1-sol" },
   astra: { provider: "openrouter", model: "openai/gpt-6-astra" },

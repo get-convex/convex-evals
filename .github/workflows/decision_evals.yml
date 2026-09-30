@@ -12,6 +12,7 @@ on:
           - all
           - jev
           - luna
+          - luna6
           - sol
           - sol61
           - astra
@@ -45,7 +46,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        model: ${{ fromJSON(inputs.model == 'all' && '["jev","luna","sol","sol61","astra","grok47","opus55","sonnet5","sonnet55","fable51","gemini31pro","gemini38flash","deepseek41flash","qwen3827b","kimi3","glm53","mistralmedium35"]' || format('["{0}"]', inputs.model)) }}
+        model: ${{ fromJSON(inputs.model == 'all' && '["jev","luna","luna6","sol","sol61","astra","grok47","opus55","sonnet5","sonnet55","fable51","gemini31pro","gemini38flash","deepseek41flash","qwen3827b","kimi3","glm53","mistralmedium35"]' || format('["{0}"]', inputs.model)) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
