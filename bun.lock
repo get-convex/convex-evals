@@ -31,7 +31,7 @@
         "zod": "^4.3.6",
       },
       "devDependencies": {
-        "@ai-sdk/provider-utils": "4.0.54",
+        "@ai-sdk/provider-utils": "4.0.57",
         "@convex-dev/action-cache": "0.3.1",
         "@convex-dev/agent": "0.6.4",
         "@convex-dev/aggregate": "0.3.1",
@@ -64,9 +64,9 @@
 
     "@ai-sdk/openai-compatible": ["@ai-sdk/openai-compatible@2.0.27", "", { "dependencies": { "@ai-sdk/provider": "3.0.7", "@ai-sdk/provider-utils": "4.0.13" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-YpAZe7OQuMkYqcM/m1BMX0xFn4QdhuL4qGo8sNaiLq1VjEeU/pPfz51rnlpCfCvYanUL5TjIZEbdclBUwLooSQ=="],
 
-    "@ai-sdk/provider": ["@ai-sdk/provider@3.0.17", "", { "dependencies": { "json-schema": "^0.4.0" } }, "sha512-ijb+g+XxIAmv46hpt73ty83LhQHwwsqA1IwVX6p1MAREyX0zGM9eIrz1m3KlFxTHr8E4k/ao01w6Dlx3UBOihQ=="],
+    "@ai-sdk/provider": ["@ai-sdk/provider@3.0.18", "", { "dependencies": { "json-schema": "^0.4.0" } }, "sha512-IpefF5ssZVOZCD4Wu7zxt6PwZoGT2HLVjxpJ10Bjx6EAmRfLYJPjyrfxb0RYDlwvXnDb9nkQ7Do/oJVDuRFzew=="],
 
-    "@ai-sdk/provider-utils": ["@ai-sdk/provider-utils@4.0.54", "", { "dependencies": { "@ai-sdk/provider": "3.0.17", "@standard-schema/spec": "^1.1.0", "eventsource-parser": "^3.0.8", "undici": "^6.28.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-piCQO5dnTqW7QSUbMsKg8oNI+u5VtgLnVFkgG6LfckrOyHcHFrIssBVJDg3/CXOdWXIFhVjIr540rzZAdom2TA=="],
+    "@ai-sdk/provider-utils": ["@ai-sdk/provider-utils@4.0.57", "", { "dependencies": { "@ai-sdk/provider": "3.0.18", "@standard-schema/spec": "^1.1.0", "eventsource-parser": "^3.0.8", "undici": "^6.28.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-89a7sPvZqXsP3PigcAQLWntu/duIVEcN/RyChAB+j6p3C7NwW767sVttvL8r0+BetTg63uAXQoYHCZZueQKBSw=="],
 
     "@ai-sdk/togetherai": ["@ai-sdk/togetherai@2.0.30", "", { "dependencies": { "@ai-sdk/openai-compatible": "2.0.27", "@ai-sdk/provider": "3.0.7", "@ai-sdk/provider-utils": "4.0.13" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-renFLy7YSk2pwWGc07aVO1kVrr9twqjoNWFZ/0JXRbghD5pmykPdEQcUw9FGRZJ61xDGoYoGE3i9jw+AE6Xc1Q=="],
 
