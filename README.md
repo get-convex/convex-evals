@@ -63,6 +63,9 @@ and provider-reported cost, and sends no chat reasoning or output-token settings
 All hosted models use the existing OpenRouter credential. Direct TypeSafe
 trials remain supported with `--provider typesafe --model jev-latest` and
 `TYPESAFE_API_KEY`, with their provider identity kept separate in the results.
+Add `--base-url <url>` to send those trials to another Jev-compatible host
+instead, such as a proxy or a local open model like WaterSheep; the run's
+config and report record the host.
 
 Read the [question authoring standard](docs/decision-question-authoring.md) and
 [verification guide](docs/decision-verification.md) before changing a question.

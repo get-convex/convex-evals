@@ -20,7 +20,10 @@ export function usesNativeDecisionApi(
 }
 
 export function providerEndpoint(config: ProviderConfig): string {
-  if (config.provider === "typesafe") return PROVIDER_ENDPOINTS.typesafe;
+  if (config.provider === "typesafe")
+    return config.baseUrl
+      ? `${config.baseUrl.replace(/\/+$/, "")}/v1/systemone`
+      : PROVIDER_ENDPOINTS.typesafe;
   return usesNativeDecisionApi(config)
     ? PROVIDER_ENDPOINTS.openrouterDecisions
     : PROVIDER_ENDPOINTS.openrouter;

@@ -29,6 +29,7 @@ const runOptionsSchema = z.object({
   maxOutputTokens: z.number(),
   timeoutMs: z.number(),
   maxRetries: z.number(),
+  baseUrl: z.url().optional(),
 });
 const regradeOptionsSchema = z.object({
   root: z.string(),
@@ -147,8 +148,14 @@ for (const command of ["run", "dry-run"] as const) {
       Number,
       1,
     )
+    .option(
+      "--base-url <url>",
+      "TypeSafe provider only: send requests to another Jev-compatible host",
+    )
     .action(async (input: unknown) => {
       const options = runOptionsSchema.parse(input);
+      if (options.baseUrl && options.provider !== "typesafe")
+        throw new Error("--base-url only applies to --provider typesafe");
       const runOptions: DecisionRunOptions = {
         projectRoot: options.root,
         outputRoot: options.output,
@@ -168,6 +175,7 @@ for (const command of ["run", "dry-run"] as const) {
           maxOutputTokens: options.maxOutputTokens,
           timeoutMs: options.timeoutMs,
           maxRetries: options.maxRetries,
+          ...(options.baseUrl ? { baseUrl: options.baseUrl } : {}),
         },
       };
       const result = await runDecisions(runOptions);

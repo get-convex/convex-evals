@@ -465,6 +465,15 @@ describe("provider boundaries", () => {
       parseProviderResponse(tsConfig, raw, ["A", "B", "C", "D"]),
     ).toThrow("sum to one");
   });
+  it("sends direct TypeSafe trials to --base-url when one is given", () => {
+    const tsConfig = { ...config, provider: "typesafe" as const };
+    expect(providerEndpoint(tsConfig)).toBe(
+      "https://api.typesafe.ai/v1/systemone",
+    );
+    expect(
+      providerEndpoint({ ...tsConfig, baseUrl: "http://127.0.0.1:8766/" }),
+    ).toBe("http://127.0.0.1:8766/v1/systemone");
+  });
   it("routes Jev through OpenRouter's native Decisions API and preserves billed usage", async () => {
     const routed = { ...config, model: "typesafe/jev-1.13" };
     const request = buildProviderRequest(routed, presented, "");
