@@ -23,4 +23,7 @@ export interface ProviderConfig {
   maxOutputTokens: number;
   timeoutMs: number;
   maxRetries: number;
+  /** TypeSafe only: another Jev-compatible host. Kept in the run's config so
+   * the report says where the answers came from. */
+  baseUrl?: string;
 }
