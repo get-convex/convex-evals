@@ -15,7 +15,7 @@ const inspectOptionsSchema = z.object({
 const runOptionsSchema = z.object({
   root: z.string(),
   output: z.string(),
-  provider: z.enum(["typesafe", "openrouter"]),
+  provider: z.literal("openrouter"),
   model: z.string(),
   condition: z.enum(["no_guidelines", "with_guidelines"]),
   reasoning: z.enum(["low", "medium", "high"]),
@@ -86,8 +86,8 @@ for (const command of ["run", "dry-run"] as const) {
     .command(command)
     .addOption(
       new Option("--provider <provider>", "Provider adapter")
-        .choices(["typesafe", "openrouter"])
-        .default("typesafe"),
+        .choices(["openrouter"])
+        .default("openrouter"),
     )
     .requiredOption(
       "--model <id>",

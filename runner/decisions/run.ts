@@ -185,19 +185,10 @@ export async function runDecisions(
 ) {
   if (options.dryRun && hooks)
     throw new Error("Dry runs cannot report hosted results");
-  // Direct TypeSafe runs remain a local file-only experiment. Hosted ingestion
-  // has one route, so reject unsupported providers before start or inference.
-  if (hooks && options.config.provider !== "openrouter")
-    throw new Error(
-      "Hosted decision reporting requires the OpenRouter provider",
-    );
   const plan = buildRunPlan(options);
   let key = "";
   if (!options.dryRun) {
-    const variable =
-      options.config.provider === "typesafe"
-        ? "TYPESAFE_API_KEY"
-        : "OPENROUTER_API_KEY";
+    const variable = "OPENROUTER_API_KEY";
     const fileEnvironment = options.envFile
       ? parse(readFileSync(resolve(options.envFile)))
       : {};

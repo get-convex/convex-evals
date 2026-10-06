@@ -279,42 +279,6 @@ it("records Jev's OpenRouter route with unused chat settings null", async () => 
   expect(recorded).not.toHaveProperty("provider");
 });
 
-it("rejects a hosted TypeSafe route before creating a remote run or calling a provider", async () => {
-  const options = fixture();
-  options.config.provider = "typesafe";
-  let remoteStart = false;
-  let providerCalls = 0;
-  const transport: DecisionTransport = {
-    action: async () => {
-      remoteStart = true;
-      return { runId: "unexpected" };
-    },
-    upload: async () => "unexpected",
-  };
-  const fetcher = Object.assign(
-    async () => {
-      providerCalls++;
-      return Response.json({});
-    },
-    { preconnect: () => undefined },
-  );
-  const failure = await rejection(
-    runDecisions(
-      options,
-      { fetcher },
-      createDecisionReporter(
-        decisionReportingTarget(environment, commit)!,
-        "typesafe-hosted-fixture",
-        transport,
-        async () => {},
-      ),
-    ),
-  );
-  expect(failure.message).toContain("OpenRouter provider");
-  expect(remoteStart).toBe(false);
-  expect(providerCalls).toBe(0);
-});
-
 it("reproduces the decision identity, archives binary lockfiles, and rejects tampering", () => {
   const snapshot = createDecisionSourceSnapshot(root, commit);
   expect(snapshot.banks).toHaveLength(90);

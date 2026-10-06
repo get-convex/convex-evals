@@ -2,7 +2,6 @@ import type { ProviderConfig } from "./protocol.js";
 import { buildSharedState, type PresentedQuestion } from "./questions.js";
 
 export const PROVIDER_ENDPOINTS = {
-  typesafe: "https://api.typesafe.ai/v1/systemone",
   openrouter: "https://openrouter.ai/api/v1/chat/completions",
   openrouterDecisions: "https://openrouter.ai/api/alpha/decisions",
 } as const;
@@ -13,14 +12,12 @@ export function usesNativeDecisionApi(
   config: Pick<ProviderConfig, "provider" | "model">,
 ): boolean {
   return (
-    config.provider === "typesafe" ||
-    (config.provider === "openrouter" &&
-      ["typesafe/jev-1.13", "~typesafe/jev-latest"].includes(config.model))
+    config.provider === "openrouter" &&
+    ["typesafe/jev-1.13", "~typesafe/jev-latest"].includes(config.model)
   );
 }
 
 export function providerEndpoint(config: ProviderConfig): string {
-  if (config.provider === "typesafe") return PROVIDER_ENDPOINTS.typesafe;
   return usesNativeDecisionApi(config)
     ? PROVIDER_ENDPOINTS.openrouterDecisions
     : PROVIDER_ENDPOINTS.openrouter;
