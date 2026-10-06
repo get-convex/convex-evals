@@ -36,7 +36,7 @@ const manifestSchema = z.looseObject({
   benchmarkStatus: z.enum(["minted", "unminted"]),
   benchmark: benchmarkSchema,
   config: z.object({
-    provider: z.enum(["typesafe", "openrouter"]),
+    provider: z.literal("openrouter"),
     model: z.string(),
     reasoningEffort: z.enum(["low", "medium", "high"]),
     maxOutputTokens: z.number(),

@@ -14,7 +14,7 @@ export const DECISION_PROTOCOL = {
 } as const;
 
 export type ContextCondition = "no_guidelines" | "with_guidelines";
-export type DecisionProvider = "typesafe" | "openrouter";
+export type DecisionProvider = "openrouter";
 
 export interface ProviderConfig {
   provider: DecisionProvider;
