@@ -80,8 +80,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Model-written code runs in this job. Do not leave the job token in
-          # .git/config, where that code could read it.
+          # Model-written code runs in this job, and nothing here needs git
+          # credentials after checkout, so keep the job token out of
+          # .git/config. This removes one copy only: GITHUB_TOKEN is still in
+          # the job env because the runner uses it for GitHub API calls.
           persist-credentials: false
 
       - name: Set up Node.js
