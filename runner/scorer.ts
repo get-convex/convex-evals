@@ -11,7 +11,7 @@ import {
   mkdtempSync,
   rmSync,
 } from "fs";
-import { join, resolve, relative } from "path";
+import { join, resolve, relative, sep } from "path";
 import { platform, tmpdir } from "os";
 import { fileURLToPath } from "node:url";
 import { $ } from "bun";
@@ -1063,7 +1063,9 @@ export function writeFilesystem(
   const absDir = resolve(projectDir);
   for (const [relativePath, content] of Object.entries(output)) {
     const filePath = resolve(join(absDir, relativePath));
-    if (!filePath.startsWith(absDir)) {
+    // Compare against the directory plus a separator, so `../<dir>-other/x`
+    // cannot land in a sibling directory that shares the prefix.
+    if (!filePath.startsWith(absDir + sep)) {
       throw new Error(
         `Invalid filesystem output: ${filePath} is not in ${absDir}`,
       );

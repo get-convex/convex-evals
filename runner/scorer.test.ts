@@ -118,6 +118,18 @@ describe("writeFilesystem pattern", () => {
     ).toThrow("is not in");
   });
 
+  it("rejects paths into a sibling directory that shares the prefix", () => {
+    const projectDir = join(tempDir, "project");
+    mkdirSync(projectDir, { recursive: true });
+
+    expect(() =>
+      writeFilesystem(projectDir, {
+        "../project-other/escape.ts": "malicious",
+      }),
+    ).toThrow("is not in");
+    expect(existsSync(join(tempDir, "project-other"))).toBe(false);
+  });
+
   it("rejects empty output", () => {
     const projectDir = join(tempDir, "project");
     mkdirSync(projectDir, { recursive: true });
