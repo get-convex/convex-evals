@@ -282,6 +282,12 @@ An optional `eval.json` can select another pipeline:
   SDK version. Module prompts follow the task's file list and dependency pins
   instead of the default backend scaffolding instructions.
 
+Model output is untrusted, so the scorer installs with
+`bun install --ignore-scripts` and gives the install, Convex CLI, tsc, eslint,
+local backend and grader processes only an allowlisted environment
+(`runner/childEnv.ts`). Answers and graders cannot rely on package lifecycle
+scripts or on the runner's API keys and other environment variables.
+
 ### Common eval types
 
 - **Data modeling** - table relationships, index design, schema validation
