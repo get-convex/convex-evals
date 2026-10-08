@@ -286,7 +286,9 @@ Model output is untrusted, so the scorer installs with
 `bun install --ignore-scripts` and gives the install, Convex CLI, tsc, eslint,
 local backend and grader processes only an allowlisted environment
 (`runner/childEnv.ts`). Answers and graders cannot rely on package lifecycle
-scripts or on the runner's API keys and other environment variables.
+scripts or on the runner's API keys and other environment variables. This keeps
+credentials out of model code's environment, but it is not a sandbox: that code
+still runs as the same OS user as the runner.
 
 ### Common eval types
 
@@ -300,7 +302,9 @@ scripts or on the runner's API keys and other environment variables.
 `createAIGraderTest` is currently a no-op. Its test body is commented out in
 `grader/aiGrader.ts`, so evals that call it get no AI assessment. The rest of
 this section describes it as it would run if re-enabled, which would need
-`OPENAI_API_KEY`.
+`OPENAI_API_KEY`. Graders no longer get the runner's environment, and passing
+the key to them would expose it to model code, so re-enabling it means making
+the OpenAI call from the runner instead of from inside the grader.
 
 Grader tests can include a lightweight AI-based assessment that reviews the generated project and provides concise reasoning on pass/fail.
 
