@@ -59,6 +59,10 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       OPENROUTER_CONCURRENCY: ${{ inputs.max_concurrency }}
+      # Set here, not in a run script or $GITHUB_ENV, so input text is never
+      # parsed as shell or as extra environment variables.
+      MODELS: ${{ inputs.models }}
+      TEST_FILTER: ${{ inputs.test_filter }}
 
     steps:
       - uses: actions/checkout@v4
@@ -83,14 +87,12 @@ jobs:
 
       - name: Set main-branch-only environment variables
         if: github.ref == 'refs/heads/main'
+        env:
+          CONVEX_EVAL_URL: ${{ secrets.CONVEX_EVAL_URL }}
+          CONVEX_AUTH_TOKEN: ${{ secrets.CONVEX_AUTH_TOKEN }}
         run: |
-          echo "CONVEX_EVAL_URL=${{ secrets.CONVEX_EVAL_URL }}" >> $GITHUB_ENV
-          echo "CONVEX_AUTH_TOKEN=${{ secrets.CONVEX_AUTH_TOKEN }}" >> $GITHUB_ENV
-
-      - name: Set model and filter
-        run: |
-          echo "MODELS=${{ inputs.models }}" >> $GITHUB_ENV
-          echo "TEST_FILTER=${{ inputs.test_filter }}" >> $GITHUB_ENV
+          printf 'CONVEX_EVAL_URL=%s\n' "$CONVEX_EVAL_URL" >> "$GITHUB_ENV"
+          printf 'CONVEX_AUTH_TOKEN=%s\n' "$CONVEX_AUTH_TOKEN" >> "$GITHUB_ENV"
 
       - name: Run evaluations
         if: ${{ inputs.run_guidelines == 'true' }}
