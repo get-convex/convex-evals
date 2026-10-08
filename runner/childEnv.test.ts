@@ -35,16 +35,46 @@ describe("untrustedChildEnv", () => {
     expect(env.OPENROUTER_API_KEY).toBeUndefined();
   });
 
+  it("keeps locale, certificate and registry settings for installs", () => {
+    const env = untrustedChildEnv(
+      {},
+      {
+        ...parentEnv,
+        LC_MESSAGES: "en_US.UTF-8",
+        NODE_EXTRA_CA_CERTS: "/etc/ssl/corp.pem",
+        SSL_CERT_FILE: "/etc/ssl/cert.pem",
+        ALL_PROXY: "socks5://proxy:1080",
+        BUN_CONFIG_REGISTRY: "https://registry.example.com",
+        npm_config_registry: "https://registry.example.com",
+      },
+      false,
+    );
+    expect(env).toMatchObject({
+      LC_MESSAGES: "en_US.UTF-8",
+      NODE_EXTRA_CA_CERTS: "/etc/ssl/corp.pem",
+      SSL_CERT_FILE: "/etc/ssl/cert.pem",
+      ALL_PROXY: "socks5://proxy:1080",
+      BUN_CONFIG_REGISTRY: "https://registry.example.com",
+      npm_config_registry: "https://registry.example.com",
+    });
+    expect(env.CONVEX_AUTH_TOKEN).toBeUndefined();
+  });
+
   it("matches Windows variable names case-insensitively", () => {
     const env = untrustedChildEnv(
       {},
       {
         Path: "C:\\Windows",
         SystemRoot: "C:\\Windows",
+        "ProgramFiles(x86)": "C:\\Program Files (x86)",
         openrouter_api_key: "openrouter-secret",
       },
       true,
     );
-    expect(env).toEqual({ Path: "C:\\Windows", SystemRoot: "C:\\Windows" });
+    expect(env).toEqual({
+      Path: "C:\\Windows",
+      SystemRoot: "C:\\Windows",
+      "ProgramFiles(x86)": "C:\\Program Files (x86)",
+    });
   });
 });
