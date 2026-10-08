@@ -14,6 +14,7 @@ import {
   formatDeployFailure,
   getTypecheckTargets,
   getEvalPipeline,
+  installDependencies,
   isInfrastructureStepFailure,
   retryInfrastructureOperation,
   runCommandWithTimeout,
@@ -614,6 +615,68 @@ describe("infrastructure operation retries", () => {
       ),
     ).rejects.toThrow("exited group leader timed out after 0.1s");
     expect(Date.now() - startedAt).toBeLessThan(1_000);
+  });
+});
+
+describe("model code isolation", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), "scorer-isolation-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("does not pass the runner's credentials to child commands", async () => {
+    // Bun.spawn's default env is the OS environment, so the credential must be
+    // in a real process environment rather than set on this test's process.env.
+    const scorerPath = join(import.meta.dir, "scorer.ts");
+    const probe = Bun.spawn(
+      [
+        process.execPath,
+        "-e",
+        `const { runCommandWithTimeout } = await import(${JSON.stringify(scorerPath)});
+const result = await runCommandWithTimeout(
+  [process.execPath, "-e", "console.log(JSON.stringify(Object.keys(process.env)))"],
+  ${JSON.stringify(tempDir)},
+  10_000,
+  "env probe",
+);
+process.stdout.write(result.stdout);`,
+      ],
+      {
+        cwd: tempDir,
+        env: { ...process.env, OPENROUTER_API_KEY: "runner-secret" },
+        stdout: "pipe",
+      },
+    );
+    const output = await new Response(probe.stdout).text();
+    expect(await probe.exited).toBe(0);
+    const childEnvNames = JSON.parse(output) as string[];
+    expect(childEnvNames).toContain("PATH");
+    expect(childEnvNames).not.toContain("OPENROUTER_API_KEY");
+  });
+
+  it("installs model projects without running their lifecycle scripts", async () => {
+    const marker = join(tempDir, "script-ran");
+    const writeMarker = `bun -e "require('fs').writeFileSync(${JSON.stringify(marker).replace(/"/g, "'")}, '')"`;
+    writeFileSync(
+      join(tempDir, "package.json"),
+      JSON.stringify({
+        name: "model-output",
+        private: true,
+        scripts: {
+          preinstall: writeMarker,
+          postinstall: writeMarker,
+          prepare: writeMarker,
+        },
+      }),
+    );
+
+    await installDependencies(tempDir);
+    expect(existsSync(marker)).toBe(false);
   });
 });
 

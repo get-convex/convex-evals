@@ -29,6 +29,7 @@ import {
   runCommandStep,
 } from "./logging.js";
 import { recordStep, completeEval, uploadEvalOutput } from "./reporting.js";
+import { untrustedChildEnv } from "./childEnv.js";
 import type { LanguageModelUsage } from "ai";
 import {
   GRADER_EVENTS_PATH_ENV,
@@ -110,12 +111,16 @@ export async function retryInfrastructureOperation<T>(
   }
 }
 
+/**
+ * Run a command that may execute model-written code. It gets the allowlisted
+ * environment from `untrustedChildEnv` unless the caller passes one.
+ */
 export async function runCommandWithTimeout(
   command: string[],
   cwd: string,
   timeoutMs: number,
   label: string,
-  env?: Record<string, string>,
+  env: Record<string, string> = untrustedChildEnv(),
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const proc = Bun.spawn(command, {
     cwd,
@@ -815,10 +820,7 @@ async function runFileTestsStep(
   pipeline: "static" | "module",
 ): Promise<void> {
   const testFile = resolve(join("evals", category, name, "grader.test.ts"));
-  const env: Record<string, string> = {
-    ...(process.env as Record<string, string>),
-    MODEL_OUTPUT_DIR: ctx.outputProjectDir,
-  };
+  const env = graderEnv({ MODEL_OUTPUT_DIR: ctx.outputProjectDir });
   const stepStart = Date.now();
   let testsRatio = 0;
   let vitestStdout: string | null = null;
@@ -1121,12 +1123,14 @@ export function formatDeployFailure(
   ].join("\n");
 }
 
-async function installDependencies(
+export async function installDependencies(
   projectDir: string,
 ): Promise<Array<{ cmd: string; stdout: string }>> {
   return retryInfrastructureOperation(async () => {
+    // Model-written package.json files can declare lifecycle scripts and
+    // trustedDependencies. Nothing the evals grade needs them to run.
     const result = await runCommandWithTimeout(
-      ["bun", "install"],
+      ["bun", "install", "--ignore-scripts"],
       projectDir,
       TIMEOUTS.bunInstall,
       "bun install",
@@ -1135,7 +1139,7 @@ async function installDependencies(
     if (result.exitCode !== 0) {
       throw new Error(`Failed to install dependencies:\n${output}`);
     }
-    return [{ cmd: "bun install", stdout: output }];
+    return [{ cmd: "bun install --ignore-scripts", stdout: output }];
   });
 }
 
@@ -1149,6 +1153,7 @@ async function deploy(
   const initResult = await withTimeout(
     $`bunx convex codegen --typecheck disable --init`
       .cwd(projectDir)
+      .env(untrustedChildEnv())
       .nothrow()
       .quiet(),
     TIMEOUTS.codegen,
@@ -1159,6 +1164,7 @@ async function deploy(
   const deployResult = await withTimeout(
     $`bunx convex dev --once --admin-key ${ADMIN_KEY} --url ${convexUrl}`
       .cwd(projectDir)
+      .env(untrustedChildEnv())
       .nothrow()
       .quiet(),
     TIMEOUTS.deploy,
@@ -1204,6 +1210,7 @@ async function typecheckCode(
     const result = await withTimeout(
       $`bunx tsc -noEmit -p ${typecheckTarget}`
         .cwd(projectDir)
+        .env(untrustedChildEnv())
         .nothrow()
         .quiet(),
       TIMEOUTS.tsc,
@@ -1230,7 +1237,11 @@ async function lintCode(
   const eslintBin = resolve("node_modules/.bin/eslint");
 
   const eslintConvex = await withTimeout(
-    $`${eslintBin} -c ${eslintConfig} convex`.cwd(projectDir).nothrow().quiet(),
+    $`${eslintBin} -c ${eslintConfig} convex`
+      .cwd(projectDir)
+      .env(untrustedChildEnv())
+      .nothrow()
+      .quiet(),
     TIMEOUTS.eslint,
     "eslint (convex)",
   );
@@ -1248,6 +1259,7 @@ async function lintCode(
     const eslintSrc = await withTimeout(
       $`${eslintBin} -c ${srcEslintConfig} src`
         .cwd(projectDir)
+        .env(untrustedChildEnv())
         .nothrow()
         .quiet(),
       TIMEOUTS.eslint,
@@ -1301,14 +1313,25 @@ async function runTests(
   testFile: string,
   outputProjectDir: string,
 ): Promise<{ ratio: number; stdout: string; cmd: string }> {
-  const env: Record<string, string> = {
-    ...(process.env as Record<string, string>),
+  const env = graderEnv({
     CONVEX_PORT: String(backend.port),
     CONVEX_SITE_PORT: String(backend.siteProxyPort),
     CONVEX_ANSWER_PORT: String(answerBackend.port),
     MODEL_OUTPUT_DIR: outputProjectDir,
-  };
+  });
   return executeVitest(env, testFile);
+}
+
+/**
+ * Graders import model code and some run model-authored tests, so they get
+ * only the variables grader code reads, never the runner's credentials.
+ */
+function graderEnv(extra: Record<string, string>): Record<string, string> {
+  const outputTempdir = process.env.OUTPUT_TEMPDIR;
+  return untrustedChildEnv({
+    ...(outputTempdir ? { OUTPUT_TEMPDIR: outputTempdir } : {}),
+    ...extra,
+  });
 }
 
 function objectRecord(value: unknown): value is Record<string, unknown> {
