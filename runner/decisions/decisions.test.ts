@@ -374,7 +374,7 @@ describe("provider boundaries", () => {
         },
       },
     };
-    const nativeConfig = { ...config, provider: "typesafe" as const };
+    const nativeConfig = { ...config, model: "typesafe/jev-1.13" };
     for (const probability of [0.92, 0.93, 0.95, 0.96]) {
       native.answers.decision.probabilities.A = probability;
       const parsed = parseProviderResponse(nativeConfig, native, [
@@ -413,9 +413,9 @@ describe("provider boundaries", () => {
       ),
     );
     expect(answers.size).toBe(4);
-    for (const provider of ["typesafe", "openrouter"] as const) {
+    for (const model of [config.model, "typesafe/jev-1.13"]) {
       const request = buildProviderRequest(
-        { ...config, provider },
+        { ...config, model },
         presented,
         "Guidelines",
       );
@@ -435,8 +435,8 @@ describe("provider boundaries", () => {
       question.correctOptionId,
     );
   });
-  it("parses native TypeSafe distributions without inventing cost", () => {
-    const tsConfig = { ...config, provider: "typesafe" as const };
+  it("parses native Jev distributions without inventing cost", () => {
+    const tsConfig = { ...config, model: "typesafe/jev-1.13" };
     const raw = {
       model: "jev-fixture",
       answers: {
@@ -468,12 +468,6 @@ describe("provider boundaries", () => {
   it("routes Jev through OpenRouter's native Decisions API and preserves billed usage", async () => {
     const routed = { ...config, model: "typesafe/jev-1.13" };
     const request = buildProviderRequest(routed, presented, "");
-    const direct = buildProviderRequest(
-      { ...routed, provider: "typesafe" },
-      presented,
-      "",
-    );
-    expect(request).toEqual(direct);
     expect(request).not.toHaveProperty("messages");
     expect(request).not.toHaveProperty("reasoning");
     expect(request).not.toHaveProperty("max_tokens");

@@ -62,7 +62,7 @@ backend are storage compatibility only.
 
 New worktrees have no `.env` and no `evalScores` or `visualizer` dependencies, so run `bun run setup` first. It installs root, `evalScores` and `visualizer` dependencies, copies `.env` from another worktree when it is missing, and runs `bun run setup:convex`.
 
-Keys live in the root `.env`, loaded via `dotenv`. Coding runs send every model through OpenRouter, so they need only `OPENROUTER_API_KEY`, plus `EXA_API_KEY` for web runs. `bun run decisions run` defaults to `--provider typesafe`, which needs `TYPESAFE_API_KEY`, so pass `--provider openrouter` to use OpenRouter.
+Keys live in the root `.env`, loaded via `dotenv`. Coding runs send every model through OpenRouter, so they need only `OPENROUTER_API_KEY`, plus `EXA_API_KEY` for web runs. Decision runs also go through OpenRouter only.
 
 ## Running Evals Locally
 

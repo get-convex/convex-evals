@@ -60,9 +60,8 @@ Jev uses OpenRouter's `/api/alpha/decisions` endpoint with native typed question
 the language models use `/api/v1/chat/completions`. The hosted Jev configuration
 pins `typesafe/jev-1.13`, records the returned model ID, probabilities, confidence,
 and provider-reported cost, and sends no chat reasoning or output-token settings.
-All hosted models use the existing OpenRouter credential. Direct TypeSafe
-trials remain supported with `--provider typesafe --model jev-latest` and
-`TYPESAFE_API_KEY`, with their provider identity kept separate in the results.
+Every model, Jev included, goes through OpenRouter with the existing
+OpenRouter credential. There is no direct provider.
 
 Read the [question authoring standard](docs/decision-question-authoring.md) and
 [verification guide](docs/decision-verification.md) before changing a question.
