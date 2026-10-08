@@ -7,11 +7,11 @@ These guidelines target Convex `^1.44.0`.
 ### HTTP endpoints
 
 - Define HTTP endpoints in `convex/http.ts` with `httpRouter` and an `httpAction` handler. Routes are registered at the exact `path` supplied.
-- Treat `await req.json()` as `unknown`; narrow every field and return HTTP 400 for invalid bodies.
+- Treat `await req.json()` as `unknown`; narrow each field (e.g. `typeof` checks) before use, and return HTTP 400 for bodies that fail validation.
 
 ### Validators
 
-- Use `v.array`, `v.union`, `v.object`, `v.record`, and the other validators from `convex/values` for function arguments and schemas. `v.object` supports `.pick(...)`, `.omit(...)`, `.partial()`, and `.extend(...)`; use `.fields` when supplying a function's `args`.
+- Use `v.array`, `v.union`, `v.object`, `v.record`, and the other validators from `convex/values` for function arguments and schemas. `v.object` supports `.pick("a", "b")`, `.omit("c")`, `.partial()`, and `.extend({ d: v.string() })`; use `.fields` when supplying a function's `args`.
 - For a complete stored-document validator, default-import your authored schema using the correct relative path, e.g. `import schema from "./schema"; schema.doc("users")`. `schema.doc` includes `_id` and `_creationTime` and handles union tables. For a bare table definition, use `import { docValidator } from "convex/server"; docValidator("users", usersTable)`. `convex/server` exports `docValidator`, not `doc`; prefer `schema.doc` when the schema is available. Never import your schema from `_generated`.
 - Convex values are: `v.id(tableName)` for `Id` strings, `v.null()` for `null`, `v.int64()` for `bigint`, `v.number()` for IEEE-754 numbers, `v.boolean()`, `v.string()`, `v.bytes()` for `ArrayBuffer`, `v.array(values)`, `v.object({...})`, and `v.record(keys, values)` for dynamic-key records. `undefined` is not a Convex value and is returned to clients as `null`; use `null`. Arrays have at most 8192 values, objects at most 1024 entries, and strings/bytes/documents have the platform size limits. Object and record keys must be valid nonempty names and cannot start with `$` or `_`.
 - Use `v.literal` members in `v.union` validators for discriminated unions.
@@ -31,7 +31,7 @@ These guidelines target Convex `^1.44.0`.
 
 ### Function references
 
-- Use `api` from `convex/_generated/api.ts` for public functions and `internal` for internal functions. File routing maps `convex/example.ts` function `f` to `api.example.f` and private `g` to `internal.example.g`; nested files include every directory segment, such as `api.messages.access.h`.
+- Use `api` from `convex/_generated/api.ts` for functions registered with `query`, `mutation`, or `action`, and `internal` for those registered with `internalQuery`, `internalMutation`, or `internalAction`. File routing maps `convex/example.ts` function `f` to `api.example.f` and private `g` to `internal.example.g`; nested files include every directory segment, such as `api.messages.access.h`.
 
 ### Pagination
 
@@ -76,11 +76,11 @@ These guidelines target Convex `^1.44.0`.
 - Components are installable building blocks such as `@convex-dev/aggregate` and `@convex-dev/rate-limiter`, with isolated tables and functions. Install and mount them in `convex/convex.config.ts`, then `import { components } from "./_generated/api"` and pass e.g. `components.aggregate` to the component client (there is no `ctx.components`).
 - Component functions are not client-facing. Wrap them in app queries/mutations and authorize in the app function first.
 - Component reads and writes participate in the calling mutation's transaction. If a component mirrors an app table, update it in the same mutation as every insert, patch, replace, or delete.
-- A local component has a directory under `convex/`, its own `convex.config.ts` using `defineComponent("myName")`, its own `schema.ts`, and functions from its own `_generated/server`. Mount with `app.use(myName)` and include the module segment in references, for example `components.myName.index.myFunction`.
+- A local component has a directory under `convex/`, its own `convex.config.ts` using `defineComponent("myName")`, its own `schema.ts`, and functions from its own `_generated/server`. Mount with `app.use(myName)` and include the module segment in references: a function in `convex/myName/index.ts` is `components.myName.index.myFunction`, never `components.myName.myFunction`.
 - For per-key quotas, cooldowns, or throttling, use `@convex-dev/rate-limiter`; hand-rolled counters and window scans race under concurrency and lose quota when a mutation fails.
 - For chat or assistant features where an LLM replies inside a durable conversation - per-user resumable histories, recorded tool-call steps, several assistants sharing one conversation - use the `@convex-dev/agent` component: mount it, create one component thread per conversation, and generate/read through it (`createThread(ctx, components.agent, ...)`, `new Agent(components.agent, { name, languageModel, tools }).generateText(ctx, { threadId }, { prompt })`, `listMessages`). Do not hand-roll a messages table or call an LLM SDK directly from your functions for these.
 - For async functions needing bounded parallelism, serialized mutation work, or completion callbacks, use `@convex-dev/workpool`; retry only idempotent actions.
-- For ephemeral room presence with client heartbeats, session tokens, timeout-to-offline, or multi-session aggregation, use `@convex-dev/presence`; last-seen tables and one row per session do not provide those guarantees.
+- For ephemeral presence - who is online/viewing/typing in a room, tracked by client heartbeats with session tokens, multi-session aggregation (one entry per user across tabs), and timeout-to-offline - use `@convex-dev/presence`; hand-rolled lastSeen tables need wall-clock query filters that go stale, and per-session rows break the one-entry-per-user contract.
 - A component mutation is a subtransaction. If it throws and the caller catches it, its writes roll back while the caller can continue and commit.
 - To pass a function across a component boundary, mint a handle in the app with `const handle = await createFunctionHandle(internal.index.myCallback)` from `convex/server`; send it as a string, then invoke it with `await ctx.runMutation(args.handle as FunctionHandle<"mutation">, callbackArgs)`. `getFunctionHandle` and `getFunctionName` are not this API.
 
@@ -116,7 +116,7 @@ These guidelines target Convex `^1.44.0`.
 
 ## Testing guidelines
 
-- Test Convex functions with `convex-test`, Vitest, and `@edge-runtime/vm`; configure Vitest with `environment: "edge-runtime"` and install the required packages.
+- Test Convex functions with `convex-test`, Vitest, and `@edge-runtime/vm`; configure Vitest with `environment: "edge-runtime"` and always install the latest versions of these packages.
 - Test files belong under `convex/`. Pass an `import.meta.glob("./**/*.ts")` module map to `convexTest(schema, modules)` and call functions through generated `api` references.
 - Add `/// <reference types="vite/client" />` only in test files that use `import.meta.glob`.
 - Do not add uninstalled packages to `compilerOptions.types`; leave `types` unset unless the package is installed.
@@ -149,7 +149,7 @@ An array validator is:
 ```typescript
 import { mutation } from "./_generated/server";
 import { v } from "convex/values";
-export default mutation({
+export const exampleMutation = mutation({
   args: { simpleArray: v.array(v.union(v.string(), v.number())) },
   handler: async (ctx, args) => {},
 });
@@ -273,6 +273,7 @@ export default crons;
 Convex tests require the module map:
 
 ```typescript
+import { convexTest } from "convex-test";
 const modules = import.meta.glob("./**/*.ts");
 const t = convexTest(schema, modules);
 await t.mutation(api.messages.send, { body: "Hi!", author: "Sarah" });
