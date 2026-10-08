@@ -35,6 +35,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # Model-written code runs in this job. Do not leave the job token in
+          # .git/config, where that code could read it.
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
