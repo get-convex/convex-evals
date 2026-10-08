@@ -22,6 +22,7 @@ export const DECISION_CI_MODELS = {
   sonnet5: { provider: "openrouter", model: "anthropic/claude-sonnet-5" },
   sonnet55: { provider: "openrouter", model: "anthropic/claude-sonnet-5.5" },
   fable51: { provider: "openrouter", model: "anthropic/claude-fable-5.1" },
+  haiku55: { provider: "openrouter", model: "anthropic/claude-haiku-5.5" },
   gemini31pro: {
     provider: "openrouter",
     model: "google/gemini-3.1-pro-preview",

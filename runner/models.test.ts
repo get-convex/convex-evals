@@ -35,6 +35,7 @@ describe("ALL_MODELS", () => {
     expect(ALL_MODELS).toContain("anthropic/claude-opus-5");
     expect(ALL_MODELS).toContain("anthropic/claude-opus-4.8");
     expect(ALL_MODELS).toContain("anthropic/claude-fable-5");
+    expect(ALL_MODELS).toContain("anthropic/claude-haiku-5.5");
     expect(ALL_MODELS).toContain("openai/gpt-5.5");
     expect(ALL_MODELS).toContain("openai/gpt-5.6-sol");
     expect(ALL_MODELS).toContain("openai/gpt-5.6-terra");
