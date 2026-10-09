@@ -223,6 +223,8 @@ async function generateGrade(
   taskContent: string,
   concatenated: string,
 ): Promise<GradeResult> {
+  // The scorer does not pass OPENAI_API_KEY to grader processes, which import
+  // model code. Re-enabling AI grading means moving this call into the runner.
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
 
