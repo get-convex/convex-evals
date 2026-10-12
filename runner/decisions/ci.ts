@@ -39,6 +39,8 @@ export const DECISION_CI_MODELS = {
     provider: "openrouter",
     model: "mistralai/mistral-medium-3-5",
   },
+  musewonder: { provider: "openrouter", model: "meta/muse-wonder" },
+  musespark13: { provider: "openrouter", model: "meta/muse-spark-1.3" },
 } satisfies Record<string, { provider: DecisionProvider; model: string }>;
 
 async function main(): Promise<void> {

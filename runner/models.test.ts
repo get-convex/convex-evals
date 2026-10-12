@@ -48,6 +48,8 @@ describe("ALL_MODELS", () => {
     expect(ALL_MODELS).toContain("poolside/laguna-s-2.1");
     expect(ALL_MODELS).toContain("x-ai/grok-4.6");
     expect(ALL_MODELS).toContain("x-ai/grok-4.5");
+    expect(ALL_MODELS).toContain("meta/muse-wonder");
+    expect(ALL_MODELS).toContain("meta/muse-spark-1.3");
   });
 });
 

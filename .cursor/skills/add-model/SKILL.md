@@ -40,7 +40,7 @@ DISABLE_CONVEX_REPORTING=1 MODELS=<slug> TEST_FILTER="000-fundamentals/000-empty
 
 This reads `OPENROUTER_API_KEY` from the root `.env`. In a new worktree, run `bun run setup` first. It installs all dependencies and copies `.env` from another worktree.
 
-Expect `[preflight] Endpoint is available` and a score for both evals. A low score is fine. `not supported and not found on OpenRouter` means a wrong slug. A model-specific request error, like Kimi K3 rejecting `temperature` (PR #225), needs a runner change, so stop and raise it.
+Expect `[preflight] Endpoint is available` and a score for both evals. A low score is fine. `not supported and not found on OpenRouter` means a wrong slug. A 403 asking for `18+ age confirmation` (Meta's Muse models, Sep 2026) means the OpenRouter account behind the key has to confirm it at openrouter.ai/settings/preferences, so ask the maintainer. A model-specific request error, like Kimi K3 rejecting `temperature` (PR #225), needs a runner change, so stop and raise it.
 
 ## 4. Typecheck and test
 
