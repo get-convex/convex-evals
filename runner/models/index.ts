@@ -47,6 +47,8 @@ export const ALL_MODELS: string[] = [
   "moonshotai/kimi-k3",
   "x-ai/grok-4.6",
   "x-ai/grok-4.5",
+  "meta/muse-wonder",
+  "meta/muse-spark-1.3",
 ];
 
 export const MODEL_NAMES: Set<string> = new Set(ALL_MODELS);
