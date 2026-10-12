@@ -35,6 +35,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # Model-written code runs in this job, and nothing here needs git
+          # credentials after checkout, so keep the job token out of
+          # .git/config. This removes one copy only: GITHUB_TOKEN is still in
+          # the job env because the runner uses it for GitHub API calls.
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -56,8 +61,10 @@ jobs:
           echo "=== After guidelines ($(wc -l < /tmp/after-guidelines.md) lines) ==="
 
       - name: Generate "before" guidelines (from base branch)
+        env:
+          BASE_REF: ${{ inputs.base_ref }}
         run: |
-          git show origin/${{ inputs.base_ref }}:runner/models/guidelines.md > /tmp/before-guidelines.md
+          git show "origin/${BASE_REF}:runner/models/guidelines.md" > /tmp/before-guidelines.md
           echo "=== Before guidelines ($(wc -l < /tmp/before-guidelines.md) lines) ==="
 
       - name: Show guidelines diff
@@ -66,12 +73,14 @@ jobs:
       - name: Run guideline validation
         env:
           OUTPUT_TEMPDIR: /tmp/convex-evals-validation
+          VALIDATION_MODELS: ${{ inputs.models }}
+          VALIDATION_FILTER: ${{ inputs.filter }}
         run: |
-          ARGS="--before /tmp/before-guidelines.md --after /tmp/after-guidelines.md --models ${{ inputs.models }}"
-          if [ -n "${{ inputs.filter }}" ]; then
-            ARGS="$ARGS --filter ${{ inputs.filter }}"
+          args=(--before /tmp/before-guidelines.md --after /tmp/after-guidelines.md --models "$VALIDATION_MODELS")
+          if [ -n "$VALIDATION_FILTER" ]; then
+            args+=(--filter "$VALIDATION_FILTER")
           fi
-          bun run scripts/validateGuidelines.ts $ARGS
+          bun run scripts/validateGuidelines.ts "${args[@]}"
 
       - name: Upload validation results
         if: always()
