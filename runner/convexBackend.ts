@@ -18,6 +18,7 @@ import { homedir, platform, arch } from "os";
 import JSZip from "jszip";
 import getPort from "get-port";
 import { logInfo } from "./logging.js";
+import { untrustedChildEnv } from "./childEnv.js";
 
 /**
  * Thrown when infrastructure (binary download, GitHub API) fails fatally.
@@ -90,6 +91,8 @@ export async function startConvexBackend(
     ],
     {
       cwd: backendDir,
+      // The backend runs model-written Convex functions, including Node actions.
+      env: untrustedChildEnv(),
       stdout: Bun.file(join(backendDir, "backend.stdout.log")),
       stderr: Bun.file(join(backendDir, "backend.stderr.log")),
     },
