@@ -1,3 +1,4 @@
+import { NATIVE_DECISION_MODELS } from "./providers.js";
 import { afterEach, describe, expect, it } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -228,9 +229,9 @@ it("does not call providers if the hosted run cannot be established", async () =
   expect(providerCalls).toBe(0);
 });
 
-it("records Jev's OpenRouter route with unused chat settings null", async () => {
+it.each(Object.values(NATIVE_DECISION_MODELS))("records $model with unused chat settings null", async (native) => {
   const options = fixture();
-  options.config.model = "typesafe/jev-1.13";
+  options.config.model = native.model;
   let recorded: Record<string, unknown> | undefined;
   const transport: DecisionTransport = {
     async action(name, args) {
@@ -249,7 +250,7 @@ it("records Jev's OpenRouter route with unused chat settings null", async () => 
   const fetcher = Object.assign(
     async () =>
       Response.json({
-        model: "typesafe/jev-1.13-20260917",
+        model: native.model,
         answers: {
           decision: {
             type: "choice",
@@ -273,7 +274,7 @@ it("records Jev's OpenRouter route with unused chat settings null", async () => 
   );
   expect(result.summary?.complete).toBe(true);
   expect(recorded).toMatchObject({
-    model: "typesafe/jev-1.13",
+    model: native.model,
     profile: { reasoningEffort: null, maxOutputTokens: null },
   });
   expect(recorded).not.toHaveProperty("provider");

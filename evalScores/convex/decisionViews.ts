@@ -1,4 +1,8 @@
 import {
+  DECISION_CI_MODELS,
+  NATIVE_DECISION_MODELS,
+} from "../../runner/decisions/protocol.js";
+import {
   paginationOptsValidator,
   paginationResultValidator,
 } from "convex/server";
@@ -189,7 +193,10 @@ async function formattedNames(
         .query("models")
         .withIndex("by_slug", (q) => q.eq("slug", slug))
         .unique();
-      return [slug, model?.formattedName ?? slug] as const;
+      const native = Object.values(NATIVE_DECISION_MODELS).find(
+        (candidate) => candidate.model === slug,
+      );
+      return [slug, model?.formattedName ?? native?.formattedName ?? slug] as const;
     }),
   );
   return new Map(entries);
@@ -271,6 +278,13 @@ export const decisionLeaderboard = query({
         results: { page: [], isDone: true, continueCursor: "" },
       };
     }
+    // Curate the current table, while older benchmarks retain their original rows.
+    // Legacy shared-version archives keep their original comparisons too.
+    const currentCohort =
+      benchmark.identityFormat === "decision_v1" &&
+      (!args.benchmarkVersion ||
+        benchmark._id === (await latestBenchmarkByKind(ctx, "decision"))?._id);
+    const models = Object.values(DECISION_CI_MODELS).map(({ model }) => model);
     const page = await ctx.db
       .query("modelScores")
       .withIndex("by_kind_benchmark_condition_score", (q) =>
@@ -280,6 +294,11 @@ export const decisionLeaderboard = query({
           .eq("condition", args.condition),
       )
       .order("desc")
+      .filter((q) =>
+        currentCohort
+          ? q.or(...models.map((model) => q.eq(q.field("model"), model)))
+          : true,
+      )
       .paginate(boundedPagination(args.paginationOpts));
     const scores = page.page.map(requireDecisionModelScore);
     const uniqueLatestRunIds = [

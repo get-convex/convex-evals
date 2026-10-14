@@ -1,4 +1,4 @@
-import type { ProviderConfig } from "./protocol.js";
+import { NATIVE_DECISION_MODELS, type ProviderConfig } from "./protocol.js";
 import { buildSharedState, type PresentedQuestion } from "./questions.js";
 
 export const PROVIDER_ENDPOINTS = {
@@ -6,14 +6,21 @@ export const PROVIDER_ENDPOINTS = {
   openrouterDecisions: "https://openrouter.ai/api/alpha/decisions",
 } as const;
 
+export { NATIVE_DECISION_MODELS } from "./protocol.js";
+
+const nativeDecisionSlugs = new Set<string>([
+  ...Object.values(NATIVE_DECISION_MODELS).map(({ model }) => model),
+  // Keep existing Jev alias runs readable, but never curate a moving alias.
+  "~typesafe/jev-latest",
+]);
+
 /** Routing and response shape are independent: OpenRouter also serves native
- * typed decisions. Keep supported slugs explicit rather than sending Jev to chat. */
+ * typed decisions. Use the same allowlist for requests, parsing and ingestion. */
 export function usesNativeDecisionApi(
   config: Pick<ProviderConfig, "provider" | "model">,
 ): boolean {
   return (
-    config.provider === "openrouter" &&
-    ["typesafe/jev-1.13", "~typesafe/jev-latest"].includes(config.model)
+    config.provider === "openrouter" && nativeDecisionSlugs.has(config.model)
   );
 }
 
@@ -32,7 +39,9 @@ export function buildProviderRequest(
   if (usesNativeDecisionApi(config)) {
     return {
       model: config.model,
-      state,
+      // ScaleDown accepts text or its document wrapper, not arbitrary JSON state.
+      // Serialize the same context rather than dropping fields from the benchmark.
+      state: config.model === "scaledown/classify-1" ? JSON.stringify(state) : state,
       questions: {
         decision: {
           type: "choice",

@@ -24,3 +24,62 @@ export interface ProviderConfig {
   timeoutMs: number;
   maxRetries: number;
 }
+
+// Pin one model per author so the cohort does not change behind a latest alias.
+// Jev is the permanent baseline, including when the other native models change.
+export const NATIVE_DECISION_MODELS = {
+  jev: {
+    formattedName: "TypeSafe: Jev 1.13",
+    provider: "openrouter",
+    model: "typesafe/jev-1.13",
+  },
+  drex2: {
+    formattedName: "Nace.AI: Drex v2.0",
+    provider: "openrouter",
+    model: "nace-ai/drex-v2.0",
+  },
+  clefomni: {
+    formattedName: "Cloudflare: Clef Omni",
+    provider: "openrouter",
+    model: "cloudflare/clef-omni",
+  },
+  mercurydecide: {
+    formattedName: "Inception: Mercury Decide",
+    provider: "openrouter",
+    model: "inception/mercury-decide",
+  },
+  liquidd1: {
+    formattedName: "LiquidAI: d1",
+    provider: "openrouter",
+    model: "liquid/d1",
+  },
+  microsoftdecision1: {
+    formattedName: "Microsoft: Microsoft-Decision-1",
+    provider: "openrouter",
+    model: "microsoft/microsoft-decision-1",
+  },
+  decider11: {
+    formattedName: "Perplexity: Decider V1.1 27B",
+    provider: "openrouter",
+    model: "perplexity/pplx-decider-v1.1-27b",
+  },
+  solardecideflash: {
+    formattedName: "Upstage: Solar Decide Flash",
+    provider: "openrouter",
+    model: "upstage/solar-decide-flash",
+  },
+  classify1: {
+    formattedName: "ScaleDown: Classify-1",
+    provider: "openrouter",
+    model: "scaledown/classify-1",
+  },
+} as const;
+
+// A small set of chat models gives the native cohort useful quality/cost references.
+export const DECISION_CI_MODELS = {
+  ...NATIVE_DECISION_MODELS,
+  luna6: { provider: "openrouter", model: "openai/gpt-6-luna" },
+  sol61: { provider: "openrouter", model: "openai/gpt-6.1-sol" },
+  opus55: { provider: "openrouter", model: "anthropic/claude-opus-5.5" },
+  gemini4argon: { provider: "openrouter", model: "google/gemini-4-argon" },
+} satisfies Record<string, { provider: DecisionProvider; model: string }>;

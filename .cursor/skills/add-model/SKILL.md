@@ -22,9 +22,17 @@ Use the plain slug, e.g. `anthropic/claude-sonnet-5.5`, not a `:batch` variant o
 - `runner/models/index.ts`: add the slug to `ALL_MODELS` next to its family. Entries are plain strings. Keep older siblings unless the maintainer says to drop them.
 - `runner/models.test.ts`: add `expect(ALL_MODELS).toContain("<slug>");` to "contains the current curated models".
 
-The decision benchmark is optional, so ask if unsure. Pick a short key without dots or dashes (`fable51`, `gemini38flash`) and add it in three places, next to its family each time:
+For a decision-only model, do not add it to coding's `ALL_MODELS`. Use the
+live decision catalog at `https://openrouter.ai/api/v1/models?output_modalities=decisions`.
+Native models belong in `NATIVE_DECISION_MODELS` in `runner/decisions/protocol.ts`;
+that map drives native routing, parsing, backend validation, and the native part
+of `DECISION_CI_MODELS`. Keep Jev as the required baseline. The four LLM references
+are defined in `runner/decisions/protocol.ts`; expanding them needs a reason.
 
-- `DECISION_CI_MODELS` in `runner/decisions/ci.ts`, e.g. `fable51: { provider: "openrouter", model: "anthropic/claude-fable-5.1" },`
+The decision benchmark is optional for coding models, so ask if unsure. Pick a
+short key without dots or dashes and update:
+
+- the native map or LLM reference list described above
 - the `model` input's `options` in `.github/workflows/decision_evals.yml`
 - the `all` JSON array on the `matrix.model` line of the same file
 
@@ -33,6 +41,20 @@ The decision benchmark is optional, so ask if unsure. Pick a short key without d
 `manual_evals.yml` needs no edit. It takes models as a dispatch input.
 
 ## 3. Smoke test locally
+
+Get the estimated spend approved before any smoke test too. For a native
+decision model, use its decision runner rather than the coding runner:
+
+```bash
+bun run decisions run --model <slug> --env-file .env --limit-evals 2 \
+  --repetitions 1 --max-requests 8 --max-known-cost-usd 0.05
+```
+
+`dry-run` in place of `run` checks the request plan without calls or cost.
+Native smoke tests must verify the choice and probability distribution as well
+as the response status. Local decision runs never write to production.
+
+For a coding model:
 
 ```bash
 DISABLE_CONVEX_REPORTING=1 MODELS=<slug> TEST_FILTER="000-fundamentals/000-empty_functions|000-fundamentals/003-crons" bun run local:run
@@ -94,7 +116,7 @@ Each job stops at $5 of known cost, which isn't a hard cap when a provider omits
 gh workflow run decision_evals.yml --ref main -f model=<key>
 ```
 
-Always pass `model`. Its default, `all`, runs every decision model. `condition` defaults to `no_guidelines`, the only condition used so far.
+Always pass `model`. Its default, `none`, makes no calls; `all` runs the whole decision cohort. `condition` defaults to `no_guidelines`, the only condition used so far.
 
 ## 8. Check the periodic schedule
 
