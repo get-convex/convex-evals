@@ -28,6 +28,7 @@ export const DECISION_CI_MODELS = {
     model: "google/gemini-3.1-pro-preview",
   },
   gemini38flash: { provider: "openrouter", model: "google/gemini-3.8-flash" },
+  gemini4argon: { provider: "openrouter", model: "google/gemini-4-argon" },
   deepseek41flash: {
     provider: "openrouter",
     model: "deepseek/deepseek-v4.1-flash",
