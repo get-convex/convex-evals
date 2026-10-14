@@ -29,6 +29,7 @@ import { presentQuestion } from "../../runner/decisions/questions.js";
 import {
   buildProviderRequest,
   parseProviderResponse,
+  usesNativeDecisionApi,
   type ProviderAttempt,
 } from "../../runner/decisions/providers.js";
 import {
@@ -307,15 +308,16 @@ function providerConfig(run: {
     maxRetries: number;
   };
 }): ProviderConfig {
-  const native = ["typesafe/jev-1.13", "~typesafe/jev-latest"].includes(
-    run.model,
-  );
+  const native = usesNativeDecisionApi({
+    provider: "openrouter",
+    model: run.model,
+  });
   if (
     native &&
     (run.profile.reasoningEffort !== null ||
       run.profile.maxOutputTokens !== null)
   ) {
-    throw new Error("Native Jev profiles must use null chat-only settings");
+    throw new Error("Native decision profiles must use null chat-only settings");
   }
   if (
     !native &&

@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DECISION_CI_MODELS } from "./ci.js";
+import { usesNativeDecisionApi } from "./providers.js";
 
 // decision_evals.yml repeats the DECISION_CI_MODELS keys in the model input's
 // options and in the JSON array that the "all" option expands to.
@@ -59,5 +60,25 @@ describe("decision_evals.yml model lists", () => {
     const allMatrix = JSON.parse(match[1]) as string[];
     expect(describeDrift("the all matrix array", allMatrix)).toEqual([]);
     expect(allMatrix).toEqual(ciKeys);
+  });
+});
+
+// Cohort policy: every refresh includes Jev, and most models should be native.
+describe("decision model cohort", () => {
+  it("always includes the pinned Jev baseline", () => {
+    expect(DECISION_CI_MODELS.jev).toMatchObject({
+      provider: "openrouter",
+      model: "typesafe/jev-1.13",
+    });
+  });
+
+  it("keeps only four LLM reference models", () => {
+    const chatKeys = Object.entries(DECISION_CI_MODELS)
+      .filter(([, config]) => !usesNativeDecisionApi(config))
+      .map(([key]) => key);
+    expect(chatKeys).toEqual(["luna6", "sol61", "opus55", "gemini4argon"]);
+    expect(
+      Object.values(DECISION_CI_MODELS).filter(usesNativeDecisionApi).length,
+    ).toBeGreaterThan(chatKeys.length);
   });
 });

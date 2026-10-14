@@ -16,6 +16,121 @@ const profile = {
 };
 
 describe("decision leaderboard read paths", () => {
+  it("curates the current cohort before pagination and preserves archived models", async () => {
+    const t = convexTest(schema, modules);
+    const retiredModel = "openai/gpt-5.6-sol";
+    const retiredRunId = await t.run(async (ctx) => {
+      const source = await ctx.storage.store(new Blob(["source"]));
+      const makeBenchmark = (version: string, effectiveAt: number): Promise<Id<"benchmarkVersions">> =>
+        insertDecisionBenchmark(ctx, {
+          version,
+          effectiveAt,
+          evalCount: 1,
+          // Coding curation must not choose which decision models are shown.
+          curatedModels: [retiredModel],
+          provenance: "minted",
+          decision: {
+            protocolVersion: 1,
+            sourceCommit: "a".repeat(40),
+            sourceEvidence: { storageId: source, sha256: "1".repeat(64) },
+            sources: [
+              {
+                evalPath: "cat/task",
+                questions: [
+                  {
+                    id: "q",
+                    optionIds: ["a", "b", "c", "d"],
+                    correctOptionId: "a",
+                  },
+                ],
+              },
+            ],
+          },
+        });
+      const old = await makeBenchmark("old-cohort", 1);
+      const current = await makeBenchmark("current-cohort", 2);
+      await ctx.db.patch(current, { identityFormat: "decision_v1" });
+      const makeScore = async (
+        benchmarkVersion: Id<"benchmarkVersions">,
+        model: string,
+        score: number,
+      ): Promise<Id<"runs">> => {
+        const latestRunId = await ctx.db.insert("runs", {
+          kind: "decision",
+          benchmarkVersion,
+          model,
+          runKey: `${benchmarkVersion}-${model}`,
+          condition: "no_guidelines",
+          profile,
+          profileHash: "2".repeat(64),
+          plannedQuestions: ["cat/task/q"],
+          fullSuite: true,
+          origin: { kind: "development", sourceCommit: null },
+          status: "completed",
+        });
+        await ctx.db.insert("modelScores", {
+          kind: "decision",
+          benchmarkVersion,
+          model,
+          condition: "no_guidelines",
+          profileHash: "2".repeat(64),
+          score,
+          scoreStdDev: 0,
+          categoryScores: { cat: score },
+          runCount: 1,
+          plannedQuestions: 1,
+          invalidResponses: 0,
+          providerErrors: 0,
+          averageRunDurationMs: 10,
+          medianQuestionDurationMs: 10,
+          p95QuestionDurationMs: 10,
+          averageKnownRunCostUsd: 0,
+          completeCostRunCount: 1,
+          averageRunCostUsd: 0,
+          latestRunId,
+          latestRunTime: 1,
+        });
+        return latestRunId;
+      };
+      await makeScore(old, retiredModel, 1);
+      const retired = await makeScore(current, retiredModel, 1);
+      await makeScore(current, "typesafe/jev-1.13", 0.9);
+      await makeScore(current, "nace-ai/drex-v2.0", 0.8);
+      return retired;
+    });
+
+    for (const benchmarkVersion of [undefined, "current-cohort"]) {
+      const first = await t.query(api.decisionViews.decisionLeaderboard, {
+        benchmarkVersion,
+        condition: "no_guidelines",
+        paginationOpts: { cursor: null, numItems: 1 },
+      });
+      expect(first.results.page.map((row) => row.model)).toEqual([
+        "typesafe/jev-1.13",
+      ]);
+      expect(first.results.page[0].formattedName).toBe("TypeSafe: Jev 1.13");
+      const second = await t.query(api.decisionViews.decisionLeaderboard, {
+        benchmarkVersion,
+        condition: "no_guidelines",
+        paginationOpts: { cursor: first.results.continueCursor, numItems: 1 },
+      });
+      expect(second.results.page.map((row) => row.model)).toEqual([
+        "nace-ai/drex-v2.0",
+      ]);
+      expect(second.results.page[0].formattedName).toBe("Nace.AI: Drex v2.0");
+    }
+    const archived = await t.query(api.decisionViews.decisionLeaderboard, {
+      benchmarkVersion: "old-cohort",
+      condition: "no_guidelines",
+      paginationOpts: { cursor: null, numItems: 100 },
+    });
+    expect(archived.results.page.map((row) => row.model)).toEqual([retiredModel]);
+    expect(
+      (await t.query(api.decisionViews.getDecisionRun, { runId: retiredRunId }))
+        ?.model,
+    ).toBe(retiredModel);
+  });
+
   it("uses the model cohort prefix and keeps page joins constant with large unrelated history", async () => {
     // One indexed benchmark lookup, one paginated read and
     // one deduplicated model metadata lookup, independent of the page length.

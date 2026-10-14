@@ -8,41 +8,9 @@ import {
   decisionReportingTarget,
   decisionTransport,
 } from "./reporting.js";
-import type { DecisionProvider } from "./protocol.js";
+import { DECISION_CI_MODELS } from "./protocol.js";
 
-export const DECISION_CI_MODELS = {
-  jev: { provider: "openrouter", model: "typesafe/jev-1.13" },
-  luna: { provider: "openrouter", model: "openai/gpt-5.6-luna" },
-  luna6: { provider: "openrouter", model: "openai/gpt-6-luna" },
-  sol: { provider: "openrouter", model: "openai/gpt-5.6-sol" },
-  sol61: { provider: "openrouter", model: "openai/gpt-6.1-sol" },
-  astra: { provider: "openrouter", model: "openai/gpt-6-astra" },
-  grok47: { provider: "openrouter", model: "x-ai/grok-4.7" },
-  opus55: { provider: "openrouter", model: "anthropic/claude-opus-5.5" },
-  sonnet5: { provider: "openrouter", model: "anthropic/claude-sonnet-5" },
-  sonnet55: { provider: "openrouter", model: "anthropic/claude-sonnet-5.5" },
-  fable51: { provider: "openrouter", model: "anthropic/claude-fable-5.1" },
-  haiku55: { provider: "openrouter", model: "anthropic/claude-haiku-5.5" },
-  gemini31pro: {
-    provider: "openrouter",
-    model: "google/gemini-3.1-pro-preview",
-  },
-  gemini38flash: { provider: "openrouter", model: "google/gemini-3.8-flash" },
-  gemini4argon: { provider: "openrouter", model: "google/gemini-4-argon" },
-  deepseek41flash: {
-    provider: "openrouter",
-    model: "deepseek/deepseek-v4.1-flash",
-  },
-  qwen3827b: { provider: "openrouter", model: "qwen/qwen3.8-27b" },
-  kimi3: { provider: "openrouter", model: "moonshotai/kimi-k3" },
-  glm53: { provider: "openrouter", model: "z-ai/glm-5.3" },
-  mistralmedium35: {
-    provider: "openrouter",
-    model: "mistralai/mistral-medium-3-5",
-  },
-  musewonder: { provider: "openrouter", model: "meta/muse-wonder" },
-  musespark13: { provider: "openrouter", model: "meta/muse-spark-1.3" },
-} satisfies Record<string, { provider: DecisionProvider; model: string }>;
+export { DECISION_CI_MODELS } from "./protocol.js";
 
 async function main(): Promise<void> {
   const key = process.env.DECISION_MODEL;

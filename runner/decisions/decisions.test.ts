@@ -13,6 +13,7 @@ import { computeBenchmarkDefinition } from "../benchmark.js";
 import { computeDecisionBenchmarkDefinition } from "./source.js";
 import {
   buildProviderRequest,
+  NATIVE_DECISION_MODELS,
   callProvider,
   parseProviderResponse,
   providerEndpoint,
@@ -465,14 +466,25 @@ describe("provider boundaries", () => {
       parseProviderResponse(tsConfig, raw, ["A", "B", "C", "D"]),
     ).toThrow("sum to one");
   });
-  it("routes Jev through OpenRouter's native Decisions API and preserves billed usage", async () => {
-    const routed = { ...config, model: "typesafe/jev-1.13" };
+  it.each(Object.values(NATIVE_DECISION_MODELS))("routes $model through the native Decisions API", async (native) => {
+    const routed = { ...config, ...native };
     const request = buildProviderRequest(routed, presented, "");
+    const jevState = buildProviderRequest(
+      { ...config, model: "typesafe/jev-1.13" },
+      presented,
+      "",
+    ).state;
+    if (native.model === "scaledown/classify-1") {
+      expect(typeof request.state).toBe("string");
+      expect(JSON.parse(request.state as string)).toEqual(jevState);
+    } else {
+      expect(request.state).toEqual(jevState);
+    }
     expect(request).not.toHaveProperty("messages");
     expect(request).not.toHaveProperty("reasoning");
     expect(request).not.toHaveProperty("max_tokens");
     const raw = {
-      model: "typesafe/jev-1.13-20260917",
+      model: routed.model,
       answers: {
         decision: {
           type: "choice",

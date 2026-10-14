@@ -18,11 +18,10 @@ import schema from "./schema.js";
 import { modules } from "./test.setup.js";
 import { createDecisionSourceSnapshot } from "../../runner/decisions/source.js";
 import { presentQuestion } from "../../runner/decisions/questions.js";
-import { buildProviderRequest } from "../../runner/decisions/providers.js";
+import { buildProviderRequest, NATIVE_DECISION_MODELS } from "../../runner/decisions/providers.js";
 import { canonicalJson } from "./decisionIdentity.js";
 
 const repositoryRoot = new URL("../../", import.meta.url).pathname;
-const sourceCommit = "a".repeat(40);
 const bytes = (value: unknown): string => `${JSON.stringify(value)}\n`;
 const digest = (value: string | Uint8Array): string =>
   createHash("sha256").update(value).digest("hex");
@@ -32,7 +31,9 @@ describe("decision ingestion actions", () => {
     vi.stubEnv("CONVEX_CLOUD_URL", "https://brazen-pelican-414.convex.cloud");
   });
 
-  it("verifies immutable source, request, raw answer, journals, and final exact set", async () => {
+  it.each(Object.values(NATIVE_DECISION_MODELS))("verifies $model source, request, answer, journals, and exact set", async (native) => {
+    // Give each case distinct source evidence so the action cache starts empty.
+    const sourceCommit = digest(native.model).slice(0, 40);
     const t = convexTest(schema, modules);
     const snapshot = createDecisionSourceSnapshot(repositoryRoot, sourceCommit);
     const sourceBytes = bytes(snapshot);
@@ -136,7 +137,7 @@ describe("decision ingestion actions", () => {
     const presented = presentQuestion(question, bank.sourceEval, seed, 0);
     const config = {
       provider: "openrouter" as const,
-      model: "typesafe/jev-1.13",
+      model: native.model,
       reasoningEffort: "low" as const,
       maxOutputTokens: 64,
       timeoutMs: 5_000,
