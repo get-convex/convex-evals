@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import {
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -17,11 +18,12 @@ import {
 const evalDir = resolve("evals/001-data_modeling/015-validator_composition");
 const reference = readFileSync(join(evalDir, "answer/validators.ts"), "utf8");
 const projectDir = mkdtempSync(join(tmpdir(), "validator-composition-"));
-// The runner lockfile installs the same Convex 1.44.0 SDK as the task. Reuse
-// that installation so these regression tests do not need network access.
+// The task deliberately targets Convex 1.44.0. Keep its SDK separate from
+// the runner so security upgrades do not change the grading contract.
+mkdirSync(join(projectDir, "node_modules"));
 symlinkSync(
-  resolve("node_modules"),
-  join(projectDir, "node_modules"),
+  resolve("node_modules/convex-validator-fixture"),
+  join(projectDir, "node_modules/convex"),
   "junction",
 );
 const referenceManifest = readFileSync(
