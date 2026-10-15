@@ -20,7 +20,7 @@
     "@typescript-eslint/parser": "^8.19.1",
     "@vitejs/plugin-react": "^6.0.0",
     "convex-helpers": "0.1.127",
-    "convex-validator-fixture": "npm:convex@1.44.0",
+    "convex-validator-fixture": "npm:convex@1.47.0",
     "eslint": "^9.19.0",
     "eslint-plugin-react-hooks": "^7.0.0",
     "eslint-plugin-react-refresh": "^0.5.0",
